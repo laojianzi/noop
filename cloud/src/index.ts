@@ -52,7 +52,7 @@ interface Env {
   HUB_MOVED_TO?: string;    // the hub moved to another Worker (e.g. another account): forward every request there
   HUB_LANG?: string;        // [owner] language: "en" gives English text, otherwise Simplified Chinese
   HUB_ALLOW_IPS?: string;   // optional source-IP allow-list (IPs / CIDRs, comma or space separated); set → everyone else gets 403
-  HUB_LOCAL_MODE?: string;  // native workerd supplies connection metadata instead of Cloudflare headers
+  HUB_LOCAL_MODE?: string;  // native workerd connection metadata and local resource policy
   HUB_TRUSTED_PROXIES?: string;
 }
 
@@ -364,7 +364,7 @@ export class Hub extends DurableObject<Env> {
   }
   /** The tightest of today's allowances, as a fraction of the free plan. */
   used() { const u = this.today(); return Math.max(u.requests / FREE.requests, u.rowsRead / FREE.rowsRead, u.rowsWritten / FREE.rowsWritten); }
-  level(): "ok" | "lean" | "shed" { const f = this.used(); return f < LEAN ? "ok" : f < SHED ? "lean" : "shed"; }
+  level(): "ok" | "lean" | "shed" { if (this.env.HUB_LOCAL_MODE) return "ok"; const f = this.used(); return f < LEAN ? "ok" : f < SHED ? "lean" : "shed"; }
   usageView() {
     return { ...this.today(), level: this.level(), dbBytes: this.ctx.storage.sql.databaseSize, free: FREE, target: TARGET,
       sockets: { owner: this.ctx.getWebSockets("owner").length, host: this.ctx.getWebSockets("host").length } };
@@ -640,7 +640,7 @@ export class Hub extends DurableObject<Env> {
       if (ownerOnly ? who === "machine" : who !== "machine") return json({ error: "forbidden" }, 403);
       const actor = who === "machine" ? (req.headers.get("x-noop-host") ?? "machine") : "owner";
       const rev0 = Number(this.sql.exec("SELECT COALESCE(MAX(rev), 0) AS n FROM files").one().n);
-      const r = await handleFiles(this.sql, req, url, actor);
+      const r = await handleFiles(this.sql, req, url, actor, !!this.env.HUB_LOCAL_MODE);
       if (r && m === "POST") { // tasks / decisions changed → MCP resources/updated
         const paths = this.sql.exec("SELECT path FROM files WHERE rev > ?", rev0).toArray().map((x) => String(x.path));
         const uris = new Set<string>();

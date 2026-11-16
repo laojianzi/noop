@@ -54,3 +54,8 @@ owners can read login codes with `noop login`.
 The coordinator generates its Web Push VAPID keypair once in
 `<NOOP_HOME>/vapid.json`. Keep this file when backing up or moving the
 coordinator. Replacing it invalidates existing push subscriptions.
+
+Local mode records usage but does not apply Cloudflare free-plan shedding.
+File history keeps the existing 90-day, 20,000-row and 30-version rules. It
+keeps only the current version for `latestOnly` paths. A database over 500 MB
+does not reduce other files to one version in local mode.

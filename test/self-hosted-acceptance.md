@@ -217,3 +217,18 @@ delivery, failure logging and unsubscribe. It saves logs, versions, a report
 and checksums in a new temporary directory. The endpoint emulates the push
 service; this does not establish delivery to an external push service or a
 physical device.
+
+## Run local and cloud budget acceptance
+
+With the Web and workerd paths above, run `bun test/self-hosted-budget-e2e.ts`.
+The test creates an isolated SQLite database over 500 MB and 21,000 synthetic
+history rows. It uses real HTTP commits and a revert to trigger pruning, then
+loads synthetic high usage and checks that collaboration continues while login
+limits remain active. It removes the large database after a successful run.
+
+For the cloud-mode regression, set `NOOP_E2E_WRANGLER` to the Wrangler CLI
+JavaScript entry point and run `bun test/cloud-budget-e2e.ts`. This runs an
+isolated Wrangler development instance with no Cloudflare credentials. It
+checks the original pruning and shedding rules with another database over
+500 MB. It also removes the large database after a successful run. Neither
+scenario is a deployed Cloudflare test.
