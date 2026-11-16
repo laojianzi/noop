@@ -1,26 +1,46 @@
-name: Noop service environment probe
+name: Noop native runtime acceptance
 on:
   workflow_dispatch:
 jobs:
-  probe:
+  runtime:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-24.04, ubuntu-24.04-arm, macos-15-intel]
+        include:
+          - { os: ubuntu-24.04, package: linux-64 }
+          - { os: ubuntu-24.04-arm, package: linux-arm64 }
+          - { os: macos-15-intel, package: darwin-64 }
+          - { os: macos-latest, package: darwin-arm64 }
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
     steps:
-      - name: Inspect service-manager and virtual-machine capabilities
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.4
+      - name: Prepare pinned runtime and real Web bundle
         shell: bash
         run: |
-          uname -a
-          id
-          if [[ "$RUNNER_OS" == "Linux" ]]; then
-            loginctl show-user "$(id -un)" -p Linger || true
-            systemctl --user show-environment || true
-            ls -l /dev/kvm || true
-            sudo -n true && echo sudo-available || true
-          else
-            launchctl print "gui/$(id -u)" >/dev/null && echo gui-domain-available || echo gui-domain-unavailable
-            launchctl print "user/$(id -u)" >/dev/null && echo user-domain-available || echo user-domain-unavailable
-            sudo -n true && echo sudo-available || true
-          fi
+          mkdir -p "$RUNNER_TEMP/runtime" "$RUNNER_TEMP/web" "$RUNNER_TEMP/evidence"
+          npm pack "@cloudflare/workerd-${{ matrix.package }}@1.20261110.1" --silent --pack-destination "$RUNNER_TEMP/runtime"
+          tar -xzf "$RUNNER_TEMP/runtime/"*.tgz -C "$RUNNER_TEMP/runtime"
+          curl -fsSL --retry 3 https://github.com/huacnlee/noop/releases/download/v0.3.18/noop-web.tar.gz -o "$RUNNER_TEMP/noop-web.tar.gz"
+          curl -fsSL --retry 3 https://github.com/huacnlee/noop/releases/download/v0.3.18/sha256sums -o "$RUNNER_TEMP/sha256sums"
+          (cd "$RUNNER_TEMP" && grep '  noop-web.tar.gz$' sha256sums | shasum -a 256 -c -)
+          tar -xzf "$RUNNER_TEMP/noop-web.tar.gz" -C "$RUNNER_TEMP/web"
+      - name: Test native coordinator and recovery
+        shell: bash
+        env:
+          NOOP_E2E_WEB_ASSETS: ${{ runner.temp }}/web
+          NOOP_E2E_WEB_VERSION: v0.3.18
+          NOOP_E2E_WORKERD: ${{ runner.temp }}/runtime/package/bin/workerd
+          NOOP_E2E_OUT: ${{ runner.temp }}/evidence
+        run: bun test/self-hosted-backup-e2e.ts
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: native-runtime-${{ matrix.package }}
+          path: |
+            ${{ runner.temp }}/evidence/**/report.json
+            ${{ runner.temp }}/evidence/**/coordinator.log
+          if-no-files-found: warn
