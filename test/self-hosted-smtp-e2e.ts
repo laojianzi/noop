@@ -38,9 +38,11 @@ try {
   mkdirSync(join(repo, "app", "dist", "web"), { recursive: true }); cpSync(assets, join(repo, "app", "dist", "web", "noop"), { recursive: true });
   mkdirSync(bin, { recursive: true }); symlinkSync(resolve(workerd), join(bin, "workerd")); mkdirSync(home, { recursive: true });
   const cert = join(out, "smtp-cert.pem"), key = join(out, "smtp-key.pem"), ca = join(out, "ca.pem"), caKey = join(out, "ca-key.pem"), csr = join(out, "smtp.csr"), ext = join(out, "smtp.ext");
+  const wrongCa = join(out, "wrong-ca.pem"), wrongKey = join(out, "wrong-ca-key.pem");
   writeFileSync(ext, "basicConstraints=critical,CA:FALSE\nkeyUsage=critical,digitalSignature,keyEncipherment\nextendedKeyUsage=serverAuth\nsubjectAltName=DNS:localhost,IP:127.0.0.1\n");
   const openssl = (args: string[]) => spawnSync("openssl", args, { encoding: "utf8" }).status === 0;
   check(openssl(["req", "-x509", "-newkey", "rsa:2048", "-nodes", "-days", "1", "-subj", "/CN=Noop test CA", "-keyout", caKey, "-out", ca]) &&
+    openssl(["req", "-x509", "-newkey", "rsa:2048", "-nodes", "-days", "1", "-subj", "/CN=Untrusted test CA", "-keyout", wrongKey, "-out", wrongCa]) &&
     openssl(["req", "-newkey", "rsa:2048", "-nodes", "-subj", "/CN=localhost", "-keyout", key, "-out", csr]) &&
     openssl(["x509", "-req", "-in", csr, "-CA", ca, "-CAkey", caKey, "-CAcreateserial", "-days", "1", "-extfile", ext, "-out", cert]),
     "a temporary CA and SMTP TLS certificate are created");
@@ -50,8 +52,8 @@ try {
     "--smtp-require-starttls", "--smtp-auth-accept-any"], { stdio: ["ignore", mailFd, mailFd] }); closeSync(mailFd);
   await waitFor(async () => (await fetch(mailBase + "/api/v1/messages")).ok, "Mailpit did not start");
   check(true, "Mailpit starts a real SMTP server requiring STARTTLS and authentication");
-  writeFileSync(join(home, "noop.toml"), `[cloud]\ntrusted_proxies = "127.0.0.3"\n[owner]\nlanguage = "en"\n[email]\nto = "owner@example.com,proxied@example.com,fail@example.com"\nhost = "127.0.0.1"\nport = ${smtpPort}\nsecure = false\nuser = "synthetic-user"\npass = "synthetic-password"\nfrom = "noop@example.com"\n`);
-  const env: NodeJS.ProcessEnv = { ...process.env, NOOP_HOME: home, XDG_CONFIG_HOME: join(out, "xdg"), HUB_NO_MEDIC: "1", PATH: `${bin}:${process.env.PATH || ""}`, SSL_CERT_FILE: ca };
+  writeFileSync(join(home, "noop.toml"), `[cloud]\ntrusted_proxies = "127.0.0.3"\n[owner]\nlanguage = "en"\n[email]\nto = "owner@example.com,proxied@example.com,fail@example.com,untrusted@example.com"\nhost = "127.0.0.1"\nport = ${smtpPort}\nsecure = false\nuser = "synthetic-user"\npass = "synthetic-password"\nfrom = "noop@example.com"\n`);
+  const env: NodeJS.ProcessEnv = { ...process.env, NOOP_HOME: home, XDG_CONFIG_HOME: join(out, "xdg"), HUB_NO_MEDIC: "1", PATH: `${bin}:${process.env.PATH || ""}`, SSL_CERT_FILE: wrongCa };
   for (const name of ["HUB_CONF", "HUB_DATA", "HUB_SYNC", "HUB_SYNC_FAKE", "CLOUDFLARE_API_TOKEN", "CLOUDFLARE_ACCOUNT_ID"]) delete env[name];
   const cli = (args: string[], testHome = home) => {
     const r = spawnSync(process.execPath, [join(repo, "src", "cli.ts"), ...args], { cwd: repo, env: { ...env, NOOP_HOME: testHome }, encoding: "utf8", timeout: 20_000 });
@@ -74,6 +76,8 @@ try {
   };
   const post = (path: string, body: unknown, headers: Record<string, string> = {}) => fetch(base + path, { method: "POST", headers: { "content-type": "application/json", ...headers }, body: JSON.stringify(body) });
   await start(); const secret = setup();
+  check((await post("/api/auth/start", { email: "untrusted@example.com" })).status === 502, "SMTP rejects a certificate from an untrusted CA");
+  await stop(); env.SSL_CERT_FILE = ca; await start();
   const sent = await post("/api/auth/start", { email: "owner@example.com" });
   check(sent.status === 200, `SMTP login code is sent successfully (HTTP ${sent.status})`);
   let messages: any[] = [], code = "";
@@ -150,7 +154,7 @@ try {
     workerd: { version: existsSync(workerd) ? spawnSync(workerd, ["--version"], { encoding: "utf8" }).stdout.trim() : "missing", sha256: hash(workerd) },
     mailpit: { version: existsSync(mailpit) ? spawnSync(mailpit, ["version"], { encoding: "utf8" }).stdout.trim() : "missing", sha256: hash(mailpit) }, checks, error };
   writeFileSync(join(out, "report.json"), `${JSON.stringify(report, null, 2)}\n`);
-  const files = readdirSync(out, { withFileTypes: true }).filter((f) => f.isFile() && !["SHA256SUMS", "smtp-key.pem", "ca-key.pem", "proxy.key"].includes(f.name)).map((f) => f.name);
+  const files = readdirSync(out, { withFileTypes: true }).filter((f) => f.isFile() && !["SHA256SUMS", "smtp-key.pem", "ca-key.pem", "wrong-ca-key.pem", "proxy.key"].includes(f.name)).map((f) => f.name);
   writeFileSync(join(out, "SHA256SUMS"), files.map((f) => `${hash(join(out, f))}  ${f}`).join("\n") + "\n");
   console.log(`Evidence: ${out}`);
 }
