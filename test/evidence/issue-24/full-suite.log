@@ -1,0 +1,424 @@
+bun test v1.4.4 (38afee6c8)
+
+test/accounts-gateway.test.ts:
+(pass) detects the gateway env block in settings.json [0.43ms]
+(pass) detects an inherited gateway base URL [0.07ms]
+(pass) the process env overrides the file [0.12ms]
+(pass) plain OAuth machines are not gateway accounts [0.02ms]
+
+test/agent-name.test.ts:
+(pass) agent names follow the client language [0.14ms]
+
+test/answer-of.test.ts:
+(pass) answerOf reads the owner's latest answer to a card [0.12ms]
+
+test/attachments.test.ts:
+(pass) markdown attachments are documents, images are not [0.06ms]
+(pass) only files an image decoder can read are images; logs, patches and archives get a file card [0.19ms]
+(pass) attachment names drop the storage timestamps [0.06ms]
+
+test/autonomy.test.ts:
+(pass) open batch with stale tasks is closed and rebuilt (no deadlock) [11.07ms]
+(pass) open batch whose tasks are all gone is closed right away [0.86ms]
+(pass) a stub without frontmatter in tasks/proposed is not proposed and does not rebuild the batch [1.11ms]
+(pass) answer numbers follow the card lines even when a batch has an empty slot [1.22ms]
+(pass) an answer in words picks nothing: the card stays open instead of rejecting every item [0.93ms]
+(pass) numbers followed by words, or a word that only starts like all/none, keep the card open [0.72ms]
+(pass) precedents are the latest answers, whatever the id [0.85ms]
+(pass) routine dedupe: newer run supersedes proposed copy, queued copy blocks [1.11ms]
+(pass) routine dedupe: parked (waiting/blocked) copies never block the next run [0.63ms]
+(pass) a routine stuck behind a copy no host can run for 30+ minutes notifies the owner once per copy [1.25ms]
+(pass) read-only routines skip approval at onboarding; others and followups stay gated [0.52ms]
+(pass) ids: non-primary hosts are tagged, primary skips ids taken in any state [0.38ms]
+(pass) primary: named in the config, else only while no other host has a heartbeat [3.35ms]
+(pass) per-machine routine (scheduler each): copies on other machines neither block nor get superseded [0.41ms]
+(pass) built-in routines: every config has security-check (read-only, each machine); config.toml can replace it [0.61ms]
+
+test/badge.test.ts:
+(pass) the badge counts the hub's open cards, not the ask events still in the feed [0.05ms]
+(pass) a card answered in this app leaves the badge before the hub's status catches up [0.06ms]
+(pass) proposals count even while unheld; decisions only once held [0.02ms]
+(pass) before the dashboard arrives the feed's asks are all there is [0.01ms]
+
+test/brain.test.ts:
+(pass) tool list: one list, MCP and brain views differ only by transport-bound tools [0.19ms]
+(pass) read tools over the local data repo [3.12ms]
+(pass) writes are validated once, then performed by the store's acts [1.57ms]
+(pass) edit_memory corrects or deletes exactly one entry [0.74ms]
+(pass) brain: reads, then answers; writes run after the reply is posted [39.65ms]
+(pass) brain: nothing to say → nothing posted; invalid writes go back to the model [1.91ms]
+(pass) brain: a lookup that never ends still answers on the last round [1.31ms]
+(pass) context: open work, decisions, relevant memory, channel and reply target [0.63ms]
+(pass) context: a proposals card lists its items, so the owner's words can be turned into item numbers [0.59ms]
+(pass) a finished task reopens under its own id, with its runs as context [0.39ms]
+(pass) the owner's words on a task never open its gates; a card's approval stays [1.02ms]
+(pass) a task's detail names the cards it asked [0.83ms]
+(pass) list_routines: a change made in settings wins over config.toml, as it does for the scheduler [0.20ms]
+
+test/budget.test.ts:
+fleet day: 7595 requests (target 20000), ~15427 rows written (target 20000)
+(pass) a fleet day stays under the free-plan target [8818.19ms]
+
+test/channels.test.ts:
+(pass) slugs: ascii names become kebab-case, CJK-only names get a stable id [2.91ms]
+(pass) results: existing channels by slug or name, new ones need a goal, archived ones get nothing [1.64ms]
+(pass) owner edits: goal and archive; unknown slugs are refused [0.25ms]
+(pass) view: a channel lists its tasks and their cards newest first, and is stale after 7 quiet days [1.37ms]
+(pass) channel reports are discoverable and traversal references are excluded [0.55ms]
+(pass) the brain sees channel goals and can classify a task at creation [0.45ms]
+(pass) channelDigest: the channel's own talk (incl. the team's replies) plus main-chat results about its work; other rooms never [0.12ms]
+(pass) originChannel: a task started in a channel, and cards about it, route back there [0.39ms]
+(pass) brain context: a message said in a channel names the channel and its goal [0.26ms]
+
+test/chat-fallback.test.ts:
+(pass) no model, no reply target: the message becomes a new task, however recently another task spoke [0.36ms]
+(pass) no model, a reply to a task: the message goes to that task, and the owner is told [0.14ms]
+(pass) no model, the replied-to task cannot be continued: it still becomes a task [0.18ms]
+(pass) no model: the title is the first line of the message, cut to 80 characters [0.14ms]
+(pass) the failure reason is one short line [0.10ms]
+(pass) a message is no longer attached to 'the task the team last spoke about' [0.01ms]
+
+test/claim.test.ts:
+(pass) a claim that cannot be pushed puts back a task that was never pushed [1.02ms]
+
+test/classify.test.ts:
+(pass) a gateway 5xx that says 'try again in a moment' is not a quota wall [0.23ms]
+(pass) quota walls are still recognised, including reset hints that carry a time [0.04ms]
+(pass) login problems stay auth, and unrelated failures stay unclassified [0.02ms]
+(pass) Claude's expired OAuth session enters the auth failover path [0.03ms]
+
+test/claude-settings-path.test.ts:
+(pass) claudeSettingsPath: CLAUDE_CONFIG_DIR wins, then HOME, then the OS home directory [0.06ms]
+(pass) userSettingsEnv: reads the env block of the settings file, string values only [0.18ms]
+
+test/cli-policy.test.ts:
+(pass) the owner's per-member CLI wins over the planner's hint [0.06ms]
+(pass) a CLI pinned on the task itself still wins over the member config [0.02ms]
+(pass) a CLI pinned on the task itself wins over the planner's hint [0.01ms]
+(pass) without a member config the planner's hint decides [0.01ms]
+(pass) neither config nor hint: either CLI, Claude first [0.01ms]
+(pass) a member without its own config is unaffected by another member's [0.01ms]
+(pass) an empty member list falls through instead of forbidding every CLI [0.01ms]
+(pass) a malformed (non-array) member config is ignored instead of crashing [0.01ms]
+(pass) a hint outside {claude, codex} is ignored rather than pinned [0.01ms]
+(pass) a member's configured order is kept [0.01ms]
+(pass) the planner's suggestion is stored as cli_hint, never as cli [0.04ms]
+(pass) no hint is stored for a member with a policy (it would be overruled anyway) [0.02ms]
+(pass) no hint is stored on a pinned task [0.01ms]
+(pass) a malformed suggestion is dropped instead of being coerced to claude [0.02ms]
+
+test/cloud-assets.test.ts:
+(pass) hashed assets preserve precompressed bytes, their type and immutable caching [1.22ms]
+(pass) encoding negotiation respects exclusions and relative preferences [0.28ms]
+(pass) a missing compressed asset cannot turn the SPA fallback into encoded wasm [0.14ms]
+
+test/cloud-flush-race.test.ts:
+cloud bridge → http://127.0.0.1:35575
+uploads: ["one","two"]
+(pass) one local event is uploaded exactly once while another flush is in flight [374.15ms]
+cloud bridge → http://127.0.0.1:44209
+(pass) a refused upload waits for the poll instead of retrying in a tight loop [601.54ms]
+
+test/cloud-inbox.test.ts:
+(pass) a replayed owner message id is handled once, also after the seen list is reloaded [0.08ms]
+
+test/cloud-message-receipt.test.ts:
+(pass) cloud retries return one event and queue one task; identical new messages stay separate [0.67ms]
+(pass) cloud channel feeds use indexed channel and reference lookups [0.69ms]
+
+test/codex-work-dirs.test.ts:
+(pass) codex can write to the owner's configured work_dirs, wherever they are [0.31ms]
+(pass) without work_dirs the writable dirs are unchanged [0.15ms]
+(pass) codex can write the hub's feed, where `noop notify` appends [0.09ms]
+(pass) the codex command passes the configured work_dirs as --add-dir [0.26ms]
+
+test/decisions-open.test.ts:
+(pass) a decision file's id is its bare name on both path styles [0.03ms]
+
+test/decisions.test.ts:
+(pass) judge hold is still recorded and scored against the owner [1.81ms]
+(pass) shadow decided verdict feeds judgeAccuracy; agreeing with the recommendation adds no lesson [0.78ms]
+(pass) judge failure is recorded as error; judge auto-decision keeps its shadow fields and is not self-scored [0.94ms]
+(pass) choice() normalises option answers [0.03ms]
+(pass) linkRefs links PR references using the repositories the decision mentions [0.27ms]
+(pass) ignoring a question closes it without a lesson and hands the call back to the agent [0.51ms]
+(pass) D: the judge never answers a merge card, even when allowed to decide [0.68ms]
+(pass) followups of an owner-answered idle menu count as the owner's pick; a skipped or judged menu does not [1.00ms]
+
+test/files-read.test.ts:
+(pass) readable whitelist [0.11ms]
+(pass) worker list/read: files table only, whitelist enforced [1.54ms]
+(pass) local server list/read [0.39ms]
+
+test/github.test.ts:
+(pass) a machine without gh is not starved: the tick keeps picking up work [1.16ms]
+
+test/guests.test.ts:
+(pass) a join code works once [1.94ms]
+(pass) a guest only gets tasks assigned to it and can only answer its own claimed task [2.09ms]
+(pass) a guest token reaches nothing outside /api/guest/*, and revocation is immediate [0.97ms]
+(pass) oversized results are refused [0.95ms]
+(pass) guest agent never loads the cloned repo's settings, hooks or MCP servers, and has no shell [0.07ms]
+(pass) untrusted guest text is stripped of terminal escapes [0.03ms]
+(pass) guest invite prints install lines that join as the guest, with no login [0.15ms]
+
+test/idle-menu.test.ts:
+(pass) a recent pending menu suppresses another even when an older menu sorts first [0.75ms]
+(pass) cooldown expiry refreshes the latest menu by time, ignoring newer non-menu decisions [0.86ms]
+(pass) without pending menus the existing 15-minute generation guard still applies [0.43ms]
+(pass) active work resets the idle window and prevents a menu [0.28ms]
+(pass) an idle run that raised no menu waits out the full cooldown before the next one [0.44ms]
+(pass) an idle run whose menu was answered does not delay the next menu past the 15-minute guard [0.46ms]
+(pass) launching an idle run remembers its task id for the next check [0.37ms]
+
+test/language.test.ts:
+(pass) Simplified Chinese stays the default [0.98ms]
+(pass) language = en gives English prompts and cards [1.30ms]
+(pass) the Worker follows HUB_LANG [0.04ms]
+
+test/mcp.test.ts:
+(pass) unauthenticated /mcp → 401 pointing at the protected-resource metadata [1.74ms]
+(pass) OAuth: register → sign in with email code → PKCE token → refresh rotates [4.04ms]
+(pass) initialize, tools/list, resources [3.25ms]
+(pass) tools: read and owner-level writes [4.01ms]
+(pass) wait_for_events returns as soon as an event lands [51.88ms]
+(pass) SSE stream delivers events as notifications/message and resources/updated for subscriptions [2.02ms]
+(pass) sessions: 400 without Mcp-Session-Id, 404 when unknown, expired or deleted; protocol version validated [1.75ms]
+(pass) capabilities follow the negotiated version [1.16ms]
+(pass) GET stream: every message has an id, retry hint, priming event (2025-11-25), Last-Event-ID replays only what was missed [43.21ms]
+(pass) wait_for_events over a POST SSE response: progress with the client's token, then the result [84.61ms]
+(pass) notifications/cancelled aborts wait_for_events and no response is sent [51.76ms]
+(pass) resources/list_changed when the set of open tasks or decisions changes [2.07ms]
+(pass) redirect URIs: https or loopback only [0.04ms]
+(pass) task history: every task in pages, newest first, and any one of them on its own [2.71ms]
+(pass) task listings patch changed rows instead of re-reading the directory [1.63ms]
+
+test/message-receipt.test.ts:
+hub server on http://127.0.0.1:36949  (phone: tailscale serve --bg 36949)
+(pass) retrying a message returns the original receipt and dispatches it only once [4.40ms]
+
+test/metrics.test.ts:
+(pass) a task parked on the owner's decision is not counted as a failure [1.10ms]
+(pass) an agent that only ever asked for a decision has no success rate to judge [0.49ms]
+
+test/notify.test.ts:
+(pass) quiet hours are read in both the app's shape and a hand-written range [1.08ms]
+(pass) quiet hours hold back all but logins and urgent decisions [0.38ms]
+(pass) the settings' switches reach their kinds, notices being the results [0.07ms]
+(pass) the owner's own words and the hub's housekeeping never notify [0.03ms]
+(pass) the body is plain and short [0.03ms]
+
+test/read.test.ts:
+(pass) reads are per message: reading one preserves unrelated unread results [0.24ms]
+(pass) the owner and quiet hub messages do not count as unread [0.03ms]
+(pass) manual unread marks survive automatic viewport reads until explicitly cleared [0.08ms]
+(pass) toggling a new message read does not advance past other messages [0.06ms]
+(pass) a read-all watermark clears old marks but new messages remain unread [0.03ms]
+
+test/resources.test.ts:
+(pass) busyShare measures the busy fraction of a CPU tick delta [0.07ms]
+(pass) pressureOf prefers measured CPU utilisation and falls back to load/cores [0.07ms]
+(pass) allowedParallel honours max_parallel when the CPU is idle even if loadavg says otherwise [0.09ms]
+(pass) allowedParallel still stops on low memory/disk and falls back to cores/3 [0.03ms]
+(pass) canRunHeavy reads the same pressure signal [0.04ms]
+(skip) staleDerivedData picks idle and orphaned project folders only
+(pass) diskAlertDue alerts once, then only after 6h or another 5GB drop [0.09ms]
+
+test/security.test.ts:
+(pass) IP allow-list: v4 / v6 addresses and CIDRs [0.48ms]
+(pass) login codes: 8 unambiguous letters/digits, typed loosely [2.46ms]
+(pass) OAuth redirects: only Claude, ChatGPT and loopback [0.09ms]
+(pass) media: active content is a sandboxed download, images stay inline [0.19ms]
+(pass) TOTP: RFC 6238 vectors, ±1 step, single use [1.36ms]
+
+test/sessions.test.ts:
+(pass) redact: token families are removed [0.46ms]
+(pass) redact: assignments keep the name and drop the value [0.16ms]
+(pass) redact: a huge unbroken run stays fast [0.79ms]
+(pass) redact: credentials in headers and URLs [0.10ms]
+(pass) redact: ordinary text is left alone [0.05ms]
+(pass) ownerText: machine-written turns are dropped [0.43ms]
+(pass) ownerText: wrappers are removed and the owner's words kept [0.13ms]
+(pass) ownerText: a secret across the length cap is redacted, not cut [0.74ms]
+(pass) readers: fleet planner and medic sessions are dropped whole [0.64ms]
+(pass) readers: the previous AI message is redacted before it is shortened [0.53ms]
+
+test/setup-macos.test.ts:
+(pass) fresh macOS service directories and XML-safe paths [0.47ms]
+(pass) primary initialization works on the current OS and survives reinitialization [63.27ms]
+
+test/shell.test.ts:
+(pass) pickBash: anything but Windows keeps the bash from PATH [0.13ms]
+(pass) pickBash: on Windows it skips the System32 WSL launcher and takes Git Bash [0.11ms]
+(pass) pickBash: the WSL launcher is recognised whatever the case, trailing slash or Sysnative spelling [0.03ms]
+(pass) pickBash: the WindowsApps alias is skipped too [0.02ms]
+(pass) pickBash: NOOP_BASH wins when the file exists, and is ignored when it does not [0.03ms]
+(pass) pickBash: with only the WSL launcher on PATH it falls back to plain bash (unchanged behaviour) [0.01ms]
+
+test/signal.test.ts:
+(pass) routine signal only fires on change [4.38ms]
+
+test/start-model.test.ts:
+(pass) startModel reads the explicit flag, else Codex's config default [0.62ms]
+
+test/status-push.test.ts:
+hub server on http://127.0.0.1:33847  (phone: tailscale serve --bg 33847)
+(pass) a v=2 client is pushed the dashboard; a plain client only gets the feed [103.58ms]
+hub server on http://127.0.0.1:34459  (phone: tailscale serve --bg 34459)
+(pass) a card opening reaches a watching client without a reconnect [5010.98ms]
+
+test/supervisor.test.ts:
+(pass) young, normally cycling waits are left alone [0.94ms]
+(pass) flags age, wake count and macOS checks that can never run on the Linux primary [0.56ms]
+(pass) a Windows path under Users is a local path on a Windows primary, not a macOS path [0.07ms]
+(pass) keep going first: retired host → reroute, answered card → resume, no waiting_on → requeue once [0.18ms]
+(pass) parked on the owner: human waits and blocked waits naming an open card are never clock-escalated [0.19ms]
+(pass) a platform card does not sweep in tasks that are parked on the owner [0.22ms]
+(pass) groups by cause: all macOS-desktop tasks share one card [0.39ms]
+(pass) dedupe: tasks covered by an earlier card for the same cause (answered, skipped or open) are not asked again [0.11ms]
+(pass) supervise(): one card per cause, never twice; answering resumes every task without opening a gate [3.60ms]
+(pass) closeDecision on a supervisor card never sets gate_override [0.48ms]
+(pass) dated follow-ups are exempt; a delegated parent on a retired host is re-pinned; young same-platform tasks join the card [0.27ms]
+(pass) macOS host online + wait_check unrunnable on the primary: hand back to the Mac once, not a card [0.15ms]
+(pass) trackedPrs reads PR urls from spec and repo #N from title, not from run logs [0.09ms]
+(pass) merged PRs wake a task once for acceptance checks instead of completing it [1421.21ms]
+(pass) CI held for approval turns a machine wait into a visible owner wait [1.00ms]
+
+test/sync.test.ts:
+(pass) push, pull, binary-safe, ignored paths [4.43ms]
+sync: tasks/active/T-0001.md changed remotely and locally — keeping the remote version
+(pass) task claim race: exactly one host wins, loser gets the winner's state [3.21ms]
+sync: decisions/open/D-1.md changed remotely and locally — keeping the remote version
+(pass) non-conflicting changes in a lost commit stay pending and push later [5.82ms]
+(pass) concurrent appends to the same journal merge instead of losing lines [12.26ms]
+(pass) deletes propagate; reset discards local edits [43.08ms]
+(pass) worker API: 409 applies nothing, history, revert, pagination, size limit, path validation [12.27ms]
+(pass) history pruning keeps the latest row of each path [0.80ms]
+(pass) history pruning caps versions per path and drops journals and heartbeats [1.05ms]
+(pass) worker API: a journal keeps no history; its history view is the current version [6.03ms]
+(pass) own commit echoing back on the next pull does not clobber newer local edits [5.59ms]
+sync: decisions/closed/D-9.md changed remotely and locally — keeping the remote version
+(pass) append-only files merge by union when both sides diverged; nothing ever gets conflict markers [6.28ms]
+sync: the Worker was replaced (its history is behind ours at rev 20); re-syncing every path, local versions win
+(pass) a replaced Worker (older copy, lower revs) is re-learned and our newer files pushed to it [121.75ms]
+
+test/timeline.test.ts:
+(pass) initial history is paged, live arrivals keep the first visible message and load-more works [0.57ms]
+(pass) arrivals while reading history or away do not animate; recycled/off-screen rows do not replay [0.06ms]
+(pass) the first message in an initially empty loaded channel animates [0.03ms]
+
+test/unit.test.ts:
+(pass) routine schedule [0.25ms]
+(pass) capability matching [0.14ms]
+(pass) external signature links the Noop name to its site [0.02ms]
+(pass) result parsing [0.29ms]
+(pass) result parsing repairs a raw line break inside a JSON string [0.11ms]
+(pass) long runs reserve a checkpoint window before the hard limit [0.08ms]
+(pass) every task prompt states the checkpoint and hard deadlines [0.04ms]
+(pass) checkpoint fallback parks with an executable time-based wait_check [0.07ms]
+(pass) work-limit resumes use a separate counter with the MAX_WAKES safety cap [0.12ms]
+(pass) result parsing repairs a bare double quote inside a JSON string [0.16ms]
+(pass) owner image uploads: images only, 10 MB, attachments are the hub's own media [0.31ms]
+attachment /media/2-gone.png: download failed
+(pass) owner images are downloaded and named by absolute path in the task text [0.81ms]
+(pass) media older than media_days is pruned [0.91ms]
+(pass) repo language → host requirements (only when the repo is on disk) [0.43ms]
+(pass) quota/auth failover: same CLI's other account, then the other CLI, else nothing [0.51ms]
+(pass) classify: OpenAI 'no credits remaining' is a quota wall, so codex work falls back [0.10ms]
+(pass) restart throttle: at most one voluntary restart per hour unless forced [0.30ms]
+(pass) selfUpdate defers while tasks run on this host [0.55ms]
+(pass) a blocked self-update is reported once per distinct state [0.25ms]
+(pass) a release whose tests failed here is not installed again until origin moves on [0.18ms]
+(pass) taskView shows the original ask, not daemon requeue notes [0.31ms]
+(pass) uploads: the real image type comes from the bytes [0.23ms]
+(pass) update the fleet: the owner's request reaches the hook and the feed says how many machines [0.30ms]
+(pass) heartbeat carries the running code version, linked to its commit [0.09ms]
+(pass) recentChat: the channel before an owner message, without the message itself [0.84ms]
+(pass) pickTask: a task no machine here can run (needs another OS) never holds back the ones behind it [0.82ms]
+(pass) a reply to an agent's message goes to the brain with that task, never as an amendment of the last decision [0.24ms]
+(pass) an answer in words to a proposals card goes to the brain; numbers, all and none go straight to the card [0.16ms]
+(pass) a result block survives a later turn from a background task notification [2.84ms]
+(pass) run logs keep screenshot events but not their base64 payloads [0.19ms]
+(pass) a run log exists and grows while the agent runs, and has the usual layout at exit [34.90ms]
+(pass) an empty completion (no text, no tool call, exit 0) is retried once instead of failing the task [21.18ms]
+(pass) a run that never reached the API is retried once instead of failing the task [28.68ms]
+(pass) a run stopped by its work limit uses a distinct checkpoint marker [61.41ms]
+(pass) a work-limit run hands off to a checkpoint-only run end to end [78.33ms]
+(pass) a failed run that already did work is not retried, however its text reads [16.02ms]
+(pass) a completed tool call with an empty result is not retried [14.82ms]
+(pass) visible assistant text with an empty result is not retried [14.38ms]
+(pass) status: a task parked on something slow stays listed however many tasks finished after it [2.94ms]
+(pass) codex can write to project checkouts and scratch, not only its cwd [0.81ms]
+(pass) checkWaits: a waiting task wakes early once its wait_check exit code changes [3.58ms]
+(pass) checkWaits: a wait that finished while the daemon was down still wakes after a restart [1.59ms]
+(pass) gate_override relaxes only the approvable gates [0.12ms]
+(pass) a model-emitted followup without a title cannot abort the run [1.26ms]
+(pass) a followup whose requires is a list or another non-string cannot abort the run [0.83ms]
+(pass) lessons sent as a bare string are kept, not fatal [0.83ms]
+(pass) runsCheckHere: the host that parked a wait runs its check; the primary runs the rest it can [0.35ms]
+
+test/update.test.ts:
+(pass) an update is downloaded before anything shows, and only a press installs it [0.58ms]
+(pass) checking again does not drop a download that waits for its restart [0.06ms]
+(pass) a newer release while one waits for its restart replaces it [0.10ms]
+(pass) an update the app cannot install is a link, with no download [0.06ms]
+(pass) up to date shows nothing [0.05ms]
+update check failed: Error: offline
+(pass) a failed check or download stays quiet, and the next check tries again [0.10ms]
+(pass) a failed install says why and can be pressed again [0.12ms]
+(pass) a package is preferred over the whole app, and a press restarts into it [0.14ms]
+(pass) where the app cannot restart itself a package is staged silently for the next launch [0.11ms]
+(pass) with no package this runtime can run, the whole app updates as before [0.10ms]
+package update failed: Error: bad signature
+(pass) a failed package download falls back to the app check, and a failed restart retries the package [0.15ms]
+(pass) running a package of the release already, the whole app is not offered again [0.16ms]
+(pass) release numbers compare by part [0.03ms]
+(pass) shell line: version, build and NSH; a phone shell without packages says to reinstall [0.15ms]
+
+test/usage-report.test.ts:
+(pass) usage report: this week vs previous week, PRs deduplicated, decisions by who [2.43ms]
+
+test/waits.test.ts:
+(pass) CI wait_check backs off 5 → 10 → 20 → 40 minutes [0.05ms]
+(pass) human waits get no timed wake-up; CI waits do [0.23ms]
+(pass) more than 6 wake-ups blocks the task [0.02ms]
+(pass) D: merge cards are recognised and lead with the PR link [0.10ms]
+(pass) routine runs without changes stay out of the owner channel [0.08ms]
+
+test/webclient.test.ts:
+web client updated (1058cd7)
+(pass) ensureWebClient > downloads the release's client and leaves no download behind [12.69ms]
+web client updated (1058cd7)
+(pass) ensureWebClient > does not download what it already has [7.15ms]
+web client updated (1058cd7)
+web client updated (6ee2a94)
+(pass) ensureWebClient > replaces the client with a newer release's [13.08ms]
+web client updated (1058cd7)
+web client not updated: noop-web.tar.gz: checksum 6ee2a94d5becaa826703d957eb14b12e5de9d05c9f2d5e9c5e45d5c5328bae16, expected 0000000000000000000000000000000000000000000000000000000000000000
+(pass) ensureWebClient > refuses a download that fails its checksum, keeping the client [11.68ms]
+web client updated (1058cd7)
+web client not updated: http://127.0.0.1:43725/sha256sums: HTTP 404
+(pass) ensureWebClient > keeps the client when the release can't be reached [8.62ms]
+web client not updated: http://127.0.0.1:43811/sha256sums: HTTP 404
+(pass) ensureWebClient > reports no client when there is none and no release has one [1.41ms]
+web client updated (1058cd7)
+web client not updated: noop-web.tar.gz: not a web client
+(pass) ensureWebClient > an archive without a client replaces nothing [13.35ms]
+(pass) ensureWebClient > leaves a locally built client alone [3.97ms]
+
+test/worker-count.test.ts:
+(pass) a claimed task disappearing releases its worker slot (background=false) [35.81ms]
+(pass) a claimed task disappearing releases its worker slot (background=true) [34.17ms]
+
+test/cloud-auth/push.test.ts:
+(pass) RFC 8291 aes128gcm test vector [1.29ms]
+(pass) VAPID JWT is ES256-signed by the advertised key [0.74ms]
+
+1 tests skipped:
+(skip) staleDerivedData picks idle and orphaned project folders only
+
+ 290 pass
+ 1 skip
+ 0 fail
+ 5506 expect() calls
+Ran 291 tests across 49 files. [17.59s]
