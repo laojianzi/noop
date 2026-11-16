@@ -75,8 +75,8 @@ try {
   await new Promise<void>((ok) => proxy!.listen(proxyPort, "127.0.0.1", ok));
   adb("reverse", `tcp:${proxyPort}`, `tcp:${proxyPort}`); adb("install", "-r", resolve(apk));
   adb("shell", "am", "force-stop", "dev.noop.app"); adb("shell", "pm", "clear", "dev.noop.app");
-  adb("shell", "monkey", "-p", "dev.noop.app", "1"); await Bun.sleep(5000); hideKeyboard();
-  await waitFor(() => ui().includes('resource-id="email"'), "Android sign-in did not appear");
+  adb("shell", "monkey", "-p", "dev.noop.app", "1");
+  await waitFor(() => ui().includes('resource-id="email"'), "Android sign-in did not appear", 60_000);
   tap("email"); adb("shell", "input", "text", "android@example.com"); hideKeyboard();
   tap("url"); adb("shell", "input", "text", clientBase); hideKeyboard(); tap("send-code");
   await waitFor(() => requests.includes("POST /api/auth/start 200"), "Android app could not request the login code");
@@ -104,6 +104,9 @@ try {
   check(screenshot.status === 0 && !!screenshot.stdout.length, "Android screenshot is saved"); writeFileSync(join(out, "android-message.png"), screenshot.stdout);
 } catch (e) {
   error = e instanceof Error ? e.stack || e.message : String(e); console.error(`FAIL ${error}`); process.exitCode = 1;
+  try { writeFileSync(join(out, "failed-window.xml"), ui()); } catch {}
+  const screenshot = spawnSync("adb", ["-s", serial, "exec-out", "screencap", "-p"], { timeout: 20_000 });
+  if (screenshot.status === 0) writeFileSync(join(out, "failed-screen.png"), screenshot.stdout);
 } finally {
   if (proxyPort) try { adb("reverse", "--remove", `tcp:${proxyPort}`); } catch {}
   if (service?.pid) try { process.kill(-service.pid, "SIGINT"); } catch {}

@@ -60,6 +60,8 @@ jobs:
             ${{ runner.temp }}/android-evidence/**/requests.log
             ${{ runner.temp }}/android-evidence/**/coordinator.log
             ${{ runner.temp }}/android-evidence/**/android-message.png
+            ${{ runner.temp }}/android-evidence/**/failed-screen.png
+            ${{ runner.temp }}/android-evidence/**/failed-window.xml
             ${{ runner.temp }}/android-evidence/**/SHA256SUMS
             ${{ runner.temp }}/android-logcat.log
             ${{ runner.temp }}/emulator.log
