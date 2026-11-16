@@ -29,7 +29,7 @@ jobs:
         run: |
           export PATH="$ANDROID_HOME/platform-tools:$PATH"
           "$ANDROID_HOME/emulator/emulator" -avd noop-test -no-window -no-audio -no-boot-anim -no-snapshot -gpu swiftshader_indirect -accel on > "$RUNNER_TEMP/emulator.log" 2>&1 &
-          adb wait-for-device
+          timeout 150s adb wait-for-device || { cat "$RUNNER_TEMP/emulator.log"; exit 1; }
           for i in {1..180}; do [[ "$(adb shell getprop sys.boot_completed | tr -d '\r')" == 1 ]] && break; sleep 2; done
           [[ "$(adb shell getprop sys.boot_completed | tr -d '\r')" == 1 ]]
           adb install "$RUNNER_TEMP/android-package/Noop.apk"
