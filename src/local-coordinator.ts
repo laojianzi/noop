@@ -8,8 +8,13 @@ import { parseAllowList } from "../cloud/src/ipallow";
 import { hubTomlPath, writeHubToml } from "./sync";
 
 export const WORKERD_DATE = "2026-11-10";
-// SHA-256 of the binary in the verified @cloudflare/workerd-linux-64 1.20261110.1 package.
-const WORKERD_LINUX_X64_SHA256 = "620d9f7e5eb461067e08af17316aaa087445b4232e0e98e3dd146763bd9ab394";
+// SHA-256 of the binaries in the verified @cloudflare/workerd platform packages, version 1.20261110.1.
+const WORKERD_SHA256: Record<string, string> = {
+  "linux-x64": "620d9f7e5eb461067e08af17316aaa087445b4232e0e98e3dd146763bd9ab394",
+  "linux-arm64": "9d557f449060e57feb17541092929801dd7f8df79be9424fd8b61b772c7237c0",
+  "darwin-x64": "790d752a3e30fa429950fb664111fa088b1b2c15732f9541e722fbf253ffff44",
+  "darwin-arm64": "f08ed8b7be3588cc7393b274e7278bee3125a1015ed3e214293e5e75088dd5b1",
+};
 
 export function coordinatorNamespace(root: string) {
   const namespace = readFileSync(join(root, "namespace-key"), "utf8").trim();
@@ -21,7 +26,7 @@ export function coordinatorNamespace(root: string) {
 export function lockCoordinator(root: string) {
   const fd = openSync(join(root, "active.lock"), "a", 0o600);
   try {
-    const libc = dlopen("libc.so.6", { flock: { args: ["int", "int"], returns: "int" } });
+    const libc = dlopen(process.platform === "darwin" ? "/usr/lib/libSystem.B.dylib" : "libc.so.6", { flock: { args: ["int", "int"], returns: "int" } });
     if (libc.symbols.flock(fd, 2 | 4) !== 0) { libc.close(); throw new Error("Cannot lock coordinator data; another local coordinator may be running"); }
     return { fd, [Symbol.dispose]() { closeSync(fd); libc.close(); } };
   } catch (error) { closeSync(fd); throw error; }
@@ -46,10 +51,11 @@ export async function localCoordinator(cfg: Cfg, listen = "127.0.0.1:8790") {
     throw new Error("This Noop home already uses another coordination service; use a separate Noop home");
   const workerd = Bun.which("workerd");
   if (!workerd) throw new Error(`Install workerd ${WORKERD_DATE} and put it on PATH`);
-  if (process.platform !== "linux" || process.arch !== "x64") throw new Error("The local coordinator candidate currently supports Linux x86_64");
+  const expected = WORKERD_SHA256[`${process.platform}-${process.arch}`];
+  if (!expected) throw new Error("The local coordinator candidate supports Linux and macOS on x86_64 and ARM64");
   const hash = new Bun.CryptoHasher("sha256");
   for await (const chunk of Bun.file(workerd).stream()) hash.update(chunk);
-  if (hash.digest("hex") !== WORKERD_LINUX_X64_SHA256) throw new Error(`The workerd ${WORKERD_DATE} binary checksum does not match`);
+  if (hash.digest("hex") !== expected) throw new Error(`The workerd ${WORKERD_DATE} binary checksum does not match`);
   const assets = join(CODE, "app", "dist", "web", "noop");
   if (!existsSync(join(assets, "index.html"))) throw new Error("Build or install the Noop Web client before local deployment");
 

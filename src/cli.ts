@@ -1073,6 +1073,8 @@ const HELP = `Noop — your own AI team
   noop init --primary         the first machine, once: deploy your own Cloudflare Worker (holds the fleet data), seed ~/.noop/data
   noop init --primary --local <hub-url> --token <machine-token>   initialize a primary against a local coordinator
   noop cloud deploy --local [--listen 127.0.0.1:8790]   run the local coordinator candidate in the foreground
+  noop cloud service install [--listen 127.0.0.1:8790]   install and start the local coordinator service
+  noop cloud service start | stop | status | logs   manage the local coordinator service
   noop cloud backup <directory>   back up a stopped local coordinator
   noop cloud restore <directory>  restore into a new NOOP_HOME
   noop install                run as a service (systemd / launchd / Task Scheduler)
@@ -1237,12 +1239,17 @@ async function main() {
       return void console.log(L(`✓ Revoked ${revoked} login(s) (phones, browsers, MCP connectors). Log in again with an email code.\n  If you suspect the mailbox is compromised, change its password first, then consider rotating the machine key.`, `✓ 已撤销 ${revoked} 个登录（手机、浏览器、MCP 连接器）。需要重新用邮箱验证码登录。\n  如果怀疑邮箱被盗，先改邮箱密码，再考虑轮换机器密钥。`));
     }
     case "cloud": {
+      if (rest[0] === "service") {
+        const { values, positionals } = parseArgs({ args: rest.slice(1), allowPositionals: true, options: { listen: { type: "string" } } });
+        if (positionals.length !== 1 || (values.listen && positionals[0] !== "install")) throw new Error("usage: noop cloud service install [--listen address] | start | stop | status | logs");
+        return void (await (await import("./local-service")).localService(positionals[0], values.listen));
+      }
       if (rest[0] === "backup" || rest[0] === "restore") {
         if (rest.length !== 2 || rest[1].startsWith("-")) throw new Error(`usage: noop cloud ${rest[0]} <directory>`);
         const { backupCoordinator, restoreCoordinator } = await import("./local-backup");
         return void (await (rest[0] === "backup" ? backupCoordinator(rest[1]) : restoreCoordinator(rest[1])));
       }
-      if (rest[0] !== "deploy") return void console.log("usage: hub cloud deploy | backup | restore");
+      if (rest[0] !== "deploy") return void console.log("usage: hub cloud deploy | service | backup | restore");
       const { values } = parseArgs({ args: rest.slice(1), options: { local: { type: "boolean" }, listen: { type: "string" } } });
       if (values.listen && !values.local) throw new Error("--listen requires --local");
       if (values.local) return void (await (await import("./local-coordinator")).localCoordinator(cfg, values.listen));
