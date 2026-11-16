@@ -263,7 +263,7 @@ filesystem with `NOOP_E2E_EXPECT_NO_SPACE=1`. Do not fill an existing volume.
 On a disposable macOS runner with passwordless sudo, run
 `test/self-hosted-macos-offline.sh` with the same environment. It temporarily
 blocks outbound traffic on the default network interface, runs the native
-service test, and restores access. Do not run it on a shared machine.
+service and update tests, and restores access. Do not run it on a shared machine.
 
 For unattended Linux reboot acceptance, provide a Debian 12 cloud image and
 the VM dependencies used by `test/self-hosted-reboot-vm.ts`. Set

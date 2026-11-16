@@ -27,6 +27,11 @@ if curl -fsS --max-time 5 https://github.com/ -o /dev/null 2>/dev/null; then
 fi
 printf '%s\n' 'Public network is blocked; starting native service acceptance.'
 bun test/self-hosted-service-e2e.ts
+bun test/self-hosted-update-e2e.ts
+if curl -fsS --max-time 5 https://github.com/ -o /dev/null 2>/dev/null; then
+  printf '%s\n' 'Public network returned before acceptance finished.' >&2
+  exit 1
+fi
 restore
 trap - EXIT
 curl -fsS --retry 3 --max-time 10 https://github.com/ -o /dev/null
