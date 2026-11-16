@@ -7,9 +7,25 @@ import { allowIps, vapidKeys } from "./cloud";
 import { parseAllowList } from "../cloud/src/ipallow";
 import { hubTomlPath, writeHubToml } from "./sync";
 
-const WORKERD_DATE = "2026-11-10";
+export const WORKERD_DATE = "2026-11-10";
 // SHA-256 of the binary in the verified @cloudflare/workerd-linux-64 1.20261110.1 package.
 const WORKERD_LINUX_X64_SHA256 = "620d9f7e5eb461067e08af17316aaa087445b4232e0e98e3dd146763bd9ab394";
+
+export function coordinatorNamespace(root: string) {
+  const namespace = readFileSync(join(root, "namespace-key"), "utf8").trim();
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(namespace))
+    throw new Error("The coordinator namespace key is invalid; restore it from backup");
+  return namespace;
+}
+
+export function lockCoordinator(root: string) {
+  const fd = openSync(join(root, "active.lock"), "a", 0o600);
+  try {
+    const libc = dlopen("libc.so.6", { flock: { args: ["int", "int"], returns: "int" } });
+    if (libc.symbols.flock(fd, 2 | 4) !== 0) { libc.close(); throw new Error("Cannot lock coordinator data; another local coordinator may be running"); }
+    return { fd, [Symbol.dispose]() { closeSync(fd); libc.close(); } };
+  } catch (error) { closeSync(fd); throw error; }
+}
 
 export async function localCoordinator(cfg: Cfg, listen = "127.0.0.1:8790") {
   const match = listen.match(/^(\[[^\]]+\]|[^:]+):(\d{1,5})$/);
@@ -39,18 +55,13 @@ export async function localCoordinator(cfg: Cfg, listen = "127.0.0.1:8790") {
 
   const root = join(HOME_DIR, "coordinator"), bundle = join(root, "bundle"), storage = join(root, "storage");
   mkdirSync(root, { recursive: true, mode: 0o700 });
-  const lockFd = openSync(join(root, "active.lock"), "a", 0o600);
-  const libc = dlopen("libc.so.6", { flock: { args: ["int", "int"], returns: "int" } });
-  using lock = { [Symbol.dispose]() { closeSync(lockFd); libc.close(); } };
-  if (libc.symbols.flock(lockFd, 2 | 4) !== 0) throw new Error("Cannot lock coordinator data; another local coordinator may be running"); // LOCK_EX | LOCK_NB
+  using lock = lockCoordinator(root);
   mkdirSync(bundle, { recursive: true, mode: 0o700 });
   mkdirSync(storage, { recursive: true, mode: 0o700 });
   const keyFile = join(root, "namespace-key");
   const existingKey = existsSync(keyFile);
   if (!existingKey) writeFileSync(keyFile, crypto.randomUUID(), { mode: 0o600 });
-  const namespace = readFileSync(keyFile, "utf8").trim();
-  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(namespace))
-    throw new Error("The coordinator namespace key is invalid; restore it from backup");
+  const namespace = coordinatorNamespace(root);
   if (existingKey && !prior.server?.token && !cfg.server?.token)
     throw new Error("The coordinator machine token is missing; restore it from backup");
   const persist = (path: string) => {
@@ -111,7 +122,7 @@ const config :Workerd.Config = (
   const healthSocket = join(root, "health.sock");
   if (existsSync(healthSocket)) unlinkSync(healthSocket);
   // The runtime keeps the lock if this launcher is killed.
-  const child = Bun.spawn([workerd, "serve", configFile], { stdio: ["ignore", "inherit", "inherit", lockFd], env: {
+  const child = Bun.spawn([workerd, "serve", configFile], { stdio: ["ignore", "inherit", "inherit", lock.fd], env: {
     ...process.env, NOOP_LOCAL_TOKEN: token, NOOP_LOCAL_OWNER_EMAIL: String(email.to ?? ""),
     NOOP_LOCAL_SMTP: smtp, NOOP_LOCAL_VAPID_PUBLIC: vapid.publicKey, NOOP_LOCAL_VAPID_PRIVATE: JSON.stringify(vapid.privateJwk),
     NOOP_LOCAL_LANG: String(cfg.owner?.language ?? ""), NOOP_LOCAL_MODE: "1",

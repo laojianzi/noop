@@ -232,3 +232,12 @@ isolated Wrangler development instance with no Cloudflare credentials. It
 checks the original pruning and shedding rules with another database over
 500 MB. It also removes the large database after a successful run. Neither
 scenario is a deployed Cloudflare test.
+
+## Run backup and restore acceptance
+
+With the Web and workerd paths above, run `bun test/self-hosted-backup-e2e.ts`.
+The test backs up a standalone stopped coordinator and restores it to a new
+home. It checks permissions, running-service refusal, existing destinations,
+corrupt content and an unsupported format. It then signs in with the original
+TOTP, reads history and an attachment, and synchronizes a new execution host.
+It writes logs, versions, a report and checksums to a temporary directory.

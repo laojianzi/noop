@@ -59,3 +59,34 @@ Local mode records usage but does not apply Cloudflare free-plan shedding.
 File history keeps the existing 90-day, 20,000-row and 30-version rules. It
 keeps only the current version for `latestOnly` paths. A database over 500 MB
 does not reduce other files to one version in local mode.
+
+## Back up and restore
+
+Stop the coordinator before taking a backup. Choose a new backup directory
+whose parent already exists:
+
+```sh
+noop cloud backup /secure/path/noop-backup
+```
+
+The command refuses to run while the coordinator holds its data lock. It writes
+a checksum manifest and restricts the backup directory and files to the current
+user. The backup contains the database files, namespace key, bootstrap and
+machine token, VAPID keys, generated runtime configuration, and the three Noop
+configuration files when present. It does not include remote host workspaces,
+independent reverse proxy or Tailscale configuration, or executable and Web
+artifacts. The backup contains credentials; store it accordingly.
+
+To restore, choose a Noop home that does not already exist. Its parent must
+exist. Unset `HUB_DATA` and `HUB_CONF` during the restore:
+
+```sh
+NOOP_HOME=/new/path/noop noop cloud restore /secure/path/noop-backup
+NOOP_HOME=/new/path/noop noop cloud deploy --local --listen 127.0.0.1:8790
+```
+
+Restore checks every file, the backup format and its recorded runtime version
+before it creates the new home. It refuses to replace an existing destination.
+The generated runtime configuration is saved for reference and rebuilt at
+startup; supply the desired `--listen` address when starting the restored
+service. Use the same pinned runtime version recorded by the backup.
