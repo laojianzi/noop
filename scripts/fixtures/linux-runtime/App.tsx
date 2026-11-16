@@ -13,11 +13,13 @@ void (async () => {
   if (!response.ok || await response.text() !== "ok") throw new Error("HTTP response did not match");
   console.log("NOOP_LINUX_RUNTIME_HTTP_OK");
   const ws = new WebSocket("ws://127.0.0.1:__NOOP_PORT__/ws");
+  let received = false;
   ws.onopen = () => ws.send("ping");
   ws.onmessage = (event) => {
     if (event.data !== "pong") throw new Error("WebSocket response did not match");
+    received = true;
     console.log("NOOP_LINUX_RUNTIME_WS_OK");
     ws.close();
   };
-  ws.onerror = () => console.error("NOOP_LINUX_RUNTIME_WS_FAILED");
+  ws.onerror = () => { if (!received) console.error("NOOP_LINUX_RUNTIME_WS_FAILED"); };
 })().catch((error) => console.error("NOOP_LINUX_RUNTIME_NETWORK_FAILED", String(error)));
