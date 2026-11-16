@@ -3,18 +3,18 @@ import { spawn, spawnSync, type ChildProcess } from "node:child_process";
 import { createHash } from "node:crypto";
 import { cpSync, existsSync, mkdirSync, mkdtempSync, openSync, closeSync, readFileSync, readdirSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { request as httpRequest, type IncomingMessage } from "node:http";
-import { createServer as httpsServer, request as httpsRequest } from "node:https";
+import { request as httpsRequest } from "node:https";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
+import { startHttpsProxy } from "./fixtures/https-proxy";
 
 const source = resolve(import.meta.dir, ".."), out = mkdtempSync(join(process.env.NOOP_E2E_OUT || tmpdir(), "noop-ingress-e2e-"));
 const repo = join(out, "repo"), home = join(out, "home"), bin = join(out, "bin"), log = join(out, "coordinator.log");
 const assets = process.env.NOOP_E2E_WEB_ASSETS || "", workerd = process.env.NOOP_E2E_WORKERD || "";
 const token = "synthetic-ingress-token-000000000", allowed = "127.0.0.1,127.0.0.2", trusted = "127.0.0.3";
 const checks: string[] = [];
-let service: ChildProcess | undefined, raw: ChildProcess | undefined, proxy: ReturnType<typeof httpsServer> | undefined, error = "";
-const proxySockets = new Set<any>();
+let service: ChildProcess | undefined, raw: ChildProcess | undefined, proxy: Awaited<ReturnType<typeof startHttpsProxy>> | undefined, error = "";
 
 function check(ok: unknown, message: string): asserts ok {
   if (!ok) throw new Error(message);
@@ -85,33 +85,8 @@ try {
     "forged forwarding headers cannot make an unlisted direct source trusted");
   await ping(`ws://127.0.0.1:${listenPort}/api/host/stream`); check(true, "direct WebSocket remains usable");
 
-  const key = join(out, "proxy.key"), cert = join(out, "proxy.crt");
-  const openssl = spawnSync("openssl", ["req", "-x509", "-newkey", "rsa:2048", "-nodes", "-keyout", key, "-out", cert, "-days", "1", "-subj", "/CN=localhost"], { encoding: "utf8" });
-  if (openssl.status !== 0) throw new Error(`could not create the synthetic proxy certificate: ${openssl.stderr}`);
-  const headersFor = (req: IncomingMessage) => {
-    const h = { ...req.headers };
-    if (h["x-test-drop-forwarded"]) { delete h["x-forwarded-for"]; delete h["x-test-drop-forwarded"]; }
-    else h["x-forwarded-for"] = [h["x-forwarded-for"], req.socket.remoteAddress].filter(Boolean).join(", ");
-    h["x-forwarded-proto"] = "https"; h["x-forwarded-host"] = String(req.headers.host || ""); return h;
-  };
-  proxy = httpsServer({ key: readFileSync(key), cert: readFileSync(cert) }, (req, res) => {
-    const upstream = httpRequest({ hostname: "127.0.0.1", port: listenPort, localAddress: "127.0.0.3", method: req.method, path: req.url, headers: headersFor(req) }, (r) => {
-      res.writeHead(r.statusCode || 502, r.headers); r.pipe(res);
-    });
-    upstream.on("error", () => { if (!res.headersSent) res.writeHead(502); res.end(); }); req.pipe(upstream);
-  });
-  proxy.on("connection", (socket) => { proxySockets.add(socket); socket.on("close", () => proxySockets.delete(socket)); });
-  proxy.on("upgrade", (req, socket, head) => {
-    const upstream = httpRequest({ hostname: "127.0.0.1", port: listenPort, localAddress: "127.0.0.3", method: req.method, path: req.url, headers: headersFor(req) });
-    upstream.on("upgrade", (response, other, first) => {
-      socket.write(`HTTP/1.1 ${response.statusCode} ${response.statusMessage}\r\n${response.rawHeaders.reduce((s, h, i, a) => i % 2 ? s : `${s}${h}: ${a[i + 1]}\r\n`, "")}\r\n`);
-      if (first.length) socket.write(first); if (head.length) other.write(head);
-      socket.on("error", () => other.destroy()); other.on("error", () => socket.destroy()); socket.pipe(other).pipe(socket);
-    });
-    upstream.on("response", (response) => { socket.write(`HTTP/1.1 ${response.statusCode} ${response.statusMessage}\r\nConnection: close\r\n\r\n`); response.pipe(socket); });
-    upstream.on("error", () => socket.destroy()); upstream.end();
-  });
-  const proxyPort = await port(); await new Promise<void>((ok) => proxy!.listen(proxyPort, "127.0.0.1", ok));
+  proxy = await startHttpsProxy(out, listenPort);
+  const proxyPort = proxy.port;
   check((await request({ port: proxyPort, secure: true, localAddress: "127.0.0.2" })).status === 200, "actual HTTPS proxy forwards an allowed source");
   check((await request({ port: proxyPort, secure: true, localAddress: "127.0.0.4", headers: { "x-forwarded-for": "127.0.0.2", "cf-connecting-ip": "127.0.0.2" } })).status === 403,
     "a forged source in the proxy chain cannot bypass the allow-list");
@@ -209,8 +184,7 @@ try {
 } catch (e) {
   error = e instanceof Error ? e.stack || e.message : String(e); console.error(`FAIL ${error}`); process.exitCode = 1;
 } finally {
-  for (const socket of proxySockets) socket.destroy();
-  if (proxy) await new Promise<void>((ok) => proxy!.close(() => ok()));
+  if (proxy) await proxy.close();
   for (const child of [service, raw]) if (child?.pid) try { process.kill(-child.pid, "SIGINT"); } catch {}
   const report = { status: error ? "failed" : "passed", source, revision: spawnSync("git", ["rev-parse", "HEAD"], { cwd: source, encoding: "utf8" }).stdout.trim(),
     changes: spawnSync("git", ["status", "--short"], { cwd: source, encoding: "utf8" }).stdout.trim(), platform: `${process.platform}-${process.arch}`,

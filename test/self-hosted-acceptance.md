@@ -161,3 +161,18 @@ synthetic certificate. It checks direct and proxied IPv4 sources, IPv6,
 forged and missing forwarding data, WebSocket, streaming HTTP, and the private
 startup check. It prints a directory containing its logs, report and checksums.
 See `docs/self-hosted-network.md` for the proxy trust and configuration rules.
+
+## Run MCP and OAuth through HTTPS
+
+With the same prerequisites, run `bun test/self-hosted-mcp-e2e.ts`. The test
+starts a real TLS proxy and uses synthetic credentials. It binds TOTP, performs
+OAuth with a CLI-delivered code and PKCE, calls a tool, and reconnects an MCP
+notification stream. It also checks that untrusted or malformed forwarded
+origins cannot alter discovery. Its report and checksums are written to a new
+temporary directory.
+
+For the Cloudflare-mode regression, start an isolated `wrangler dev --local`
+instance with a synthetic `HUB_TOKEN` and a fresh `--persist-to` directory.
+Set `BASE` and `TOKEN` to that instance and run
+`bun test/cloud-auth/mcp-e2e.ts`. This is a local emulator check, not a deployed
+Cloudflare test.
