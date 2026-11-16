@@ -35,3 +35,8 @@ passed while an unrelated macOS job remained queued. The runtime-upgrade
 workflow's Apple Silicon job was cancelled before a runner became available.
 The later Apple Silicon run passed on an `xcode-27` runner. The reports
 record the exact environment, version hashes and checks.
+
+`cloud-routing` records a separate CLI run with synthetic Git and Wrangler.
+The local update makes no cloud call. A cloud primary with Worker changes still
+enters the existing Wrangler deployment path. This is a routing check; it is
+not a deployed Cloudflare test. The unchanged fleet-day budget also passes.

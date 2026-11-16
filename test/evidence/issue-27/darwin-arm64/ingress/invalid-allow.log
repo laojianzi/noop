@@ -1,0 +1,11 @@
+40 |     throw new Error("Use an IP address or localhost and a valid port for the coordinator listener");
+41 |   const allowed = allowIps(cfg) ?? "";
+42 |   const configuredProxies = cfg.cloud?.trusted_proxies;
+43 |   const proxies = (Array.isArray(configuredProxies) ? configuredProxies.map(String) : String(configuredProxies ?? "").split(/[\s,]+/)).filter(Boolean).join(",");
+44 |   const badAllowed = parseAllowList(allowed).bad, badProxies = parseAllowList(proxies).bad;
+45 |   if (badAllowed.length) throw new Error(`invalid IP allow-list: ${badAllowed.join(", ")}`);
+                                        ^
+error: invalid IP allow-list: not-a-cidr
+      at localCoordinator (/Users/runner/work/_temp/evidence/noop-ingress-e2e-1Cbq5O/repo/src/local-coordinator.ts:45:36)
+      at main (/Users/runner/work/_temp/evidence/noop-ingress-e2e-1Cbq5O/repo/src/cli.ts:1257:82)
+

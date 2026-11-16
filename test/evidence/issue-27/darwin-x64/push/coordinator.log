@@ -1,0 +1,5 @@
+Local coordinator candidate: http://127.0.0.1:49260
+Local coordinator candidate: http://127.0.0.1:49260
+push 127.0.0.1:49270: HTTP 503
+push 127.0.0.1:49281: HTTP 0
+push 127.0.0.1:49270: HTTP 503
