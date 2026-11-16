@@ -11,7 +11,7 @@ const source = resolve(import.meta.dir, ".."), out = mkdtempSync(join(process.en
 const repo = join(out, "repo"), home = join(out, "home"), bin = join(out, "bin");
 const assets = process.env.NOOP_E2E_WEB_ASSETS || "", workerd = process.env.NOOP_E2E_WORKERD || "", apk = process.env.NOOP_E2E_ANDROID_APK || "";
 const serial = process.env.ANDROID_SERIAL || "", checks: string[] = [], requests: string[] = [], sockets: Socket[] = [];
-let service: ChildProcess | undefined, proxy: HttpServer | undefined, error = "", incoming = "", proxyPort = 0;
+let service: ChildProcess | undefined, proxy: HttpServer | undefined, error = "", incoming = "", proxyPort = 0, emulatorReady = false;
 function check(ok: unknown, message: string): asserts ok { if (!ok) throw new Error(message); checks.push(message); console.log(`PASS ${message}`); }
 function totp(secret: string, counter: number) {
   let bits = 0, value = 0; const bytes: number[] = [];
@@ -45,6 +45,7 @@ try {
   check(process.platform === "linux" && process.env.NOOP_E2E_DISPOSABLE_ANDROID === "1" && /^emulator-\d+$/.test(serial) && !!Bun.which("adb") &&
     existsSync(apk) && existsSync(workerd) && existsSync(join(assets, "index.html")), "disposable Android emulator, APK, workerd and Web bundle are supplied");
   check(adb("get-state").trim() === "device", "Android emulator is online");
+  emulatorReady = true;
   for (const name of ["src", "cloud", "app", "templates", "presets"])
     cpSync(join(source, name), join(repo, name), { recursive: true, filter: (p) => !p.includes("/node_modules/") && !p.includes("/dist/") });
   for (const name of ["package.json", "bunfig.toml", "tsconfig.json"]) cpSync(join(source, name), join(repo, name));
@@ -104,9 +105,11 @@ try {
   check(screenshot.status === 0 && !!screenshot.stdout.length, "Android screenshot is saved"); writeFileSync(join(out, "android-message.png"), screenshot.stdout);
 } catch (e) {
   error = e instanceof Error ? e.stack || e.message : String(e); console.error(`FAIL ${error}`); process.exitCode = 1;
-  try { writeFileSync(join(out, "failed-window.xml"), ui()); } catch {}
-  const screenshot = spawnSync("adb", ["-s", serial, "exec-out", "screencap", "-p"], { timeout: 20_000 });
-  if (screenshot.status === 0) writeFileSync(join(out, "failed-screen.png"), screenshot.stdout);
+  if (emulatorReady) {
+    try { writeFileSync(join(out, "failed-window.xml"), ui()); } catch {}
+    const screenshot = spawnSync("adb", ["-s", serial, "exec-out", "screencap", "-p"], { timeout: 20_000 });
+    if (screenshot.status === 0) writeFileSync(join(out, "failed-screen.png"), screenshot.stdout);
+  }
 } finally {
   if (proxyPort) try { adb("reverse", "--remove", `tcp:${proxyPort}`); } catch {}
   if (service?.pid) try { process.kill(-service.pid, "SIGINT"); } catch {}
