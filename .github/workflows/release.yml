@@ -1,32 +1,54 @@
-name: Linux package validation
+name: Android simulator feasibility
 on:
   workflow_dispatch:
 permissions:
   contents: read
 jobs:
-  linux-package:
+  android-simulator:
     runs-on: ubuntu-24.04
-    timeout-minutes: 60
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-nsh
         with:
           ref: e365872a616c87ac3d235a39bbc861802ef36d72
-          target: linux
-      - name: Package and validate the shipped executable
+          target: android
+      - name: Package the actual Android app
         run: |
+          nsh component add android
           export NSH_RUNTIME="$HOME/.nsh-dist/runtime"
-          mkdir -p "$RUNNER_TEMP/out" "$RUNNER_TEMP/verify-linux"
-          (cd app && nsh package --target linux -o "$RUNNER_TEMP/out" --build "$GITHUB_RUN_NUMBER")
-          tar -xzf "$RUNNER_TEMP/out/Noop.tar.gz" -C "$RUNNER_TEMP/verify-linux"
-          TMPDIR="$RUNNER_TEMP" bash scripts/check-linux-runtime.sh "$RUNNER_TEMP/verify-linux/Noop/Noop" 2>&1 | tee "$RUNNER_TEMP/linux-runtime-validation.log"
-          sha256sum "$RUNNER_TEMP/out/Noop.tar.gz" "$RUNNER_TEMP/verify-linux/Noop/Noop" > "$RUNNER_TEMP/linux-package-sha256.txt"
+          (cd app && nsh package --target android -o "$RUNNER_TEMP/android-package" --build "$GITHUB_RUN_NUMBER")
+          sha256sum "$RUNNER_TEMP/android-package/Noop.apk" > "$RUNNER_TEMP/android-sha256.txt"
+      - name: Install Android emulator
+        run: |
+          test -e /dev/kvm && sudo chmod o+rw /dev/kvm
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses >/dev/null || true
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "system-images;android-35;google_apis;x86_64"
+          export ANDROID_AVD_HOME="$RUNNER_TEMP/avd"
+          echo no | "$ANDROID_HOME/cmdline-tools/latest/bin/avdmanager" create avd --force --name noop-test --package "system-images;android-35;google_apis;x86_64" --device pixel_2
+      - name: Launch Android app on emulator
+        run: |
+          export ANDROID_AVD_HOME="$RUNNER_TEMP/avd"
+          "$ANDROID_HOME/emulator/emulator" -avd noop-test -no-window -no-audio -no-boot-anim -no-snapshot -gpu swiftshader_indirect -accel on > "$RUNNER_TEMP/emulator.log" 2>&1 &
+          adb wait-for-device
+          for i in {1..180}; do [[ "$(adb shell getprop sys.boot_completed | tr -d '\r')" == 1 ]] && break; sleep 2; done
+          [[ "$(adb shell getprop sys.boot_completed | tr -d '\r')" == 1 ]]
+          adb install "$RUNNER_TEMP/android-package/Noop.apk"
+          adb shell input keyevent KEYCODE_WAKEUP
+          adb shell input keyevent KEYCODE_MENU
+          adb shell monkey -p dev.noop.app 1
+          sleep 12
+          adb exec-out screencap -p > "$RUNNER_TEMP/android-screen.png"
+          adb shell dumpsys activity activities | grep -E 'mResumedActivity|topResumedActivity' > "$RUNNER_TEMP/android-activity.log" || true
+          adb logcat -d -t 1000 > "$RUNNER_TEMP/android-logcat.log"
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: linux-package-validation
+          name: android-simulator-feasibility
           path: |
-            ${{ runner.temp }}/out/Noop.tar.gz
-            ${{ runner.temp }}/linux-runtime-validation.log
-            ${{ runner.temp }}/linux-package-sha256.txt
+            ${{ runner.temp }}/android-screen.png
+            ${{ runner.temp }}/android-activity.log
+            ${{ runner.temp }}/android-logcat.log
+            ${{ runner.temp }}/android-sha256.txt
+            ${{ runner.temp }}/emulator.log
           if-no-files-found: warn
