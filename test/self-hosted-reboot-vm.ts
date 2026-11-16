@@ -66,9 +66,9 @@ try {
   const proof = `#!/bin/bash\nTASK_TTY=/dev/ttyS0; [ -e "$TASK_TTY" ] || TASK_TTY=/dev/ttyAMA0\nfor n in $(seq 1 100); do loginctl show-user nooptest >/dev/null 2>&1 && break; sleep .2; done\nprintf 'NOOP_VM_BOOT %s\\n' "$(cat /proc/sys/kernel/random/boot_id)" > "$TASK_TTY"\nloginctl show-user nooptest -p Linger -p Sessions > "$TASK_TTY"\n`;
   const provision = `#!/bin/bash
 TASK_TTY=/dev/ttyS0; [ -e "$TASK_TTY" ] || TASK_TTY=/dev/ttyAMA0
-exec > "$TASK_TTY" 2>&1
+exec > /var/log/noop-provision.log 2>&1
 set -euxo pipefail
-trap 'TASK_RC=$?; echo "NOOP_VM_PROVISION_FAILED line=$LINENO status=$TASK_RC" > "$TASK_TTY"; journalctl --no-pager -n 150 > "$TASK_TTY"; exit "$TASK_RC"' ERR
+trap 'TASK_RC=$?; echo "NOOP_VM_PROVISION_FAILED line=$LINENO status=$TASK_RC" > "$TASK_TTY"; tail -100 /var/log/noop-provision.log > "$TASK_TTY"; journalctl --no-pager -n 150 > "$TASK_TTY"; exit "$TASK_RC"' ERR
 mkdir -p /mnt/noop-assets
 mount -L NOOPASSETS /mnt/noop-assets
 cp -a /mnt/noop-assets/repo /opt/noop
@@ -83,8 +83,8 @@ TASK_UID=$(id -u nooptest)
 for n in $(seq 1 100); do [ -S "/run/user/$TASK_UID/bus" ] && break; sleep .2; done
 runuser -u nooptest -- env NOOP_HOME=/home/nooptest/.noop HUB_NO_MEDIC=1 PATH=/usr/local/bin:/usr/bin:/bin XDG_RUNTIME_DIR=/run/user/$TASK_UID DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/$TASK_UID/bus /usr/local/bin/bun /opt/noop/src/cli.ts cloud service install --listen 0.0.0.0:8790
 systemctl enable --now noop-vm-proof.service
-if timeout 3 bash -c 'echo >/dev/tcp/1.1.1.1/443' 2>/dev/null; then echo NOOP_VM_PUBLIC_NETWORK_UNEXPECTED; exit 1; else echo NOOP_VM_PUBLIC_NETWORK_BLOCKED; fi
-echo NOOP_VM_PROVISIONED
+if timeout 3 bash -c 'echo >/dev/tcp/1.1.1.1/443' 2>/dev/null; then echo NOOP_VM_PUBLIC_NETWORK_UNEXPECTED > "$TASK_TTY"; exit 1; else echo NOOP_VM_PUBLIC_NETWORK_BLOCKED > "$TASK_TTY"; fi
+echo NOOP_VM_PROVISIONED > "$TASK_TTY"
 `;
   const proofUnit = `[Unit]\nDescription=Record Noop VM login state\nAfter=systemd-logind.service\n[Service]\nType=oneshot\nExecStart=/usr/local/bin/noop-vm-proof\n[Install]\nWantedBy=multi-user.target\n`;
   const indent = (s: string) => s.trimEnd().split("\n").map((line) => `      ${line}`).join("\n");
