@@ -1,0 +1,28 @@
+{
+  "status": "failed",
+  "source": "/home/jeff/.codex/worktrees/noop-local-coordinator",
+  "revision": "1bf6a3690b8c5423a7f545e2e8f2259783557fe8",
+  "changes": "M cloud/src/index.ts\n M src/local-coordinator.ts\n M test/self-hosted-ingress-e2e.ts",
+  "platform": "linux-x64",
+  "bun": "1.4.4",
+  "workerdVersion": "workerd 2026-11-10",
+  "checks": [
+    "real Web assets are supplied",
+    "workerd executable is supplied",
+    "local coordinator starts with an IP allow-list",
+    "allowed direct source can connect",
+    "a forged header cannot block an allowed direct source",
+    "unlisted direct source is rejected",
+    "forged forwarding headers cannot make an unlisted direct source trusted",
+    "direct WebSocket remains usable",
+    "actual HTTPS proxy forwards an allowed source",
+    "a forged source in the proxy chain cannot bypass the allow-list",
+    "a trusted proxy without a client source is rejected",
+    "a chain containing only trusted proxies has no verifiable client source",
+    "WebSocket survives the actual HTTPS proxy",
+    "a request with no verifiable network source is rejected",
+    "allowed IPv6 loopback source can connect",
+    "invalid-allow is rejected before serving requests"
+  ],
+  "error": "Error: invalid-cidr-suffix is rejected before serving requests\n    at check (/home/jeff/.codex/worktrees/noop-local-coordinator/test/self-hosted-ingress-e2e.ts:20:22)\n    at /home/jeff/.codex/worktrees/noop-local-coordinator/test/self-hosted-ingress-e2e.ts:157:5"
+}
