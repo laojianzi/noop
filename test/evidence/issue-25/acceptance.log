@@ -1,0 +1,27 @@
+PASS Web assets and workerd are supplied
+PASS standalone coordinator binds TOTP without a primary
+PASS owner requests a CLI login code
+PASS owner signs in with CLI code and TOTP
+PASS version 1 is saved
+PASS version 2 is saved
+PASS message and attachment are saved
+PASS backup rejects a running coordinator without creating a partial backup
+PASS stopped coordinator creates a backup without printing credentials
+PASS backup directory and every contained file have restricted permissions
+PASS backup refuses to overwrite existing data
+PASS backup preserves an existing dangling destination link
+PASS restore refuses to replace the original coordinator and its credentials
+PASS restore refuses to overwrite an existing home
+PASS restore preserves an existing dangling destination link
+PASS corrupted backup is rejected without creating a restored home
+PASS restore rejects a namespace key that does not match the backed-up database
+PASS unsupported backup format is rejected before restoring
+PASS backup restores into a new home without printing credentials
+PASS namespace, VAPID and service configuration are preserved exactly
+PASS the original machine credential accesses the restored coordinator
+PASS owner requests a new login code after restore
+PASS owner signs in after restore using the original TOTP secret
+PASS file content and history are restored
+PASS message and exact attachment bytes are restored
+PASS a fresh execution host synchronizes restored content
+Evidence: /var/tmp/noop-backup-e2e-ug0Q01

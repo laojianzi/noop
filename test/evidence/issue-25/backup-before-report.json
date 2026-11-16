@@ -1,0 +1,25 @@
+{
+  "status": "failed",
+  "source": "/home/jeff/.codex/worktrees/noop-local-coordinator",
+  "revision": "7fc534f62d35f0f1f20a6091dc506907c0211310",
+  "changes": "?? test/self-hosted-backup-e2e.ts",
+  "platform": "linux-x64",
+  "timestamp": "2026-11-16T12:14:39.154Z",
+  "bun": "1.4.4",
+  "webVersion": "v0.3.18",
+  "webIndexSha256": "bd9ed72ccec6e59169751686b2383b27699b7b967b8fca5e85e55d33e3a16dfc",
+  "workerd": {
+    "version": "workerd 2026-11-10",
+    "sha256": "620d9f7e5eb461067e08af17316aaa087445b4232e0e98e3dd146763bd9ab394"
+  },
+  "checks": [
+    "Web assets and workerd are supplied",
+    "standalone coordinator binds TOTP without a primary",
+    "owner requests a CLI login code",
+    "owner signs in with CLI code and TOTP",
+    "version 1 is saved",
+    "version 2 is saved",
+    "message and attachment are saved"
+  ],
+  "error": "Error: backup rejects a running coordinator without creating a partial backup\n    at check (/home/jeff/.codex/worktrees/noop-local-coordinator/test/self-hosted-backup-e2e.ts:14:79)\n    at /home/jeff/.codex/worktrees/noop-local-coordinator/test/self-hosted-backup-e2e.ts:75:3"
+}
