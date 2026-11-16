@@ -42,4 +42,5 @@ jobs:
             ${{ runner.temp }}/evidence/**/report.json
             ${{ runner.temp }}/evidence/**/coordinator.log
             ${{ runner.temp }}/evidence/**/service-manager.log
+            ${{ runner.temp }}/evidence/**/install.log
           if-no-files-found: warn
