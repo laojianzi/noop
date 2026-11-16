@@ -1,0 +1,35 @@
+✓ TOTP bound
+✓ 401 + WWW-Authenticate: Bearer resource_metadata="http://127.0.0.1:39341/.well-known/oauth-protected-resource", scope="noop"
+✓ authorization server metadata
+✓ CORS preflight
+✓ registered mcp-513dc6e494f00d7f185a4f8c
+✓ sign-in page
+✓ code page (code shown by `noop login`)
+✓ 302 → http://localhost:6274/oauth/callback
+✓ access + refresh token
+✓ MCP access token cannot call the owner API
+✓ initialize (session 1a683af8…)
+✓ tools/list: get_status, list_tasks, get_task, list_decisions, get_feed, wait_for_events, list_agents, list_routines, read_memory, search_journal, search, fetch, send_message, create_task, amend_task, cancel_task, set_priority, reassign_task, remember, edit_memory, answer_decision
+✓ get_status
+✓ get_feed cursor 2
+✓ GET /mcp opens an SSE stream
+✓ fleet event → notifications/message
+✓ subscribed task → resources/updated
+✓ wait_for_events sees the event
+✓ send_message → owner message in the feed
+✓ …and in the fleet inbox
+✓ no Mcp-Session-Id → 400
+✓ unknown session → 404
+✓ bad MCP-Protocol-Version → 400
+✓ SSE retry hint + event id g.4
+✓ Last-Event-ID g.4 replays the 2 missed events only
+✓ machine commits tasks/active/T-e2e4782.md (200)
+✓ → notifications/resources/list_changed
+✓ resources/list has the new task
+✓ wait_for_events with progressToken → SSE response
+✓ 2 notifications/progress with ids before the response
+✓ …then the result with the new event
+✓ notifications/cancelled ends the wait in 523ms with no response
+✓ DELETE → later requests 404
+✓ refresh → new token, old one revoked
+ALL OK

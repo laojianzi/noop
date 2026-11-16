@@ -1,0 +1,18 @@
+{
+  "status": "failed",
+  "source": "/home/jeff/.codex/worktrees/noop-local-coordinator",
+  "revision": "1cbe9c8ca56a9510bdf7f86de64d632237a24279",
+  "changes": "M cloud/src/index.ts\n M test/fixtures/https-proxy.ts\n M test/self-hosted-mcp-e2e.ts",
+  "platform": "linux-x64",
+  "bun": "1.4.4",
+  "workerdVersion": "workerd 2026-11-10",
+  "checks": [
+    "real Web assets and workerd are supplied",
+    "local coordinator starts",
+    "owner binds TOTP with the real CLI",
+    "untrusted forwarding headers cannot change the OAuth origin",
+    "OAuth discovery advertises the actual external HTTPS origin",
+    "the proxy replaces client-supplied external-origin headers"
+  ],
+  "error": "Error: a malformed trusted forwarded host is rejected\n    at check (/home/jeff/.codex/worktrees/noop-local-coordinator/test/self-hosted-mcp-e2e.ts:18:79)\n    at /home/jeff/.codex/worktrees/noop-local-coordinator/test/self-hosted-mcp-e2e.ts:101:3\n    at processTicksAndRejections (native:7:39)"
+}
