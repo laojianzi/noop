@@ -46,6 +46,15 @@ try {
   check(first.status === 0 && installed, `the coordinator service installs: ${first.out.slice(-1000)}`);
   await waitFor(async () => !!await status(), "installed coordinator is not available");
   check((await commit("reports/before-update.md", "before update")).ok, "a host commits data before the update");
+  const sourceWorker = join(repo, "cloud", "src", "index.ts"), sourceCode = readFileSync(sourceWorker, "utf8");
+  const sourceNeedle = 'statusView() { return { ...(this.get("status") ?? {}), hub:';
+  check(sourceCode.includes(sourceNeedle), "the source-change fixture matches the real status path");
+  writeFileSync(sourceWorker, sourceCode.replace(sourceNeedle, 'statusView() { return { release_marker: "unapproved-source", ...(this.get("status") ?? {}), hub:'));
+  const freezeStop = cli(["cloud", "service", "stop"]), freezeStart = cli(["cloud", "service", "start"]);
+  writeFileSync(sourceWorker, sourceCode);
+  const frozen = await status();
+  check(freezeStop.status === 0 && freezeStart.status === 0 && !!frozen && !frozen.release_marker,
+    "a restart keeps the installed release when the source checkout changes");
   const absent = update(join(out, "missing-release"));
   check(absent.status !== 0 && !!await status(), "an invalid release is rejected and the old service remains available");
   if (process.env.NOOP_E2E_EXPECT_NO_SPACE === "1") {
