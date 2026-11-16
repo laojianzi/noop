@@ -152,3 +152,12 @@ restarts it, joins a fresh host, checks earlier committed files, and checks that
 hosts synchronize work queued during the outage. The container and VM image
 identities, logs and checksums are recorded in the output directory. These are
 virtual-host results, not physical-machine or Tailscale acceptance.
+
+## Run the trusted network scenario
+
+Install OpenSSL and set the same Web and workerd paths as above. Run
+`bun test/self-hosted-ingress-e2e.ts`. The test creates a temporary TLS proxy and
+synthetic certificate. It checks direct and proxied IPv4 sources, IPv6,
+forged and missing forwarding data, WebSocket, streaming HTTP, and the private
+startup check. It prints a directory containing its logs, report and checksums.
+See `docs/self-hosted-network.md` for the proxy trust and configuration rules.
