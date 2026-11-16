@@ -1,0 +1,68 @@
+Started noop-coordinator.service - Noop coordination service.
+Local coordinator candidate: http://127.0.0.1:39625
+Stopping noop-coordinator.service - Noop coordination service...
+Stopped noop-coordinator.service - Noop coordination service.
+Started noop-coordinator.service - Noop coordination service.
+17 | };
+18 |
+19 | export function coordinatorNamespace(root: string) {
+20 |   const namespace = readFileSync(join(root, "namespace-key"), "utf8").trim();
+21 |   if (!/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(namespace))
+22 |     throw new Error("The coordinator namespace key is invalid; restore it from backup");
+                   ^
+error: The coordinator namespace key is invalid; restore it from backup
+      at coordinatorNamespace (/home/runner/work/_temp/evidence/noop-service-e2e-ImDpkn/coordinator home/coordinator/releases/release-aKZXHz/repo/src/local-coordinator.ts:22:15)
+      at localCoordinator (/home/runner/work/_temp/evidence/noop-service-e2e-ImDpkn/coordinator home/coordinator/releases/release-aKZXHz/repo/src/local-coordinator.ts:70:21)
+      at async main (/home/runner/work/_temp/evidence/noop-service-e2e-ImDpkn/coordinator home/coordinator/releases/release-aKZXHz/repo/src/cli.ts:1257:82)
+noop-coordinator.service: Main process exited, code=exited, status=1/FAILURE
+noop-coordinator.service: Failed with result 'exit-code'.
+noop-coordinator.service: Scheduled restart job, restart counter is at 1.
+Started noop-coordinator.service - Noop coordination service.
+17 | };
+18 |
+19 | export function coordinatorNamespace(root: string) {
+20 |   const namespace = readFileSync(join(root, "namespace-key"), "utf8").trim();
+21 |   if (!/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(namespace))
+22 |     throw new Error("The coordinator namespace key is invalid; restore it from backup");
+                   ^
+error: The coordinator namespace key is invalid; restore it from backup
+      at coordinatorNamespace (/home/runner/work/_temp/evidence/noop-service-e2e-ImDpkn/coordinator home/coordinator/releases/release-aKZXHz/repo/src/local-coordinator.ts:22:15)
+      at localCoordinator (/home/runner/work/_temp/evidence/noop-service-e2e-ImDpkn/coordinator home/coordinator/releases/release-aKZXHz/repo/src/local-coordinator.ts:70:21)
+      at async main (/home/runner/work/_temp/evidence/noop-service-e2e-ImDpkn/coordinator home/coordinator/releases/release-aKZXHz/repo/src/cli.ts:1257:82)
+noop-coordinator.service: Main process exited, code=exited, status=1/FAILURE
+noop-coordinator.service: Failed with result 'exit-code'.
+noop-coordinator.service: Scheduled restart job, restart counter is at 2.
+Started noop-coordinator.service - Noop coordination service.
+17 | };
+18 |
+19 | export function coordinatorNamespace(root: string) {
+20 |   const namespace = readFileSync(join(root, "namespace-key"), "utf8").trim();
+21 |   if (!/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(namespace))
+22 |     throw new Error("The coordinator namespace key is invalid; restore it from backup");
+                   ^
+error: The coordinator namespace key is invalid; restore it from backup
+      at coordinatorNamespace (/home/runner/work/_temp/evidence/noop-service-e2e-ImDpkn/coordinator home/coordinator/releases/release-aKZXHz/repo/src/local-coordinator.ts:22:15)
+      at localCoordinator (/home/runner/work/_temp/evidence/noop-service-e2e-ImDpkn/coordinator home/coordinator/releases/release-aKZXHz/repo/src/local-coordinator.ts:70:21)
+      at async main (/home/runner/work/_temp/evidence/noop-service-e2e-ImDpkn/coordinator home/coordinator/releases/release-aKZXHz/repo/src/cli.ts:1257:82)
+noop-coordinator.service: Main process exited, code=exited, status=1/FAILURE
+noop-coordinator.service: Failed with result 'exit-code'.
+noop-coordinator.service: Scheduled restart job, restart counter is at 3.
+Started noop-coordinator.service - Noop coordination service.
+17 | };
+18 |
+19 | export function coordinatorNamespace(root: string) {
+20 |   const namespace = readFileSync(join(root, "namespace-key"), "utf8").trim();
+21 |   if (!/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(namespace))
+22 |     throw new Error("The coordinator namespace key is invalid; restore it from backup");
+                   ^
+error: The coordinator namespace key is invalid; restore it from backup
+      at coordinatorNamespace (/home/runner/work/_temp/evidence/noop-service-e2e-ImDpkn/coordinator home/coordinator/releases/release-aKZXHz/repo/src/local-coordinator.ts:22:15)
+      at localCoordinator (/home/runner/work/_temp/evidence/noop-service-e2e-ImDpkn/coordinator home/coordinator/releases/release-aKZXHz/repo/src/local-coordinator.ts:70:21)
+      at async main (/home/runner/work/_temp/evidence/noop-service-e2e-ImDpkn/coordinator home/coordinator/releases/release-aKZXHz/repo/src/cli.ts:1257:82)
+noop-coordinator.service: Main process exited, code=exited, status=1/FAILURE
+noop-coordinator.service: Failed with result 'exit-code'.
+noop-coordinator.service: Scheduled restart job, restart counter is at 4.
+noop-coordinator.service: Start request repeated too quickly.
+noop-coordinator.service: Failed with result 'exit-code'.
+Failed to start noop-coordinator.service - Noop coordination service.
+Started noop-coordinator.service - Noop coordination service.
