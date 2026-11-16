@@ -72,7 +72,8 @@ try {
     check(launcher.includes(launcherNeedle), "the startup-failure fixture matches the real coordinator entry point");
     writeFileSync(failedLauncher, launcher.replace(launcherNeedle, `${launcherNeedle}\n  if (process.env.NOOP_HOME === ${JSON.stringify(home)}) throw new Error("synthetic live startup failure");`));
     const failedUpdate = update(failed);
-    check(failedUpdate.status !== 0 && !!await status() && (await read()).some((item) => item.path === "reports/before-update.md"), "a live startup failure restores the old service and original data");
+    check(failedUpdate.status !== 0 && /Candidate storage is preserved/.test(failedUpdate.out) && !!await status() && (await read()).some((item) => item.path === "reports/before-update.md"),
+      "a live startup failure restores the old service and original data");
     const candidate = join(out, "candidate-release"); cpSync(repo, candidate, { recursive: true });
     const worker = join(candidate, "cloud", "src", "index.ts"), original = readFileSync(worker, "utf8");
     const needle = 'statusView() { return { ...(this.get("status") ?? {}), hub:';
