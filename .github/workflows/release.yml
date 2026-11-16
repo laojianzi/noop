@@ -14,10 +14,6 @@ jobs:
     runs-on: ${{ matrix.os }}
     timeout-minutes: 25
     env:
-      NOOP_E2E_WEB_ASSETS: ${{ runner.temp }}/web
-      NOOP_E2E_WORKERD: ${{ runner.temp }}/runtime/package/bin/workerd
-      NOOP_E2E_OUT: ${{ runner.temp }}/evidence
-      NOOP_E2E_MAILPIT: ${{ runner.temp }}/mail/mailpit
       NOOP_E2E_WEB_VERSION: v0.3.18
     steps:
       - uses: actions/checkout@v4
@@ -29,6 +25,7 @@ jobs:
         shell: bash
         run: |
           mkdir -p "$RUNNER_TEMP/runtime" "$RUNNER_TEMP/web" "$RUNNER_TEMP/mail" "$RUNNER_TEMP/evidence"
+          printf "NOOP_E2E_WEB_ASSETS=%s/web\nNOOP_E2E_WORKERD=%s/runtime/package/bin/workerd\nNOOP_E2E_OUT=%s/evidence\nNOOP_E2E_MAILPIT=%s/mail/mailpit\n" "$RUNNER_TEMP" "$RUNNER_TEMP" "$RUNNER_TEMP" "$RUNNER_TEMP" >> "$GITHUB_ENV"
           npm pack "@cloudflare/workerd-${{ matrix.package }}@1.20261110.1" --silent --pack-destination "$RUNNER_TEMP/runtime"
           tar -xzf "$RUNNER_TEMP/runtime/"*.tgz -C "$RUNNER_TEMP/runtime"
           curl -fsSL --retry 3 https://github.com/huacnlee/noop/releases/download/v0.3.18/noop-web.tar.gz -o "$RUNNER_TEMP/noop-web.tar.gz"
