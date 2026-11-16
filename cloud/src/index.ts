@@ -86,6 +86,10 @@ export default {
   async fetch(req: Request, env: Env): Promise<Response> {
     setLang(env.HUB_LANG);
     const url = new URL(req.url);
+    const endpoint = env.HUB_LOCAL_MODE ? String((req as Request & { cf?: { clientIp?: string } }).cf?.clientIp ?? "") : "";
+    const peer = endpoint.match(/^\[([^\]]+)\]:\d+$/)?.[1] ?? endpoint.match(/^([^:]+):\d+$/)?.[1] ?? "";
+    const proxies = env.HUB_LOCAL_MODE ? parseAllowList(env.HUB_TRUSTED_PROXIES).nets : [];
+    const trustedProxy = env.HUB_LOCAL_MODE && ipAllowed(peer, proxies);
     // Moved: machines still pointing here keep working (and pick up the new [cloud] url from the shared config).
     // IP allow-list (HUB_ALLOW_IPS): checked before anything else, static assets included
     if (env.HUB_ALLOW_IPS?.trim()) {
@@ -93,10 +97,8 @@ export default {
       if (bad.length) console.error(`HUB_ALLOW_IPS: ignored ${bad.join(" ")}`);
       let ip = req.headers.get("cf-connecting-ip") ?? "";
       if (env.HUB_LOCAL_MODE) {
-        const endpoint = String((req as Request & { cf?: { clientIp?: string } }).cf?.clientIp ?? "");
-        ip = endpoint.match(/^\[([^\]]+)\]:\d+$/)?.[1] ?? endpoint.match(/^([^:]+):\d+$/)?.[1] ?? "";
-        const proxies = parseAllowList(env.HUB_TRUSTED_PROXIES).nets;
-        if (ipAllowed(ip, proxies)) {
+        ip = peer;
+        if (trustedProxy) {
           ip = "";
           const hops = (req.headers.get("x-forwarded-for") ?? "").split(",").map((s) => s.trim()).filter(Boolean);
           for (let i = hops.length - 1; i >= 0; i--) if (!ipAllowed(hops[i], proxies)) { ip = hops[i]; break; }
@@ -106,6 +108,19 @@ export default {
     }
     if (env.HUB_MOVED_TO) return fetch(new Request(env.HUB_MOVED_TO.replace(/\/$/, "") + url.pathname + url.search, req));
     const mcp = isMcpPath(url.pathname);
+    if (mcp && trustedProxy) {
+      const protoHeader = req.headers.get("x-forwarded-proto");
+      if (protoHeader !== null) {
+        const proto = protoHeader.trim().toLowerCase(), host = req.headers.get("x-forwarded-host") || url.host;
+        if (proto !== "http" && proto !== "https") return json({ error: "invalid_forwarded_origin" }, 400);
+        let origin: URL;
+        try { origin = new URL(`${proto}://${host}`); } catch { return json({ error: "invalid_forwarded_origin" }, 400); }
+        if (!origin.host || origin.username || origin.password || origin.pathname !== "/" || origin.search || origin.hash)
+          return json({ error: "invalid_forwarded_origin" }, 400);
+        url.protocol = origin.protocol; url.host = origin.host;
+        req = new Request(url, req);
+      }
+    }
     if (mcp && req.method === "OPTIONS") return new Response(null, { status: 204, headers: CORS });
     if (!mcp && HASHED.test(url.pathname) && req.method === "GET") return hashedAsset(req, env, url);
     if (!mcp && !url.pathname.startsWith("/api/") && !url.pathname.startsWith("/media/")) return env.ASSETS.fetch(req);

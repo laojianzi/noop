@@ -31,6 +31,10 @@ access to the backend accordingly. The local startup check uses a private Unix
 socket in the coordinator data directory. That socket accepts only an
 authenticated `GET /api/status` request.
 
-The proxy should preserve the external `Host` and set `X-Forwarded-Proto`.
-HTTP, WebSocket and streaming responses work through the tested TLS proxy.
-External HTTPS origin handling for MCP OAuth is tracked separately in #19.
+The proxy must replace client-supplied `X-Forwarded-Proto` and
+`X-Forwarded-Host` with the external protocol and host. For MCP and OAuth,
+Noop uses those values only when the connection comes from a trusted proxy.
+If the forwarded host is absent, it uses `Host`. A forwarded protocol must be
+`http` or `https`; malformed forwarded origins are rejected. Untrusted forwarding
+headers do not change the origin. HTTP, WebSocket and streaming responses work
+through the tested TLS proxy.
