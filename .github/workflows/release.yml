@@ -43,6 +43,12 @@ jobs:
           adb shell monkey -p dev.noop.app 1
           sleep 12
           adb exec-out screencap -p > "$RUNNER_TEMP/android-screen.png"
+          adb shell input text android@example.com
+          adb shell input keyevent KEYCODE_BACK
+          sleep 3
+          adb exec-out screencap -p > "$RUNNER_TEMP/android-email.png"
+          adb shell uiautomator dump /sdcard/noop-window.xml >/dev/null
+          adb exec-out cat /sdcard/noop-window.xml > "$RUNNER_TEMP/android-window.xml"
           adb shell dumpsys activity activities | grep -E 'mResumedActivity|topResumedActivity' > "$RUNNER_TEMP/android-activity.log" || true
           adb logcat -d -t 1000 > "$RUNNER_TEMP/android-logcat.log"
       - uses: actions/upload-artifact@v4
@@ -51,6 +57,8 @@ jobs:
           name: android-simulator-feasibility
           path: |
             ${{ runner.temp }}/android-screen.png
+            ${{ runner.temp }}/android-email.png
+            ${{ runner.temp }}/android-window.xml
             ${{ runner.temp }}/android-activity.log
             ${{ runner.temp }}/android-logcat.log
             ${{ runner.temp }}/android-sha256.txt
