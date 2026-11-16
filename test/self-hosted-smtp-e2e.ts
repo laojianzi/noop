@@ -53,16 +53,18 @@ try {
   await waitFor(async () => (await fetch(mailBase + "/api/v1/messages")).ok, "Mailpit did not start");
   check(true, "Mailpit starts a real SMTP server requiring STARTTLS and authentication");
   writeFileSync(join(home, "noop.toml"), `[cloud]\ntrusted_proxies = "127.0.0.3"\n[owner]\nlanguage = "en"\n[email]\nto = "owner@example.com,proxied@example.com,fail@example.com,untrusted@example.com"\nhost = "127.0.0.1"\nport = ${smtpPort}\nsecure = false\nuser = "synthetic-user"\npass = "synthetic-password"\nfrom = "noop@example.com"\n`);
-  const env: NodeJS.ProcessEnv = { ...process.env, NOOP_HOME: home, XDG_CONFIG_HOME: join(out, "xdg"), HUB_NO_MEDIC: "1", PATH: `${bin}:${process.env.PATH || ""}`, SSL_CERT_FILE: wrongCa };
+  const env: NodeJS.ProcessEnv = { ...process.env, NOOP_HOME: home, XDG_CONFIG_HOME: join(out, "xdg"), HUB_NO_MEDIC: "1", PATH: `${bin}:${process.env.PATH || ""}`, SSL_CERT_FILE: ca };
   for (const name of ["HUB_CONF", "HUB_DATA", "HUB_SYNC", "HUB_SYNC_FAKE", "CLOUDFLARE_API_TOKEN", "CLOUDFLARE_ACCOUNT_ID"]) delete env[name];
   const cli = (args: string[], testHome = home) => {
     const r = spawnSync(process.execPath, [join(repo, "src", "cli.ts"), ...args], { cwd: repo, env: { ...env, NOOP_HOME: testHome }, encoding: "utf8", timeout: 20_000 });
     return { status: r.status, out: `${r.stdout || ""}${r.stderr || ""}` };
   };
   const start = async (testHome = home) => {
+    const offset = existsSync(log) ? readFileSync(log, "utf8").length : 0;
     const fd = openSync(log, "a"); service = spawn(process.execPath, [join(repo, "src", "cli.ts"), "cloud", "deploy", "--local", "--listen", `127.0.0.1:${listenPort}`],
       { cwd: repo, env: { ...env, NOOP_HOME: testHome }, detached: true, stdio: ["ignore", fd, fd] }); closeSync(fd);
-    await waitFor(async () => (await fetch(base)).ok && (Bun.TOML.parse(readFileSync(join(testHome, "noop.toml"), "utf8")) as any).cloud?.mode === "local", "coordinator did not start");
+    await waitFor(async () => readFileSync(log, "utf8").slice(offset).includes("Local coordinator candidate:") && (await fetch(base)).ok &&
+      (Bun.TOML.parse(readFileSync(join(testHome, "noop.toml"), "utf8")) as any).cloud?.mode === "local", "coordinator did not start");
   };
   const stop = async () => {
     const child = service!; child.kill("SIGTERM");
@@ -76,8 +78,6 @@ try {
   };
   const post = (path: string, body: unknown, headers: Record<string, string> = {}) => fetch(base + path, { method: "POST", headers: { "content-type": "application/json", ...headers }, body: JSON.stringify(body) });
   await start(); const secret = setup();
-  check((await post("/api/auth/start", { email: "untrusted@example.com" })).status === 502, "SMTP rejects a certificate from an untrusted CA");
-  await stop(); env.SSL_CERT_FILE = ca; await start();
   const sent = await post("/api/auth/start", { email: "owner@example.com" });
   check(sent.status === 200, `SMTP login code is sent successfully (HTTP ${sent.status})`);
   let messages: any[] = [], code = "";
@@ -130,6 +130,9 @@ try {
   }, "SMTP server did not receive the proxied security alert");
   const proxyOrigin = String(proxyAlert.Text).match(/^IP:.*$/m)?.[0] || "missing";
   check(proxyOrigin === "IP: 127.0.0.2", `security alert uses the verified proxy chain instead of forged source headers (observed ${proxyOrigin})`);
+  await stop(); env.SSL_CERT_FILE = wrongCa; await start();
+  check((await post("/api/auth/start", { email: "untrusted@example.com" })).status === 502, "SMTP rejects a certificate from an untrusted CA");
+  await stop(); env.SSL_CERT_FILE = ca; await start();
   mail.kill("SIGTERM"); await new Promise<void>((done) => mail!.once("exit", () => done()));
   const failed = await post("/api/auth/start", { email: "fail@example.com" });
   check(failed.status === 502 && /failed|失败/i.test(await failed.text()), "SMTP connection failure is reported to the user");

@@ -82,10 +82,14 @@ export async function localCoordinator(cfg: Cfg, listen = "127.0.0.1:8790") {
   if (!built.success) throw new Error(`Could not build the coordinator: ${built.logs.map(String).join("\n")}`);
 
   const q = (value: string) => JSON.stringify(value);
+  const certFile = process.env.SSL_CERT_FILE;
+  const certs = certFile ? readFileSync(certFile, "utf8").match(/-----BEGIN CERTIFICATE-----[\s\S]*?-----END CERTIFICATE-----/g) : null;
+  if (certFile && !certs?.length) throw new Error("SSL_CERT_FILE must contain at least one PEM certificate");
+  const trustedCertificates = certs ? `, trustedCertificates = [${certs.map(q).join(", ")}]` : "";
   const config = `using Workerd = import "/workerd/workerd.capnp";
 const config :Workerd.Config = (
   services = [
-    (name = "internet", network = (allow = ["public", "private"], tlsOptions = (trustBrowserCas = true))),
+    (name = "internet", network = (allow = ["public", "private"], tlsOptions = (trustBrowserCas = true${trustedCertificates}))),
     (name = "main", worker = (
       modules = [(name = "index.js", esModule = embed "bundle/index.js")],
       compatibilityDate = "2026-10-01",
