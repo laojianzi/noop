@@ -17,6 +17,9 @@ ARM64 runner with QEMU TCG software emulation.
   `test/self-hosted-reboot-vm.ts`
 - Source, runtime hashes, environment and individual checks: each `report.json`
 
+Both Linux service jobs passed. The service workflow was later cancelled while
+an unrelated macOS job was still queued.
+
 The Web bundle is the checksum-verified upstream `v0.3.18` artifact. The reboot
 guests and credentials are synthetic. These results do not assert physical
 hardware or a deployed cloud service. The original GitHub artifact omitted
