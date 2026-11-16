@@ -39,11 +39,12 @@ printf '%s\n' '{"name":"Noop runtime check","id":"dev.noop.runtime-check"}' > "$
 cp "$runtime" "$work/runner"
 code=0
 if [[ -n "${WAYLAND_DISPLAY:-}${DISPLAY:-}" ]]; then
-  timeout 5s "$work/runner" > "$work/log" 2>&1 || code=$?
+  timeout 30s "$work/runner" > "$work/log" 2>&1 || code=$?
 else
-  xvfb-run -a timeout 5s "$work/runner" > "$work/log" 2>&1 || code=$?
+  xvfb-run -a timeout 30s "$work/runner" > "$work/log" 2>&1 || code=$?
 fi
 cat "$work/log"
+printf "runtime exit code: %s\n" "$code"
 if [[ "$code" != 0 && "$code" != 124 ]]; then
   exit "$code"
 fi
