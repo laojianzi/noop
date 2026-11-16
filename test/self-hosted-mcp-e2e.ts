@@ -161,7 +161,9 @@ try {
   if (service?.pid) try { process.kill(-service.pid, "SIGINT"); } catch {}
   const report = { status: error ? "failed" : "passed", source, revision: spawnSync("git", ["rev-parse", "HEAD"], { cwd: source, encoding: "utf8" }).stdout.trim(),
     changes: spawnSync("git", ["status", "--short"], { cwd: source, encoding: "utf8" }).stdout.trim(), platform: `${process.platform}-${process.arch}`,
-    bun: Bun.version, workerdVersion: existsSync(workerd) ? spawnSync(workerd, ["--version"], { encoding: "utf8" }).stdout.trim() : "missing", checks, error };
+    timestamp: new Date().toISOString(), bun: Bun.version, workerdVersion: existsSync(workerd) ? spawnSync(workerd, ["--version"], { encoding: "utf8" }).stdout.trim() : "missing",
+    workerdSha256: existsSync(workerd) ? createHash("sha256").update(readFileSync(workerd)).digest("hex") : null,
+    webIndexSha256: existsSync(join(assets, "index.html")) ? createHash("sha256").update(readFileSync(join(assets, "index.html"))).digest("hex") : null, checks, error };
   writeFileSync(join(out, "report.json"), `${JSON.stringify(report, null, 2)}\n`);
   const files = readdirSync(out, { withFileTypes: true }).filter((f) => f.isFile() && f.name !== "SHA256SUMS").map((f) => f.name);
   writeFileSync(join(out, "SHA256SUMS"), files.map((f) => `${createHash("sha256").update(readFileSync(join(out, f))).digest("hex")}  ${f}`).join("\n") + "\n");
