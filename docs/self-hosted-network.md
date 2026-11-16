@@ -51,6 +51,10 @@ implicit TLS; other ports use STARTTLS unless `secure = true`. The SMTP
 certificate must be trusted by the coordinator host. Without an SMTP host,
 owners can read login codes with `noop login`.
 
+For a private CA, set `SSL_CERT_FILE` to a PEM certificate bundle before
+starting or installing the service. The coordinator adds those certificates to
+the browser CA set. The background service keeps the supplied file path.
+
 The coordinator generates its Web Push VAPID keypair once in
 `<NOOP_HOME>/vapid.json`. Keep this file when backing up or moving the
 coordinator. Replacing it invalidates existing push subscriptions.
