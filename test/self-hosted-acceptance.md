@@ -176,3 +176,12 @@ instance with a synthetic `HUB_TOKEN` and a fresh `--persist-to` directory.
 Set `BASE` and `TOKEN` to that instance and run
 `bun test/cloud-auth/mcp-e2e.ts`. This is a local emulator check, not a deployed
 Cloudflare test.
+
+## Run the guest lifecycle
+
+With the same Web and workerd paths, run `bun test/self-hosted-guest-e2e.ts`.
+The test creates two isolated guest homes and uses a synthetic Codex executable
+to return a fixed result. It checks one-time invitations, task isolation,
+permissions, result recovery, acknowledgment and revocation. To test expiry
+without waiting ten minutes, it stops the isolated service and expires one
+synthetic invitation in its temporary database before restarting it.
