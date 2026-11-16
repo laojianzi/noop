@@ -6,7 +6,7 @@ import { coordinatorNamespace, lockCoordinator, WORKERD_DATE } from "./local-coo
 
 type Entry = { path: string; size: number; sha256: string };
 type Manifest = { format: string; version: number; runtime: string; files: Entry[] };
-const FIXED = new Set(["noop.toml", "vapid.json", "coordinator/namespace-key", "coordinator/workerd.capnp", "data/config.toml", "data/config.local.toml", "data/settings.json"]);
+const FIXED = new Set(["noop.toml", "vapid.json", "coordinator/namespace-key", "coordinator/workerd.capnp", "coordinator/runtime-version", "data/config.toml", "data/config.local.toml", "data/settings.json"]);
 const REQUIRED = ["noop.toml", "vapid.json", "coordinator/namespace-key", "coordinator/workerd.capnp"];
 
 async function digest(path: string) {
@@ -53,12 +53,14 @@ export async function backupCoordinator(destination: string) {
     for (const [name, source] of [
       ["noop.toml", hubTomlPath()], ["vapid.json", join(HOME_DIR, "vapid.json")],
       ["coordinator/namespace-key", join(root, "namespace-key")], ["coordinator/workerd.capnp", join(root, "workerd.capnp")],
+      ["coordinator/runtime-version", join(root, "runtime-version")],
       ["coordinator/storage", storage], ["data/config.toml", join(DATA, "config.toml")],
       ["data/config.local.toml", join(DATA, "config.local.toml")], ["data/settings.json", join(DATA, "settings.json")],
     ]) if (existsSync(source)) await copy(source, name);
     if (REQUIRED.some((name) => !files.some((file) => file.path === name)) || !files.some((file) => file.path.startsWith("coordinator/storage/")))
       throw new Error("Local coordinator backup is missing required data");
-    const manifest: Manifest = { format: "noop-coordinator-backup", version: 1, runtime: WORKERD_DATE, files };
+    const versionFile = join(root, "runtime-version");
+    const manifest: Manifest = { format: "noop-coordinator-backup", version: 1, runtime: existsSync(versionFile) ? readFileSync(versionFile, "utf8").trim() : WORKERD_DATE, files };
     writeFileSync(join(stage, "manifest.json"), `${JSON.stringify(manifest, null, 2)}\n`, { mode: 0o600 });
     syncPath(join(stage, "manifest.json")); syncDirectories(stage);
     renameSync(stage, target); syncPath(dirname(target));
@@ -66,13 +68,13 @@ export async function backupCoordinator(destination: string) {
   } finally { if (existsSync(stage)) rmSync(stage, { recursive: true, force: true }); }
 }
 
-export async function restoreCoordinator(backup: string) {
-  if (process.env.HUB_DATA || process.env.HUB_CONF) throw new Error("Unset HUB_DATA and HUB_CONF when restoring into a new Noop home");
-  if (lstatSync(HOME_DIR, { throwIfNoEntry: false })) throw new Error("Restore destination already exists; choose a new NOOP_HOME");
+export async function restoreCoordinator(backup: string, destination = HOME_DIR, candidate = false) {
+  if (!candidate && (process.env.HUB_DATA || process.env.HUB_CONF)) throw new Error("Unset HUB_DATA and HUB_CONF when restoring into a new Noop home");
+  if (lstatSync(destination, { throwIfNoEntry: false })) throw new Error("Restore destination already exists; choose a new NOOP_HOME");
   const source = resolve(backup);
   if (!lstatSync(source).isDirectory()) throw new Error("Backup must be a directory");
   const manifest = JSON.parse(readFileSync(join(source, "manifest.json"), "utf8")) as Manifest;
-  if (manifest.format !== "noop-coordinator-backup" || manifest.version !== 1 || manifest.runtime !== WORKERD_DATE || !Array.isArray(manifest.files))
+  if (manifest.format !== "noop-coordinator-backup" || manifest.version !== 1 || (!candidate && manifest.runtime !== WORKERD_DATE) || !Array.isArray(manifest.files))
     throw new Error("Unsupported coordinator backup format or runtime version");
   const seen = new Set<string>();
   for (const file of manifest.files) {
@@ -84,8 +86,8 @@ export async function restoreCoordinator(backup: string) {
   }
   if (REQUIRED.some((name) => !seen.has(name)) || ![...seen].some((name) => name.startsWith("coordinator/storage/")))
     throw new Error("Coordinator backup is missing required data");
-  if (!existsSync(dirname(HOME_DIR))) throw new Error("Restore parent directory does not exist");
-  const stage = mkdtempSync(join(dirname(HOME_DIR), ".noop-restore-"));
+  if (!existsSync(dirname(destination))) throw new Error("Restore parent directory does not exist");
+  const stage = mkdtempSync(join(dirname(destination), ".noop-restore-"));
   try {
     for (const file of manifest.files) {
       let input = source;
@@ -103,7 +105,7 @@ export async function restoreCoordinator(backup: string) {
     if (!existsSync(join(root, "storage", coordinatorNamespace(root)))) throw new Error("Backup namespace storage is missing");
     const config = Bun.TOML.parse(readFileSync(join(stage, "noop.toml"), "utf8")) as any;
     if (config.cloud?.mode !== "local" || !config.server?.token) throw new Error("Backup is missing local coordinator configuration or machine token");
-    syncDirectories(stage); renameSync(stage, HOME_DIR); syncPath(dirname(HOME_DIR));
-    console.log(`Coordinator restored to: ${HOME_DIR}`);
+    syncDirectories(stage); renameSync(stage, destination); syncPath(dirname(destination));
+    console.log(`Coordinator restored to: ${destination}`);
   } finally { if (existsSync(stage)) rmSync(stage, { recursive: true, force: true }); }
 }

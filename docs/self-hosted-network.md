@@ -60,6 +60,39 @@ File history keeps the existing 90-day, 20,000-row and 30-version rules. It
 keeps only the current version for `latestOnly` paths. A database over 500 MB
 does not reduce other files to one version in local mode.
 
+## Install and update the service
+
+Place the pinned `workerd` binary on `PATH` and install the Web client before
+running these commands. Linux uses a user systemd service with linger; macOS
+uses a launch agent that starts when the user logs in.
+
+```sh
+noop cloud service install --listen 127.0.0.1:8790
+noop cloud service status
+noop cloud service logs
+noop cloud service stop
+noop cloud service start
+```
+
+The installed service keeps its own copy of the code, Web client and runtime.
+Changing the source checkout does not change the installed service. To update,
+run the command on the coordinator host with the desired Noop source and its
+built Web client. Use `--workerd` to select the matching pinned binary:
+
+```sh
+noop cloud service update --source /path/to/noop --workerd /path/to/workerd
+noop cloud service rollback
+```
+
+The service must be running before an update or rollback. Each operation
+stops it and creates a backup under `<NOOP_HOME>/coordinator/backups`. It
+checks the selected release against an isolated copy before switching. A
+rollback checks the current data with the previous release and retains writes
+made after the update. If startup fails after the switch, Noop restores the
+previous service and reports the path of the failed candidate's data. Keep
+the printed backup path and remove old backups or releases when they are no
+longer needed. They contain credentials and can use significant disk space.
+
 ## Back up and restore
 
 Stop the coordinator before taking a backup. Choose a new backup directory

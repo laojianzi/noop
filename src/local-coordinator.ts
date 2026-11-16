@@ -153,6 +153,9 @@ const config :Workerd.Config = (
     if (!ready) throw new Error("The local coordinator did not start");
     writeHubToml({ cloud: { url, mode: "local" }, server: { token } });
     persist(hubTomlPath());
+    const versionFile = join(root, "runtime-version");
+    writeFileSync(versionFile, `${WORKERD_DATE}\n`, { mode: 0o600 });
+    persist(versionFile);
     console.log(`Local coordinator candidate: ${url}`);
     const result = await child.exited;
     if (result !== 0 && result !== 130 && result !== 143) process.exitCode = result;
