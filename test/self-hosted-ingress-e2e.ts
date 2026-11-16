@@ -167,7 +167,10 @@ try {
     { cwd: repo, env: { ...env, NOOP_HOME: v6Home }, detached: true, stdio: ["ignore", v6Log, v6Log] }); closeSync(v6Log);
   await waitFor(async () => {
     if (service?.exitCode !== null && service?.exitCode !== undefined) throw new Error(`IPv6 coordinator exited: ${readFileSync(join(out, "ipv6.log"), "utf8")}`);
-    try { return (await request({ hostname: "::1", port: v6Port })).status === 200; } catch { return false; }
+    try {
+      const config = Bun.TOML.parse(readFileSync(join(v6Home, "noop.toml"), "utf8")) as any;
+      return config.cloud?.mode === "local" && (await request({ hostname: "::1", port: v6Port })).status === 200;
+    } catch { return false; }
   }, "IPv6 coordinator did not start");
   check(true, "allowed IPv6 loopback source can connect");
   service.kill("SIGTERM"); await new Promise<void>((ok) => service!.once("exit", () => ok())); service = undefined;
