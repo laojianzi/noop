@@ -1,4 +1,4 @@
-name: Android simulator feasibility
+name: Android simulator coordinator E2E
 on:
   workflow_dispatch:
 permissions:
@@ -9,16 +9,24 @@ jobs:
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+      - run: bun install --frozen-lockfile
       - uses: ./.github/actions/setup-nsh
         with:
           ref: e365872a616c87ac3d235a39bbc861802ef36d72
           target: android
-      - name: Package the actual Android app
+      - name: Package Android and prepare verified fixtures
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           nsh component add android
           export NSH_RUNTIME="$HOME/.nsh-dist/runtime"
           (cd app && nsh package --target android -o "$RUNNER_TEMP/android-package" --build "$GITHUB_RUN_NUMBER")
-          sha256sum "$RUNNER_TEMP/android-package/Noop.apk" > "$RUNNER_TEMP/android-sha256.txt"
+          mkdir -p "$RUNNER_TEMP/fixtures" "$RUNNER_TEMP/web" "$RUNNER_TEMP/workerd"
+          (cd "$RUNNER_TEMP/fixtures" && gh release download v0.3.18 -R huacnlee/noop -p noop-web.tar.gz -p sha256sums && sha256sum --ignore-missing -c sha256sums)
+          tar -xzf "$RUNNER_TEMP/fixtures/noop-web.tar.gz" -C "$RUNNER_TEMP/web"
+          (cd "$RUNNER_TEMP/workerd" && npm pack --silent @cloudflare/workerd-linux-64@1.20261110.1 > package-name && tar -xzf "$(cat package-name)")
+          printf '%s  %s\n' '620d9f7e5eb461067e08af17316aaa087445b4232e0e98e3dd146763bd9ab394' "$RUNNER_TEMP/workerd/package/bin/workerd" | sha256sum -c
       - name: Install Android emulator
         run: |
           test -e /dev/kvm && sudo chmod o+rw /dev/kvm
@@ -29,38 +37,30 @@ jobs:
           echo no | "$ANDROID_HOME/cmdline-tools/latest/bin/avdmanager" create avd --force --name noop-test --path "$ANDROID_AVD_HOME/noop-test.avd" --package "system-images;android-35;google_apis;x86_64" --device pixel_2
           test -f "$ANDROID_AVD_HOME/noop-test.avd/config.ini"
           printf "avd.ini.encoding=UTF-8\npath=%s/noop-test.avd\ntarget=android-35\n" "$ANDROID_AVD_HOME" > "$ANDROID_AVD_HOME/noop-test.ini"
-      - name: Launch Android app on emulator
+      - name: Exercise packaged app and coordinator
         run: |
-          export ANDROID_AVD_HOME="$RUNNER_TEMP/avd"
-          export PATH="$ANDROID_HOME/platform-tools:$PATH"
+          export ANDROID_AVD_HOME="$RUNNER_TEMP/avd" PATH="$ANDROID_HOME/platform-tools:$PATH" ANDROID_SERIAL=emulator-5554
           "$ANDROID_HOME/emulator/emulator" -avd noop-test -no-window -no-audio -no-boot-anim -no-snapshot -gpu swiftshader_indirect -accel on > "$RUNNER_TEMP/emulator.log" 2>&1 &
           timeout 150s adb wait-for-device || { cat "$RUNNER_TEMP/emulator.log"; exit 1; }
           for i in {1..180}; do [[ "$(adb shell getprop sys.boot_completed | tr -d '\r')" == 1 ]] && break; sleep 2; done
           [[ "$(adb shell getprop sys.boot_completed | tr -d '\r')" == 1 ]]
-          adb install "$RUNNER_TEMP/android-package/Noop.apk"
           adb shell input keyevent KEYCODE_WAKEUP
           adb shell input keyevent KEYCODE_MENU
-          adb shell monkey -p dev.noop.app 1
-          sleep 12
-          adb exec-out screencap -p > "$RUNNER_TEMP/android-screen.png"
-          adb shell input text android@example.com
-          adb shell input keyevent KEYCODE_BACK
-          sleep 3
-          adb exec-out screencap -p > "$RUNNER_TEMP/android-email.png"
-          adb shell uiautomator dump /sdcard/noop-window.xml >/dev/null
-          adb exec-out cat /sdcard/noop-window.xml > "$RUNNER_TEMP/android-window.xml"
-          adb shell dumpsys activity activities | grep -E 'mResumedActivity|topResumedActivity' > "$RUNNER_TEMP/android-activity.log" || true
-          adb logcat -d -t 1000 > "$RUNNER_TEMP/android-logcat.log"
+          mkdir -p "$RUNNER_TEMP/android-evidence"
+          export NOOP_E2E_DISPOSABLE_ANDROID=1 NOOP_E2E_ANDROID_APK="$RUNNER_TEMP/android-package/Noop.apk"
+          export NOOP_E2E_WEB_ASSETS="$RUNNER_TEMP/web" NOOP_E2E_WORKERD="$RUNNER_TEMP/workerd/package/bin/workerd" NOOP_E2E_OUT="$RUNNER_TEMP/android-evidence"
+          trap 'adb logcat -d -t 1000 > "$RUNNER_TEMP/android-logcat.log" || true' EXIT
+          bun test/self-hosted-android-e2e.ts
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: android-simulator-feasibility
+          name: android-simulator-e2e
           path: |
-            ${{ runner.temp }}/android-screen.png
-            ${{ runner.temp }}/android-email.png
-            ${{ runner.temp }}/android-window.xml
-            ${{ runner.temp }}/android-activity.log
+            ${{ runner.temp }}/android-evidence/**/report.json
+            ${{ runner.temp }}/android-evidence/**/requests.log
+            ${{ runner.temp }}/android-evidence/**/coordinator.log
+            ${{ runner.temp }}/android-evidence/**/android-message.png
+            ${{ runner.temp }}/android-evidence/**/SHA256SUMS
             ${{ runner.temp }}/android-logcat.log
-            ${{ runner.temp }}/android-sha256.txt
             ${{ runner.temp }}/emulator.log
           if-no-files-found: warn
