@@ -61,3 +61,41 @@ jobs:
             ${{ runner.temp }}/evidence/**/user-data
             ${{ runner.temp }}/evidence/**/SHA256SUMS
           if-no-files-found: warn
+  update:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.4
+      - name: Prepare pinned runtime and Web bundle
+        shell: bash
+        run: |
+          mkdir -p "$RUNNER_TEMP/runtime" "$RUNNER_TEMP/web" "$RUNNER_TEMP/evidence"
+          npm pack '@cloudflare/workerd-linux-64@1.20261110.1' --silent --pack-destination "$RUNNER_TEMP/runtime"
+          tar -xzf "$RUNNER_TEMP/runtime/"*.tgz -C "$RUNNER_TEMP/runtime"
+          curl -fsSL --retry 3 https://github.com/huacnlee/noop/releases/download/v0.3.18/noop-web.tar.gz -o "$RUNNER_TEMP/noop-web.tar.gz"
+          curl -fsSL --retry 3 https://github.com/huacnlee/noop/releases/download/v0.3.18/sha256sums -o "$RUNNER_TEMP/web-sha256sums"
+          (cd "$RUNNER_TEMP" && grep '  noop-web.tar.gz$' web-sha256sums | sha256sum -c -)
+          tar -xzf "$RUNNER_TEMP/noop-web.tar.gz" -C "$RUNNER_TEMP/web"
+      - name: Test safe update and rollback
+        shell: bash
+        env:
+          NOOP_E2E_WEB_ASSETS: ${{ runner.temp }}/web
+          NOOP_E2E_WORKERD: ${{ runner.temp }}/runtime/package/bin/workerd
+          NOOP_E2E_OUT: ${{ runner.temp }}/evidence
+          NOOP_E2E_DISPOSABLE: "1"
+        run: bun test/self-hosted-update-e2e.ts
+      - name: Print acceptance result
+        if: always()
+        shell: bash
+        run: find "$RUNNER_TEMP/evidence" -name report.json -exec cat {} \; 2>/dev/null || true
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: update-amd64
+          path: |
+            ${{ runner.temp }}/evidence/**/report.json
+            ${{ runner.temp }}/evidence/**/update.log
+          if-no-files-found: warn
