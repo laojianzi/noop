@@ -47,7 +47,10 @@ try {
     const fd = openSync(log, "a"); service = spawn(process.execPath, [join(repo, "src", "cli.ts"), "cloud", "deploy", "--local", "--listen", `127.0.0.1:${listenPort}`],
       { cwd: repo, env: { ...env, NOOP_HOME: testHome }, detached: true, stdio: ["ignore", fd, fd] }); closeSync(fd);
     const base = `http://127.0.0.1:${listenPort}`;
-    await waitFor(async () => { try { const cfg = Bun.TOML.parse(readFileSync(join(testHome, "noop.toml"), "utf8")) as any; return (await fetch(base)).ok && cfg.cloud?.url === base; } catch { return false; } }, "coordinator did not start");
+    await waitFor(async () => {
+      if (service && (service.exitCode !== null || service.signalCode !== null)) throw new Error(`coordinator exited: ${readFileSync(log, "utf8").slice(-1500)}`);
+      try { const cfg = Bun.TOML.parse(readFileSync(join(testHome, "noop.toml"), "utf8")) as any; return (await fetch(base)).ok && cfg.cloud?.url === base; } catch { return false; }
+    }, "coordinator did not start");
     return base;
   };
   const stop = async (base: string) => {
