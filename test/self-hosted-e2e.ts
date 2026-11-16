@@ -2,7 +2,7 @@
 // Supply NOOP_E2E_WEB_ASSETS and NOOP_E2E_WORKERD with already installed artifacts.
 import { spawn, spawnSync, type ChildProcess } from "node:child_process";
 import { createHash, createHmac } from "node:crypto";
-import { cpSync, existsSync, mkdirSync, mkdtempSync, openSync, closeSync, readFileSync, readdirSync, symlinkSync, writeFileSync } from "node:fs";
+import { chmodSync, cpSync, existsSync, mkdirSync, mkdtempSync, openSync, closeSync, readFileSync, readdirSync, symlinkSync, writeFileSync } from "node:fs";
 import { request } from "node:http";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
@@ -89,6 +89,10 @@ async function stop(base: string) {
   const deadline = Date.now() + 5000;
   while (child.exitCode === null && child.signalCode === null && Date.now() < deadline) await Bun.sleep(100);
   if (child.exitCode === null && child.signalCode === null) throw new Error("local deployment did not stop");
+  await waitForPortClosed(base);
+}
+
+async function waitForPortClosed(base: string) {
   for (let i = 0; i < 30; i++) {
     try { await fetch(`${base}/`); } catch { return; }
     await Bun.sleep(100);
@@ -106,6 +110,18 @@ async function spoofedStatus(port: number, token: string): Promise<number> {
     req.on("error", fail);
     req.end();
   });
+}
+
+async function rejectedHome(home: string, name: string, env: NodeJS.ProcessEnv) {
+  const log = join(artifacts, `${name}.log`), fd = openSync(log, "a");
+  const child = spawn(process.execPath, [join(repo, "src", "cli.ts"), "cloud", "deploy", "--local", "--listen", `127.0.0.1:${await availablePort()}`],
+    { cwd: repo, env: { ...env, NOOP_HOME: home }, detached: true, stdio: ["ignore", fd, fd] });
+  closeSync(fd);
+  const deadline = Date.now() + 5000;
+  while (child.exitCode === null && child.signalCode === null && Date.now() < deadline) await Bun.sleep(100);
+  const exited = child.exitCode !== null && child.exitCode !== 0;
+  if (child.pid) try { process.kill(-child.pid, "SIGINT"); } catch {}
+  return { exited, output: readFileSync(log, "utf8") };
 }
 
 try {
@@ -136,7 +152,12 @@ try {
   writeFileSync(guard, "");
 
   const brokenHome = join(artifacts, "broken-bootstrap"), brokenPort = await availablePort();
-  mkdirSync(join(brokenHome, "noop.toml"), { recursive: true });
+  if (process.getuid?.() === 0) mkdirSync(join(brokenHome, "noop.toml"), { recursive: true });
+  else {
+    mkdirSync(brokenHome, { recursive: true });
+    writeFileSync(join(brokenHome, "noop.toml"), '[server]\ntoken = "synthetic-readonly-token"\n');
+    chmodSync(join(brokenHome, "noop.toml"), 0o400);
+  }
   const brokenLog = openSync(join(artifacts, "broken-bootstrap.log"), "a");
   const broken = spawn(process.execPath, [join(repo, "src", "cli.ts"), "cloud", "deploy", "--local", "--listen", `127.0.0.1:${brokenPort}`],
     { cwd: repo, env: { ...env, NOOP_HOME: brokenHome }, detached: true, stdio: ["ignore", brokenLog, brokenLog] });
@@ -182,6 +203,24 @@ try {
   const fake = cli(["cloud", "deploy", "--local", "--listen", `127.0.0.1:${await availablePort()}`], fakeEnv);
   check(fake.status !== 0 && !existsSync(fakeMarker), "runtime integrity is checked before the candidate starts");
 
+  const corruptHome = join(artifacts, "corrupt-namespace"), corruptKey = join(corruptHome, "coordinator", "namespace-key");
+  mkdirSync(dirname(corruptKey), { recursive: true });
+  writeFileSync(corruptKey, Buffer.alloc(36));
+  const corrupt = cli(["cloud", "deploy", "--local", "--listen", `127.0.0.1:${await availablePort()}`], { ...env, NOOP_HOME: corruptHome });
+  check(corrupt.status !== 0 && corrupt.output.includes("namespace key is invalid"), "a corrupt namespace reports a restore error");
+  check(readFileSync(corruptKey).equals(Buffer.alloc(36)), "a corrupt namespace is not silently replaced");
+
+  const corruptConfigHome = join(artifacts, "corrupt-bootstrap"), corruptConfig = join(corruptConfigHome, "noop.toml");
+  mkdirSync(corruptConfigHome, { recursive: true }); writeFileSync(corruptConfig, Buffer.alloc(64));
+  const badConfig = await rejectedHome(corruptConfigHome, "corrupt-bootstrap", env);
+  check(badConfig.exited && badConfig.output.includes("bootstrap configuration is invalid"), "a corrupt bootstrap reports a restore error");
+  check(readFileSync(corruptConfig).equals(Buffer.alloc(64)), "a corrupt bootstrap is not silently replaced");
+
+  const missingTokenHome = join(artifacts, "missing-token"), existingKey = join(missingTokenHome, "coordinator", "namespace-key");
+  mkdirSync(dirname(existingKey), { recursive: true }); writeFileSync(existingKey, "11111111-1111-4111-8111-111111111111");
+  const missingToken = await rejectedHome(missingTokenHome, "missing-token", env);
+  check(missingToken.exited && missingToken.output.includes("machine token is missing"), "existing coordinator data does not silently get a new machine token");
+
   const port = await availablePort(), address = `127.0.0.1:${port}`, base = `http://${address}`;
   await start(env, address, base);
   check(!readFileSync(guard, "utf8"), "local deployment does not invoke Cloudflare or an agent CLI");
@@ -202,6 +241,28 @@ try {
   } finally {
     if (duplicate.pid) try { process.kill(-duplicate.pid, "SIGINT"); } catch {}
   }
+
+  const original = service!;
+  original.kill("SIGKILL");
+  if (original.exitCode === null && original.signalCode === null) await new Promise<void>((done) => original.once("exit", () => done()));
+  let orphanRunning = false;
+  try { orphanRunning = (await fetch(`${base}/`)).ok; } catch {}
+  if (orphanRunning) {
+    const orphanLog = openSync(join(artifacts, "orphan-lock.log"), "a");
+    const replacement = spawn(process.execPath, [join(repo, "src", "cli.ts"), "cloud", "deploy", "--local", "--listen", `127.0.0.1:${await availablePort()}`],
+      { cwd: repo, env, detached: true, stdio: ["ignore", orphanLog, orphanLog] });
+    closeSync(orphanLog);
+    const deadline = Date.now() + 5000;
+    while (replacement.exitCode === null && replacement.signalCode === null && Date.now() < deadline) await Bun.sleep(100);
+    const rejected = replacement.exitCode !== null && replacement.exitCode !== 0;
+    if (replacement.pid) try { process.kill(-replacement.pid, "SIGINT"); } catch {}
+    if (original.pid) try { process.kill(-original.pid, "SIGINT"); } catch {}
+    check(rejected, "an orphaned runtime still excludes a second coordinator");
+    check(readFileSync(join(localHome, "noop.toml"), "utf8") === bootstrapBefore, "orphan protection preserves the active address");
+  } else check(true, "a killed launcher leaves no orphaned runtime");
+  service = undefined;
+  await waitForPortClosed(base);
+  await start(env, address, base);
 
   const setup = cli(["2fa", "setup"], env);
   const secret = setup.output.match(/(?:key by hand:|手动输入密钥：)\s*([A-Z2-7 ]+)/i)?.[1]?.replace(/\s/g, "") || "";

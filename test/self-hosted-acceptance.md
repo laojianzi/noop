@@ -114,3 +114,41 @@ runtime, Web bundle and checks. `SHA256SUMS` covers the generated report, logs
 and screenshot. `NOOP_E2E_OUT` can select an existing parent directory for the
 evidence. The test copies the project and never changes an existing Noop home.
 Set `NOOP_E2E_WEB_VERSION` to record the Web bundle's release or build identity.
+
+## Run the independent-host scenario
+
+`test/self-hosted-network-e2e.ts` runs a coordinator, a primary and three
+execution hosts on an isolated container network. It also checks cloud-mode
+address adoption. It uses the real HTTP and WebSocket paths and synthetic data.
+Install the `mcr.microsoft.com/playwright:v1.64.0-noble` image before the run;
+the test does not download it. Set `NOOP_E2E_CONTAINER_IMAGE` to use another
+installed image with Bun-compatible system libraries and curl.
+
+```sh
+NOOP_E2E_WEB_ASSETS=/path/to/web \
+NOOP_E2E_WORKERD=/path/to/workerd \
+bun test/self-hosted-network-e2e.ts
+```
+
+To run the coordinator in a separate Linux x86_64 KVM guest, first install the
+`alpine/socat:1.8.0.3` and `dockurr/windows:latest` images. The latter supplies
+QEMU only. The host needs `/dev/kvm`, a bootable kernel with built-in ext4 and
+virtio block support, its matching e1000 module, `cpio`, `zstd`, `rg`,
+`sha256sum`, `file`, `truncate` and `mkfs.ext4`. The default kernel and module come from
+the running host. Override them with `NOOP_E2E_VM_KERNEL` and
+`NOOP_E2E_E1000_MODULE` if needed.
+
+```sh
+TASK_VM_DIR=$(mktemp -d)
+NOOP_E2E_WEB_ASSETS=/path/to/web NOOP_E2E_WORKERD=/path/to/workerd \
+  test/prepare-self-hosted-vm.sh "$TASK_VM_DIR"
+NOOP_E2E_VM_FIXTURE="$TASK_VM_DIR" NOOP_E2E_WEB_ASSETS=/path/to/web \
+  NOOP_E2E_WORKERD=/path/to/workerd bun test/self-hosted-network-e2e.ts
+```
+
+The test verifies that the VM fixture matches the source, Web bundle and
+runtime under test. It creates a new temporary VM disk. It powers off the VM,
+restarts it, joins a fresh host, checks earlier committed files, and checks that
+hosts synchronize work queued during the outage. The container and VM image
+identities, logs and checksums are recorded in the output directory. These are
+virtual-host results, not physical-machine or Tailscale acceptance.
