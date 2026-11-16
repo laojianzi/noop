@@ -1,32 +1,24 @@
-name: Noop unattended Linux reboot acceptance
+name: Noop native service and release acceptance
 on:
   workflow_dispatch:
 jobs:
-  reboot:
+  native:
     strategy:
       fail-fast: false
       matrix:
         include:
-          - { os: ubuntu-24.04, package: linux-64, debian: amd64 }
-          - { os: ubuntu-24.04-arm, package: linux-arm64, debian: arm64 }
+          - { os: ubuntu-24.04, package: linux-64, label: linux-x64 }
+          - { os: ubuntu-24.04-arm, package: linux-arm64, label: linux-arm64 }
+          - { os: macos-15-intel, package: darwin-64, label: darwin-x64 }
+          - { os: macos-26, package: darwin-arm64, label: darwin-arm64 }
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 35
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: 1.4.4
-      - name: Install VM test tools
-        shell: bash
-        run: |
-          sudo apt-get update -qq
-          if [[ '${{ matrix.debian }}' == amd64 ]]; then
-            sudo env DEBIAN_FRONTEND=noninteractive apt-get install -y -qq qemu-system-x86 qemu-utils cloud-image-utils genisoimage
-            sudo chmod a+rw /dev/kvm
-          else
-            sudo env DEBIAN_FRONTEND=noninteractive apt-get install -y -qq qemu-system-arm qemu-efi-aarch64 qemu-utils cloud-image-utils genisoimage
-          fi
-      - name: Prepare pinned runtime, Web bundle and Debian image
+      - name: Prepare pinned runtime and Web bundle
         shell: bash
         run: |
           mkdir -p "$RUNNER_TEMP/runtime" "$RUNNER_TEMP/web" "$RUNNER_TEMP/evidence"
@@ -34,19 +26,24 @@ jobs:
           tar -xzf "$RUNNER_TEMP/runtime/"*.tgz -C "$RUNNER_TEMP/runtime"
           curl -fsSL --retry 3 https://github.com/huacnlee/noop/releases/download/v0.3.18/noop-web.tar.gz -o "$RUNNER_TEMP/noop-web.tar.gz"
           curl -fsSL --retry 3 https://github.com/huacnlee/noop/releases/download/v0.3.18/sha256sums -o "$RUNNER_TEMP/web-sha256sums"
-          (cd "$RUNNER_TEMP" && grep '  noop-web.tar.gz$' web-sha256sums | sha256sum -c -)
+          (cd "$RUNNER_TEMP" && grep '  noop-web.tar.gz$' web-sha256sums | shasum -a 256 -c -)
           tar -xzf "$RUNNER_TEMP/noop-web.tar.gz" -C "$RUNNER_TEMP/web"
-          curl -fsSL --retry 3 https://cloud.debian.org/images/cloud/bookworm/latest/SHA512SUMS -o "$RUNNER_TEMP/debian-SHA512SUMS"
-          curl -fsSL --retry 3 "https://cloud.debian.org/images/cloud/bookworm/latest/debian-12-genericcloud-${{ matrix.debian }}.qcow2" -o "$RUNNER_TEMP/debian-12-genericcloud-${{ matrix.debian }}.qcow2"
-          (cd "$RUNNER_TEMP" && grep '  debian-12-genericcloud-${{ matrix.debian }}.qcow2$' debian-SHA512SUMS | sha512sum -c -)
-      - name: Test offline coordinator after a real VM reset
+      - name: Test native service
         shell: bash
         env:
           NOOP_E2E_WEB_ASSETS: ${{ runner.temp }}/web
           NOOP_E2E_WORKERD: ${{ runner.temp }}/runtime/package/bin/workerd
-          NOOP_E2E_DEBIAN_IMAGE: ${{ runner.temp }}/debian-12-genericcloud-${{ matrix.debian }}.qcow2
           NOOP_E2E_OUT: ${{ runner.temp }}/evidence
-        run: bun test/self-hosted-reboot-vm.ts
+          NOOP_E2E_DISPOSABLE: "1"
+        run: bun test/self-hosted-service-e2e.ts
+      - name: Test safe update and rollback
+        shell: bash
+        env:
+          NOOP_E2E_WEB_ASSETS: ${{ runner.temp }}/web
+          NOOP_E2E_WORKERD: ${{ runner.temp }}/runtime/package/bin/workerd
+          NOOP_E2E_OUT: ${{ runner.temp }}/evidence
+          NOOP_E2E_DISPOSABLE: "1"
+        run: bun test/self-hosted-update-e2e.ts
       - name: Print acceptance result
         if: always()
         shell: bash
@@ -54,10 +51,53 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: reboot-${{ matrix.debian }}
+          name: native-${{ matrix.label }}
           path: |
             ${{ runner.temp }}/evidence/**/report.json
-            ${{ runner.temp }}/evidence/**/serial.log
-            ${{ runner.temp }}/evidence/**/user-data
+            ${{ runner.temp }}/evidence/**/install.log
+            ${{ runner.temp }}/evidence/**/service-manager.log
+            ${{ runner.temp }}/evidence/**/update.log
             ${{ runner.temp }}/evidence/**/SHA256SUMS
+          if-no-files-found: warn
+  no-space:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.4
+      - name: Prepare pinned runtime, Web bundle and small filesystem
+        shell: bash
+        run: |
+          mkdir -p "$RUNNER_TEMP/runtime" "$RUNNER_TEMP/web" "$RUNNER_TEMP/full"
+          npm pack '@cloudflare/workerd-linux-64@1.20261110.1' --silent --pack-destination "$RUNNER_TEMP/runtime"
+          tar -xzf "$RUNNER_TEMP/runtime/"*.tgz -C "$RUNNER_TEMP/runtime"
+          curl -fsSL --retry 3 https://github.com/huacnlee/noop/releases/download/v0.3.18/noop-web.tar.gz -o "$RUNNER_TEMP/noop-web.tar.gz"
+          curl -fsSL --retry 3 https://github.com/huacnlee/noop/releases/download/v0.3.18/sha256sums -o "$RUNNER_TEMP/web-sha256sums"
+          (cd "$RUNNER_TEMP" && grep '  noop-web.tar.gz$' web-sha256sums | sha256sum -c -)
+          tar -xzf "$RUNNER_TEMP/noop-web.tar.gz" -C "$RUNNER_TEMP/web"
+          sudo mount -t tmpfs -o size=240m tmpfs "$RUNNER_TEMP/full"
+          sudo chown "$(id -u):$(id -g)" "$RUNNER_TEMP/full"
+      - name: Test update with an actually full filesystem
+        shell: bash
+        env:
+          NOOP_E2E_WEB_ASSETS: ${{ runner.temp }}/web
+          NOOP_E2E_WORKERD: ${{ runner.temp }}/runtime/package/bin/workerd
+          NOOP_E2E_OUT: ${{ runner.temp }}/full
+          NOOP_E2E_DISPOSABLE: "1"
+          NOOP_E2E_EXPECT_NO_SPACE: "1"
+        run: bun test/self-hosted-update-e2e.ts
+      - name: Print acceptance result
+        if: always()
+        shell: bash
+        run: find "$RUNNER_TEMP/full" -name report.json -exec cat {} \; 2>/dev/null || true
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: native-no-space
+          path: |
+            ${{ runner.temp }}/full/**/report.json
+            ${{ runner.temp }}/full/**/update.log
+            ${{ runner.temp }}/full/**/SHA256SUMS
           if-no-files-found: warn
