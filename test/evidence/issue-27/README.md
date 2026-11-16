@@ -24,6 +24,10 @@ The Linux x86_64 native desktop acceptance is in `linux-x64/desktop`. It uses a
 packaged application in an isolated Xvfb display and tests sign-in, messages,
 WebSocket delivery and the first primary status snapshot.
 
+`android-simulator` records a native Android app launch and an incomplete
+login attempt. The emulator's HTTP request did not reach the local service;
+the cause is still under investigation.
+
 The separate service, unattended Linux reboot, backup, protected update and
 network-topology evidence is in `test/evidence/issue-15` through `issue-26`.
 The Apple Silicon feature run also tested the service and a runtime update
