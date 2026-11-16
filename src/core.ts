@@ -41,7 +41,8 @@ export function loadConfig(): Cfg {
   // noop.toml = machine-local bootstrap (Worker url + machine token), outside DATA because DATA itself comes from the Worker
   // settings.json = changes made from the UI (shared via the data repo), applied over config.toml; config.local.toml wins last
   const ui = existsSync(P("settings.json")) ? JSON.parse(readFileSync(P("settings.json"), "utf8")) : {};
-  const cfg: Cfg = merge(merge(merge(sync.readHubToml(), read("config.toml")), ui), read("config.local.toml"));
+  const bootstrap = sync.readHubToml();
+  const cfg: Cfg = merge(merge(merge(bootstrap, read("config.toml")), ui), read("config.local.toml"));
   // built-in routines (src/builtin-routines.ts) unless config.toml defines one of the same name
   cfg.routine = Array.isArray(cfg.routine) ? cfg.routine : [];
   for (const b of BUILTIN_ROUTINES) if (!cfg.routine.some((r: any) => r.name === b.name)) {
@@ -54,6 +55,7 @@ export function loadConfig(): Cfg {
   cfg.notify ??= {};
   // the owner's own Cloudflare hub (hub cloud deploy) is the fixed address for clients and workers
   if (cfg.cloud?.url) { cfg.server ??= {}; cfg.server.url ??= cfg.cloud.url; cfg.server.public_url ??= cfg.cloud.url; }
+  if (bootstrap.cloud?.mode === "local" && bootstrap.cloud.url) { cfg.server ??= {}; cfg.server.url = bootstrap.cloud.url; }
   // public hub URL published by the primary's tunnel (fleet/hub.json) → workers and push links use it unless pinned locally
   if (existsSync(P("fleet", "hub.json"))) try {
     const { url } = JSON.parse(readFileSync(P("fleet", "hub.json"), "utf8"));

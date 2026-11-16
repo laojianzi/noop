@@ -6,13 +6,14 @@ import { okRedirect } from "../cloud/src/mcp";
 import { parseAllowList } from "../cloud/src/ipallow";
 import { type Cfg, HOME_DIR, L, P } from "./core";
 import { allowIps } from "./cloud";
+import { hubDialUrl } from "./sync";
 
 export type Finding = { level: "ok" | "warn" | "bad"; area: "Worker" | "本机"; text: string };
 
 export async function securityReport(cfg: Cfg, host: string, primary: boolean): Promise<Finding[]> {
   const out: Finding[] = [];
   const add = (level: Finding["level"], area: Finding["area"], text: string) => out.push({ level, area, text });
-  const url = String(cfg.cloud?.url ?? "").replace(/\/$/, "");
+  const url = hubDialUrl(cfg.cloud?.url);
   const token = String(cfg.server?.token ?? "");
   let live: number | null | undefined; // entries in the Worker's HUB_ALLOW_IPS (null: off; undefined: Worker didn't say)
 

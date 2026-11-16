@@ -43,6 +43,12 @@ export function writeHubToml(patch: Record<string, Record<string, string>>) {
   try { chmodSync(hubTomlPath(), 0o600); } catch {}
 }
 
+/** Local deployments may advertise a different URL from the one this machine uses. */
+export function hubDialUrl(url: unknown): string {
+  const cloud = readHubToml().cloud;
+  return String(cloud?.mode === "local" ? cloud.url ?? url ?? "" : url ?? "").replace(/\/$/, "");
+}
+
 // ------------------------------------------------------------------ transport
 export type Reply = { status: number; json: any } | null; // null = network failure
 export type Transport = ((path: string, init?: { method?: string; body?: unknown }) => Promise<Reply>) & { meter?: { requests: number; rowsWritten: number } };
@@ -108,7 +114,9 @@ async function getTransport(): Promise<Transport | null> {
 export function adoptCloudUrl(url: unknown): boolean {
   const next = String(url ?? "").replace(/\/$/, "");
   if (!/^https:\/\//.test(next) || process.env.HUB_SYNC_FAKE || process.env.HUB_SYNC === "local") return false;
-  const cur = String(readHubToml().cloud?.url ?? "").replace(/\/$/, "");
+  const cloud = readHubToml().cloud;
+  if (cloud?.mode === "local") return false;
+  const cur = String(cloud?.url ?? "").replace(/\/$/, "");
   if (!cur || cur === next) return false;
   writeHubToml({ cloud: { url: next } });
   transport = undefined;

@@ -28,7 +28,7 @@ import { answerFromChat, appendEvent, cancelTask, drainInbound, feed, handleOwne
 import { addFollowUp, reopenTask, routeWithoutModel, type BrainOut, ClaudeModel, systemPrompt, dataActs, localStore, logBrain, think } from "./brain";
 import { isWrite, runTool } from "../cloud/src/tools";
 import { cloudDeploy, startCloudBridge } from "./cloud";
-import { adoptCloudUrl, readHubToml } from "./sync";
+import { adoptCloudUrl, hubDialUrl, readHubToml } from "./sync";
 import { judgeAccuracy, level, needsApproval, noteStuckRoutine, proposeBatch, resolveProposals, routineQueued, supersedeProposed } from "./autonomy";
 import { CODE, L, UPDATE_REQUEST, type UpdateState, setUpdateState, updateState, allowedClis, cliHintPatch, capOk, idTagFor, isPrimary, runningRev, setApprovalGate, setIdTag } from "./core";
 import { accountEnv, accountsStatus, classify, failoverAccount, pendingLoginIds, pickAccount, reportFailure, retryLogins, submitLoginCode } from "./accounts";
@@ -1037,8 +1037,8 @@ async function status(cfg: Cfg, brief = false) {
     return;
   }
   // the server this machine actually syncs with is noop.toml's; the shared config only proposes one (adopted next tick)
-  const hub = String(readHubToml().cloud?.url ?? "").replace(/\/$/, ""), shared = String(cfg.cloud?.url ?? "").replace(/\/$/, "");
-  console.log(`server: ${hub || "local (not connected to a hub)"}${shared && hub && shared !== hub ? `   (shared config says ${shared}: switching on the next tick)` : ""}`);
+  const bootstrap = readHubToml().cloud, hub = String(bootstrap?.url ?? "").replace(/\/$/, ""), shared = String(cfg.cloud?.url ?? "").replace(/\/$/, "");
+  console.log(`server: ${hub || "local (not connected to a hub)"}${shared && hub && shared !== hub ? `   (shared config says ${shared}${bootstrap?.mode === "local" ? "" : ": switching on the next tick"})` : ""}`);
   if (hub) { // today's Cloudflare usage against the free plan (cloud/src/budget.ts)
     const u = await fetch(`${hub}/api/usage`, { headers: { Authorization: `Bearer ${cfg.server?.token}` }, signal: AbortSignal.timeout(5000) })
       .then((r) => (r.ok ? r.json() : null)).catch(() => null) as any;
@@ -1069,7 +1069,9 @@ async function status(cfg: Cfg, brief = false) {
 const HELP = `Noop — your own AI team
 
   noop init [<hub-url>] [--token <machine-token>]   join your hub (owner email login, or a machine token); asks for the URL if not given
+  noop init --local <hub-url> [--token <machine-token>]   join a self-hosted coordinator
   noop init --primary         the first machine, once: deploy your own Cloudflare Worker (holds the fleet data), seed ~/.noop/data
+  noop init --primary --local <hub-url> --token <machine-token>   initialize a primary against a local coordinator
   noop cloud deploy --local [--listen 127.0.0.1:8790]   run the local coordinator candidate in the foreground
   noop install                run as a service (systemd / launchd / Task Scheduler)
   noop update                 self-update framework now (also automatic in daemon)
@@ -1106,7 +1108,7 @@ async function main() {
       // a bare `--worker` (older install lines) means the default: join an existing noop
       const args = rest.flatMap((a, i) => (a === "--worker" && (!rest[i + 1] || rest[i + 1].startsWith("-")) ? [] : [a]));
       const { values, positionals } = parseArgs({ args, allowPositionals: true,
-        options: { worker: { type: "string" }, token: { type: "string" }, primary: { type: "boolean" } } });
+        options: { worker: { type: "string" }, token: { type: "string" }, primary: { type: "boolean" }, local: { type: "boolean" } } });
       return init({ ...values, worker: values.worker ?? positionals[0] });
     }
     case "install": return install();
@@ -1171,7 +1173,7 @@ async function main() {
       }
       return;
     case "login": { // show the pending sign-in code (used when email isn't configured)
-      const url = String(cfg.cloud?.url ?? "").replace(/\/$/, "");
+      const url = hubDialUrl(cfg.cloud?.url);
       const r = url ? await fetch(`${url}/api/host/login-code`, { headers: { Authorization: `Bearer ${cfg.server?.token}` } }).catch(() => null) : null;
       if (!r?.ok) return void console.log(L("No pending code: enter your email in the app, press Send code, then run noop login", "没有待使用的验证码：先在 app 里输入邮箱，点「发送验证码」，再运行 noop login"));
       const c = (await r.json()) as { email: string; code: string; expires: number };
@@ -1185,7 +1187,7 @@ async function main() {
       return;
     }
     case "2fa": { // the mandatory second factor; bound from a machine only (the machine key is the root of trust)
-      const url = String(cfg.cloud?.url ?? "").replace(/\/$/, "");
+      const url = hubDialUrl(cfg.cloud?.url);
       if (!url) return void console.log(L("[cloud] url is not configured", "没有配置 [cloud] url"));
       const call = (path: string, body?: unknown) => fetch(`${url}${path}`, { method: body === undefined ? "GET" : "POST",
         headers: { Authorization: `Bearer ${cfg.server?.token}`, "x-noop-host": host, "content-type": "application/json" }, ...(body === undefined ? {} : { body: JSON.stringify(body) }) });
@@ -1225,7 +1227,7 @@ async function main() {
       return void console.log(L("Not confirmed, the binding did not take effect.", "没有确认，绑定未生效。"));
     }
     case "revoke-sessions": { // a sign-in alert you didn't expect: everyone but the machines is out
-      const url = String(cfg.cloud?.url ?? "").replace(/\/$/, "");
+      const url = hubDialUrl(cfg.cloud?.url);
       if (!url) return void console.log(L("[cloud] url is not configured", "没有配置 [cloud] url"));
       const r = await fetch(`${url}/api/host/revoke-sessions`, { method: "POST", headers: { Authorization: `Bearer ${cfg.server?.token}`, "x-noop-host": host } }).catch((e) => e as Error);
       if (r instanceof Error || !r.ok) { process.exitCode = 1; const why = r instanceof Error ? r.message : `HTTP ${r.status} ${await r.text()}`; return void console.log(L(`Revoke failed: ${why}`, `撤销失败：${why}`)); }

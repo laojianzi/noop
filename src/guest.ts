@@ -10,6 +10,7 @@ import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, renameSync
 import { homedir, tmpdir, userInfo } from "node:os";
 import { join } from "node:path";
 import { GUEST_IDLE_MS } from "../cloud/src/budget";
+import { hubDialUrl } from "./sync";
 
 const HOME = () => process.env.NOOP_GUEST_HOME || join(homedir(), ".noop-guest");
 type GuestCfg = { url: string; id: string; token: string };
@@ -75,7 +76,7 @@ async function runOne(c: GuestCfg, cli: string): Promise<boolean> {
 export const safe = (s: unknown) => String(s ?? "").replace(/[\u0000-\u0008\u000b-\u001f\u007f-\u009f]/g, "");
 
 async function admin(cfg: any, path: string, init: RequestInit = {}) {
-  const url = String(cfg.cloud?.url ?? "").replace(/\/$/, "");
+  const url = hubDialUrl(cfg.cloud?.url);
   if (!url || !cfg.server?.token) throw new Error("this machine isn't connected to a Noop cloud");
   const r = await fetch(url + path, { ...init, headers: { Authorization: `Bearer ${cfg.server.token}`, "Content-Type": "application/json" } });
   const b = await r.json().catch(() => ({}));

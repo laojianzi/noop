@@ -10,11 +10,11 @@ import { type Jwk, newVapidKeys } from "../cloud/src/push";
 import { ipAllowed, parseAllowList } from "../cloud/src/ipallow";
 import { type Cfg, CODE, L, P, _commitPush, _pull, hostName, journal, locked, HOME_DIR } from "./core";
 import { updateChannel } from "./channels";
-import { writeHubToml } from "./sync";
+import { hubDialUrl, writeHubToml } from "./sync";
 import { ensureWebClient } from "./webclient";
 import { type Event, MEDIA, appendEvent, applyOp, handleOwnerMessage, saveSettings, setMirror, settingsView, status, cancelTask, updateFleet } from "./server";
 
-const base = (cfg: Cfg) => String(cfg.cloud?.url ?? "").replace(/\/$/, "");
+const base = (cfg: Cfg) => hubDialUrl(cfg.cloud?.url);
 const headers = (cfg: Cfg) => ({ Authorization: `Bearer ${cfg.server?.token}`, "Content-Type": "application/json" });
 
 async function call(cfg: Cfg, path: string, init: RequestInit = {}, timeoutMs = 15_000) {

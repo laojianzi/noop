@@ -1,20 +1,25 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
-import { Database } from "bun:sqlite";
+import { closeSync, existsSync, fsyncSync, mkdirSync, openSync, readFileSync, writeFileSync } from "node:fs";
+import { isIP } from "node:net";
+import { dirname, join } from "node:path";
+import { dlopen } from "bun:ffi";
 import { type Cfg, CODE, HOME_DIR } from "./core";
 import { allowIps } from "./cloud";
-import { readHubToml, writeHubToml } from "./sync";
+import { hubTomlPath, writeHubToml } from "./sync";
 
 const WORKERD_DATE = "2026-11-10";
 // SHA-256 of the binary in the verified @cloudflare/workerd-linux-64 1.20261110.1 package.
 const WORKERD_LINUX_X64_SHA256 = "620d9f7e5eb461067e08af17316aaa087445b4232e0e98e3dd146763bd9ab394";
 
 export async function localCoordinator(cfg: Cfg, listen = "127.0.0.1:8790") {
-  const match = listen.match(/^(127\.0\.0\.1|localhost|\[::1\]):(\d{1,5})$/);
-  if (!match || Number(match[2]) < 1 || Number(match[2]) > 65535)
-    throw new Error("The local coordinator candidate only accepts a loopback address and port");
+  const match = listen.match(/^(\[[^\]]+\]|[^:]+):(\d{1,5})$/);
+  const host = match?.[1]?.replace(/^\[|\]$/g, "") ?? "";
+  const ip = isIP(host);
+  if (!match || (host !== "localhost" && !ip) || (match[1].startsWith("[") && ip !== 6) || Number(match[2]) < 1 || Number(match[2]) > 65535)
+    throw new Error("Use an IP address or localhost and a valid port for the coordinator listener");
   if (allowIps(cfg)) throw new Error("IP allow-lists need a trusted local ingress; do not deploy this candidate yet");
-  const prior = readHubToml();
+  let prior: Record<string, any>;
+  try { prior = existsSync(hubTomlPath()) ? Bun.TOML.parse(readFileSync(hubTomlPath(), "utf8")) : {}; }
+  catch { throw new Error("The local bootstrap configuration is invalid or unreadable; restore it from backup"); }
   if (prior.cloud?.url && prior.cloud?.mode !== "local")
     throw new Error("This Noop home already uses another coordination service; use a separate Noop home");
   const workerd = Bun.which("workerd");
@@ -28,18 +33,27 @@ export async function localCoordinator(cfg: Cfg, listen = "127.0.0.1:8790") {
 
   const root = join(HOME_DIR, "coordinator"), bundle = join(root, "bundle"), storage = join(root, "storage");
   mkdirSync(root, { recursive: true, mode: 0o700 });
-  using lock = new Database(join(root, "active.sqlite"), { create: true });
-  try { lock.exec("BEGIN IMMEDIATE"); }
-  catch (error) {
-    if ((error as { code?: string }).code === "SQLITE_BUSY") throw new Error("A local coordinator is already running for this Noop home");
-    throw error;
-  }
+  const lockFd = openSync(join(root, "active.lock"), "a", 0o600);
+  const libc = dlopen("libc.so.6", { flock: { args: ["int", "int"], returns: "int" } });
+  using lock = { [Symbol.dispose]() { closeSync(lockFd); libc.close(); } };
+  if (libc.symbols.flock(lockFd, 2 | 4) !== 0) throw new Error("Cannot lock coordinator data; another local coordinator may be running"); // LOCK_EX | LOCK_NB
   mkdirSync(bundle, { recursive: true, mode: 0o700 });
   mkdirSync(storage, { recursive: true, mode: 0o700 });
   const keyFile = join(root, "namespace-key");
-  if (!existsSync(keyFile)) writeFileSync(keyFile, crypto.randomUUID(), { mode: 0o600 });
+  const existingKey = existsSync(keyFile);
+  if (!existingKey) writeFileSync(keyFile, crypto.randomUUID(), { mode: 0o600 });
   const namespace = readFileSync(keyFile, "utf8").trim();
-  if (!namespace) throw new Error("The coordinator namespace key is empty");
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(namespace))
+    throw new Error("The coordinator namespace key is invalid; restore it from backup");
+  if (existingKey && !prior.server?.token && !cfg.server?.token)
+    throw new Error("The coordinator machine token is missing; restore it from backup");
+  const persist = (path: string) => {
+    for (const p of [path, dirname(path)]) {
+      const fd = openSync(p, "r");
+      try { fsyncSync(fd); } finally { closeSync(fd); }
+    }
+  };
+  persist(keyFile);
   const built = await Bun.build({ entrypoints: [join(CODE, "cloud", "src", "index.ts"), join(CODE, "cloud", "src", "local-assets.ts")],
     outdir: bundle, target: "browser", external: ["cloudflare:*"] });
   if (!built.success) throw new Error(`Could not build the coordinator: ${built.logs.map(String).join("\n")}`);
@@ -76,7 +90,8 @@ const config :Workerd.Config = (
   const email = cfg.email ?? {};
   const smtp = email.to && email.host ? JSON.stringify({ host: email.host, port: email.port ?? 465,
     secure: email.secure ?? (email.port ?? 465) === 465, user: email.user, pass: email.pass, from: email.from ?? email.user }) : "";
-  const child = Bun.spawn([workerd, "serve", configFile], { stdout: "inherit", stderr: "inherit", env: {
+  // The runtime keeps the lock if this launcher is killed.
+  const child = Bun.spawn([workerd, "serve", configFile], { stdio: ["ignore", "inherit", "inherit", lockFd], env: {
     ...process.env, NOOP_LOCAL_TOKEN: token, NOOP_LOCAL_OWNER_EMAIL: String(email.to ?? ""),
     NOOP_LOCAL_SMTP: smtp, NOOP_LOCAL_LANG: String(cfg.owner?.language ?? ""),
   } });
@@ -85,7 +100,8 @@ const config :Workerd.Config = (
   const stop = () => child.kill("SIGINT"); // workerd's SIGTERM waits for open WebSockets.
   process.once("SIGINT", stop);
   process.once("SIGTERM", stop);
-  const url = `http://${listen}`;
+  const dialHost = host === "0.0.0.0" ? "127.0.0.1" : host === "::" ? "[::1]" : match[1];
+  const url = `http://${dialHost}:${match[2]}`;
   try {
     let ready = false;
     for (let i = 0; i < 100 && !exited; i++) {
@@ -97,6 +113,7 @@ const config :Workerd.Config = (
     }
     if (!ready) throw new Error("The local coordinator did not start");
     writeHubToml({ cloud: { url, mode: "local" }, server: { token } });
+    persist(hubTomlPath());
     console.log(`Local coordinator candidate: ${url}`);
     const result = await child.exited;
     if (result !== 0 && result !== 130 && result !== 143) process.exitCode = result;
