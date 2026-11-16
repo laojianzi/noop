@@ -24,9 +24,14 @@ jobs:
           test -e /dev/kvm && sudo chmod o+rw /dev/kvm
           yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses >/dev/null || true
           "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platform-tools" "system-images;android-35;google_apis;x86_64"
-          echo no | "$ANDROID_HOME/cmdline-tools/latest/bin/avdmanager" create avd --force --name noop-test --package "system-images;android-35;google_apis;x86_64" --device pixel_2
+          export ANDROID_AVD_HOME="$RUNNER_TEMP/avd"
+          mkdir -p "$ANDROID_AVD_HOME"
+          echo no | "$ANDROID_HOME/cmdline-tools/latest/bin/avdmanager" create avd --force --name noop-test --path "$ANDROID_AVD_HOME/noop-test.avd" --package "system-images;android-35;google_apis;x86_64" --device pixel_2
+          test -f "$ANDROID_AVD_HOME/noop-test.avd/config.ini"
+          printf "avd.ini.encoding=UTF-8\npath=%s/noop-test.avd\ntarget=android-35\n" "$ANDROID_AVD_HOME" > "$ANDROID_AVD_HOME/noop-test.ini"
       - name: Launch Android app on emulator
         run: |
+          export ANDROID_AVD_HOME="$RUNNER_TEMP/avd"
           export PATH="$ANDROID_HOME/platform-tools:$PATH"
           "$ANDROID_HOME/emulator/emulator" -avd noop-test -no-window -no-audio -no-boot-anim -no-snapshot -gpu swiftshader_indirect -accel on > "$RUNNER_TEMP/emulator.log" 2>&1 &
           timeout 150s adb wait-for-device || { cat "$RUNNER_TEMP/emulator.log"; exit 1; }
