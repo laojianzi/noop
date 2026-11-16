@@ -5,7 +5,8 @@ runtime="$(realpath "${1:?usage: check-linux-runtime.sh <Linux executable>}")"
 root="$(cd "$(dirname "$0")/.." && pwd)"
 work="$(mktemp -d "${TMPDIR:?set TMPDIR outside /tmp and any checkout}/noop-linux-runtime.XXXXXX")"
 server_pid=''
-trap 'if [[ -n "$server_pid" ]]; then kill "$server_pid" 2>/dev/null || true; fi; (cd "$work" && rm -rf -- ./*); rmdir "$work"' EXIT
+runner_pid=''
+trap 'if [[ -n "$runner_pid" ]]; then kill -TERM -- "-$runner_pid" 2>/dev/null || true; wait "$runner_pid" 2>/dev/null || true; fi; if [[ -n "$server_pid" ]]; then kill "$server_pid" 2>/dev/null || true; fi; (cd "$work" && rm -rf -- ./*); rmdir "$work"' EXIT
 mkdir -p "$work/nsh" "$work/source"
 python3 - "$work/port" > "$work/server.log" 2>&1 <<'PY' &
 import base64, hashlib, http.server, socketserver, sys
@@ -37,17 +38,20 @@ sed "s/__NOOP_PORT__/$port/g" "$root/scripts/fixtures/linux-runtime/App.tsx" > "
 "${NSH:-nsh}" build "$work/source/App.tsx" -o "$work/nsh"
 printf '%s\n' '{"name":"Noop runtime check","id":"dev.noop.runtime-check"}' > "$work/nsh/app.json"
 cp "$runtime" "$work/runner"
-code=0
 if [[ -n "${WAYLAND_DISPLAY:-}${DISPLAY:-}" ]]; then
-  timeout 30s "$work/runner" > "$work/log" 2>&1 || code=$?
+  setsid "$work/runner" > "$work/log" 2>&1 &
 else
-  xvfb-run -a timeout 30s "$work/runner" > "$work/log" 2>&1 || code=$?
+  setsid xvfb-run -a "$work/runner" > "$work/log" 2>&1 &
 fi
+runner_pid=$!
+for _ in {1..300}; do
+  if grep -qE 'NOOP_LINUX_RUNTIME_(WS_OK|WS_FAILED|NETWORK_FAILED)' "$work/log" || ! kill -0 "$runner_pid" 2>/dev/null; then break; fi
+  sleep 0.1
+done
+kill -TERM -- "-$runner_pid" 2>/dev/null || true
+wait "$runner_pid" 2>/dev/null || true
+runner_pid=''
 cat "$work/log"
-printf "runtime exit code: %s\n" "$code"
-if [[ "$code" != 0 && "$code" != 124 ]]; then
-  exit "$code"
-fi
 grep -q 'INFO js: NOOP_LINUX_RUNTIME_OK' "$work/log"
 grep -q 'INFO js: NOOP_LINUX_RUNTIME_HTTP_OK' "$work/log"
 grep -q 'INFO js: NOOP_LINUX_RUNTIME_WS_OK' "$work/log"
