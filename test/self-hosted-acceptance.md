@@ -196,6 +196,26 @@ message synchronization and persistence after restart. It saves a screenshot,
 logs, versions, report and checksums in a new temporary directory. Browser
 results do not establish native desktop or mobile device behavior.
 
+## Run Linux native desktop acceptance
+
+Install `xvfb-run`, `xdotool`, ImageMagick (`import`), Tesseract and
+`dbus-run-session`. Unpack the Linux Noop release, keeping the executable next
+to its `nsh` directory. Set the Web and workerd paths described above, then run:
+
+```sh
+NOOP_E2E_WEB_ASSETS=/path/to/web \
+NOOP_E2E_WORKERD=/path/to/workerd \
+NOOP_E2E_DESKTOP=/path/to/Noop/Noop \
+NOOP_E2E_DESKTOP_ARCHIVE=/path/to/Noop.tar.gz \
+  bun test/self-hosted-desktop-e2e.ts
+```
+
+The archive path is optional. The test uses isolated Noop and desktop data. It
+checks CLI-code and TOTP sign-in, sends a message before a primary publishes its
+first status, receives another owner's message over WebSocket, and displays a
+subsequent synthetic status snapshot. It saves screenshots, a report, a
+sanitized request log and checksums in a new temporary directory.
+
 ## Run SMTP acceptance
 
 Install Mailpit, OpenSSL, the Web bundle and the pinned workerd runtime. Set
