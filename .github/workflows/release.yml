@@ -8,6 +8,9 @@ jobs:
       matrix:
         include:
           - { os: ubuntu-24.04, package: linux-64 }
+          - { os: ubuntu-24.04-arm, package: linux-arm64 }
+          - { os: macos-15-intel, package: darwin-64 }
+          - { os: macos-26, package: darwin-arm64 }
     runs-on: ${{ matrix.os }}
     timeout-minutes: 20
     steps:
@@ -26,6 +29,15 @@ jobs:
           (cd "$RUNNER_TEMP" && grep '  noop-web.tar.gz$' sha256sums | shasum -a 256 -c -)
           tar -xzf "$RUNNER_TEMP/noop-web.tar.gz" -C "$RUNNER_TEMP/web"
       - name: Test native coordinator and recovery
+        shell: bash
+        env:
+          NOOP_E2E_WEB_ASSETS: ${{ runner.temp }}/web
+          NOOP_E2E_WEB_VERSION: v0.3.18
+          NOOP_E2E_WORKERD: ${{ runner.temp }}/runtime/package/bin/workerd
+          NOOP_E2E_OUT: ${{ runner.temp }}/evidence
+        run: bun test/self-hosted-backup-e2e.ts
+      - name: Test system service lifecycle
+        if: always()
         shell: bash
         env:
           NOOP_E2E_WEB_ASSETS: ${{ runner.temp }}/web
