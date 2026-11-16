@@ -1,0 +1,17 @@
+{
+  "normal": {
+    "rootStatus": 200,
+    "rootType": "text/html; charset=utf-8",
+    "realApp": true,
+    "scriptStatus": 200,
+    "scriptType": "text/javascript; charset=utf-8"
+  },
+  "direct": {
+    "rootStatus": 200,
+    "rootType": "application/json",
+    "realApp": false,
+    "scriptStatus": 200,
+    "scriptType": "text/javascript; charset=utf-8"
+  },
+  "conclusion": "The raw disk binding returns a directory listing instead of the Web entry page."
+}
