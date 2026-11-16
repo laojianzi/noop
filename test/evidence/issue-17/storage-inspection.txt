@@ -1,0 +1,38 @@
+Namespace key inode after forced VM power loss:
+debugfs 1.47.4 (6-Mar-2025)
+Inode: 18   Type: regular    Mode:  0600   Flags: 0x80000
+Generation: 1002231972    Version: 0x00000000:00000001
+User:     0   Group:     0   Project:     0   Size: 36
+File ACL: 0
+Links: 1   Blockcount: 0
+Fragment:  Address: 0    Number: 0    Size: 0
+ ctime: 0x6afadfc6:018e37c8 -- Mon Nov 16 18:49:42 2026
+ atime: 0x6afadfc6:018e37c8 -- Mon Nov 16 18:49:42 2026
+ mtime: 0x6afadfc6:018e37c8 -- Mon Nov 16 18:49:42 2026
+crtime: 0x6afadfc6:018e37c8 -- Mon Nov 16 18:49:42 2026
+Size of extra inode fields: 32
+Inode checksum: 0xa74959e3
+
+Namespace key first bytes:
+ 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00
+*
+ 00 00 00 00
+
+Bootstrap inode after forced VM power loss:
+debugfs 1.47.4 (6-Mar-2025)
+Inode: 13   Type: regular    Mode:  0600   Flags: 0x80000
+Generation: 4211993332    Version: 0x00000000:00000003
+User:     0   Group:     0   Project:     0   Size: 193
+File ACL: 0
+Links: 1   Blockcount: 0
+Fragment:  Address: 0    Number: 0    Size: 0
+ ctime: 0x6afadfc6:7b432d00 -- Mon Nov 16 18:49:42 2026
+ atime: 0x6afadfc5:8a856d00 -- Mon Nov 16 18:49:41 2026
+ mtime: 0x6afadfc6:7b432d00 -- Mon Nov 16 18:49:42 2026
+crtime: 0x6afadfc5:822d3200 -- Mon Nov 16 18:49:41 2026
+Size of extra inode fields: 32
+Inode checksum: 0xad21a39d
+
+Bootstrap first bytes:
+ 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00
+*

@@ -1,0 +1,21 @@
+cSeaBIOS (version 1.17.0-debian-1.17.0-1)
+
+
+iPXE (https://ipxe.org) 00:02.0 CA00 PCI2.10 PnP PMM+3EFC7810+3EB87810 CA00
+Press Ctrl-B to configure iPXE (PCI 00:02.0)...
+
+
+
+Booting from ROM...
+Probing EDD (edd=off to disable)... ocLocal coordinator candidate: http://127.0.0.1:8790
+cSeaBIOS (version 1.17.0-debian-1.17.0-1)
+
+
+iPXE (https://ipxe.org) 00:02.0 CA00 PCI2.10 PnP PMM+3EFC7810+3EB87810 CA00
+Press Ctrl-B to configure iPXE (PCI 00:02.0)...
+
+
+
+Booting from ROM...
+Probing EDD (edd=off to disable)... ocLocal coordinator candidate: http://127.0.0.1:8790
+qemu-system-x86_64: terminating on signal 15

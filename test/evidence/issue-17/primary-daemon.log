@@ -1,0 +1,2 @@
+hub daemon on primary caps=os:linux,host:primary,arch:x64,cli:bun,cli:node tick=1s parallel≤cores/3
+cloud bridge → http://coordinator:8790
