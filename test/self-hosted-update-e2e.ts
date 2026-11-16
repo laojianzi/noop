@@ -8,7 +8,7 @@ import { join, resolve } from "node:path";
 
 const source = resolve(import.meta.dir, ".."), out = mkdtempSync(join(process.env.NOOP_E2E_OUT || tmpdir(), "noop-update-e2e-"));
 const repo = join(out, "repo"), home = join(out, "home"), bin = join(out, "bin"), log = join(out, "update.log");
-const assets = process.env.NOOP_E2E_WEB_ASSETS || "", workerd = process.env.NOOP_E2E_WORKERD || "", token = "synthetic-update-machine-token-000";
+const assets = process.env.NOOP_E2E_WEB_ASSETS || "", workerd = process.env.NOOP_E2E_WORKERD || "", nextWorkerd = process.env.NOOP_E2E_NEXT_WORKERD || "", token = "synthetic-update-machine-token-000";
 const unit = process.platform === "linux" ? join(homedir(), ".config", "systemd", "user", "noop-coordinator.service") : join(homedir(), "Library", "LaunchAgents", "dev.noop.coordinator.plist");
 const checks: string[] = [];
 let error = "", installed = false;
@@ -79,15 +79,35 @@ try {
     const needle = 'statusView() { return { ...(this.get("status") ?? {}), hub:';
     check(original.includes(needle), "the candidate fixture matches the real status path");
     writeFileSync(worker, original.replace(needle, 'statusView() { return { release_marker: "candidate-v2", ...(this.get("status") ?? {}), hub:'));
-    const applied = update(candidate);
+    let nextVersion = "";
+    const initialVersion = spawnSync(workerd, ["--version"], { encoding: "utf8" }).stdout.trim().replace(/^workerd /, "");
+    if (nextWorkerd) {
+      check(existsSync(nextWorkerd), "a second workerd release is supplied");
+      nextVersion = spawnSync(nextWorkerd, ["--version"], { encoding: "utf8" }).stdout.trim().replace(/^workerd /, "");
+      const digest = (p: string) => createHash("sha256").update(readFileSync(p)).digest("hex");
+      const launch = join(candidate, "src", "local-coordinator.ts"), code = readFileSync(launch, "utf8");
+      check(!!nextVersion && nextVersion !== initialVersion && code.includes(initialVersion) && code.includes(digest(workerd)), "the candidate pins a different runtime and matching checksum");
+      writeFileSync(launch, code.replace(initialVersion, nextVersion).replace(digest(workerd), digest(nextWorkerd)));
+    }
+    const applied = update(candidate, nextWorkerd || workerd);
     check(applied.status === 0, `explicit candidate update succeeds: ${applied.out.slice(-1000)}`);
     await waitFor(async () => (await status())?.release_marker === "candidate-v2", "new coordinator release did not become active");
+    if (nextVersion) {
+      const versionFile = join(home, "coordinator", "runtime-version");
+      await waitFor(() => readFileSync(versionFile, "utf8").trim() === nextVersion, "new runtime version was not recorded");
+      check(true, `the updated service runs workerd ${nextVersion}`);
+    }
     check((await read()).some((item) => item.path === "reports/before-update.md"), "the candidate starts with the previous data");
     check(/backup/i.test(applied.out), "the update reports its pre-update backup");
     check((await commit("reports/after-update.md", "new write")).ok, "a host writes new data after the successful update");
     const rolledBack = cli(["cloud", "service", "rollback"]);
     check(rolledBack.status === 0, `explicit rollback completes: ${rolledBack.out.slice(-1000)}`);
     await waitFor(async () => { const s = await status(); return !!s && !s.release_marker; }, "the previous coordinator release did not return");
+    if (nextVersion) {
+      const versionFile = join(home, "coordinator", "runtime-version");
+      await waitFor(() => readFileSync(versionFile, "utf8").trim() === initialVersion, "previous runtime version was not restored");
+      check(true, `rollback returns to workerd ${initialVersion}`);
+    }
     const files = await read();
     check(files.some((item) => item.path === "reports/before-update.md") && files.some((item) => item.path === "reports/after-update.md" && Buffer.from(item.content, "base64").toString() === "new write"),
       "rollback keeps the write made after the successful update");
@@ -108,7 +128,7 @@ try {
   const hash = (p: string) => existsSync(p) ? createHash("sha256").update(readFileSync(p)).digest("hex") : null;
   const report = { status: error ? "failed" : "passed", source, revision: spawnSync("git", ["rev-parse", "HEAD"], { cwd: source, encoding: "utf8" }).stdout.trim(),
     changes: spawnSync("git", ["status", "--short"], { cwd: source, encoding: "utf8" }).stdout.trim(), platform: `${process.platform}-${process.arch}`,
-    timestamp: new Date().toISOString(), bun: Bun.version, noSpaceFixture: process.env.NOOP_E2E_EXPECT_NO_SPACE === "1", workerdSha256: hash(workerd), webIndexSha256: hash(join(assets, "index.html")), checks, error };
+    timestamp: new Date().toISOString(), bun: Bun.version, noSpaceFixture: process.env.NOOP_E2E_EXPECT_NO_SPACE === "1", workerdSha256: hash(workerd), nextWorkerdSha256: nextWorkerd ? hash(nextWorkerd) : null, webIndexSha256: hash(join(assets, "index.html")), checks, error };
   writeFileSync(join(out, "report.json"), `${JSON.stringify(report, null, 2)}\n`);
   const files = readdirSync(out, { withFileTypes: true }).filter((f) => f.isFile() && f.name !== "SHA256SUMS").map((f) => f.name);
   writeFileSync(join(out, "SHA256SUMS"), files.map((f) => `${hash(join(out, f))}  ${f}`).join("\n") + "\n");
