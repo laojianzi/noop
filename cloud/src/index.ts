@@ -52,6 +52,8 @@ interface Env {
   HUB_MOVED_TO?: string;    // the hub moved to another Worker (e.g. another account): forward every request there
   HUB_LANG?: string;        // [owner] language: "en" gives English text, otherwise Simplified Chinese
   HUB_ALLOW_IPS?: string;   // optional source-IP allow-list (IPs / CIDRs, comma or space separated); set → everyone else gets 403
+  HUB_LOCAL_MODE?: string;  // native workerd supplies connection metadata instead of Cloudflare headers
+  HUB_TRUSTED_PROXIES?: string;
 }
 
 const json = (d: unknown, status = 200) => Response.json(d, { status });
@@ -89,7 +91,17 @@ export default {
     if (env.HUB_ALLOW_IPS?.trim()) {
       const { nets, bad } = parseAllowList(env.HUB_ALLOW_IPS);
       if (bad.length) console.error(`HUB_ALLOW_IPS: ignored ${bad.join(" ")}`);
-      const ip = req.headers.get("cf-connecting-ip") ?? "";
+      let ip = req.headers.get("cf-connecting-ip") ?? "";
+      if (env.HUB_LOCAL_MODE) {
+        const endpoint = String((req as Request & { cf?: { clientIp?: string } }).cf?.clientIp ?? "");
+        ip = endpoint.match(/^\[([^\]]+)\]:\d+$/)?.[1] ?? endpoint.match(/^([^:]+):\d+$/)?.[1] ?? "";
+        const proxies = parseAllowList(env.HUB_TRUSTED_PROXIES).nets;
+        if (ipAllowed(ip, proxies)) {
+          ip = "";
+          const hops = (req.headers.get("x-forwarded-for") ?? "").split(",").map((s) => s.trim()).filter(Boolean);
+          for (let i = hops.length - 1; i >= 0; i--) if (!ipAllowed(hops[i], proxies)) { ip = hops[i]; break; }
+        }
+      }
       if (!ipAllowed(ip, nets)) return ipBlocked(req, ip);
     }
     if (env.HUB_MOVED_TO) return fetch(new Request(env.HUB_MOVED_TO.replace(/\/$/, "") + url.pathname + url.search, req));

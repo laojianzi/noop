@@ -48,7 +48,9 @@ function parseIp(s: string): { v: 4 | 6; n: bigint } | null {
 export function parseAllowList(raw: string | undefined): { nets: Net[]; bad: string[] } {
   const nets: Net[] = [], bad: string[] = [];
   for (const e of (raw ?? "").split(/[\s,]+/).filter(Boolean)) {
-    const [ip, len] = e.split("/");
+    const parts = e.split("/");
+    if (parts.length > 2) { bad.push(e); continue; }
+    const [ip, len] = parts;
     const p = parseIp(ip);
     const max = p?.v === 4 ? 32 : 128;
     const bits = len === undefined ? max : /^\d{1,3}$/.test(len) ? Number(len) : -1;

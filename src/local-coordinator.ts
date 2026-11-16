@@ -1,9 +1,10 @@
-import { closeSync, existsSync, fsyncSync, mkdirSync, openSync, readFileSync, writeFileSync } from "node:fs";
+import { closeSync, existsSync, fsyncSync, mkdirSync, openSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
 import { isIP } from "node:net";
 import { dirname, join } from "node:path";
 import { dlopen } from "bun:ffi";
 import { type Cfg, CODE, HOME_DIR } from "./core";
 import { allowIps } from "./cloud";
+import { parseAllowList } from "../cloud/src/ipallow";
 import { hubTomlPath, writeHubToml } from "./sync";
 
 const WORKERD_DATE = "2026-11-10";
@@ -16,7 +17,12 @@ export async function localCoordinator(cfg: Cfg, listen = "127.0.0.1:8790") {
   const ip = isIP(host);
   if (!match || (host !== "localhost" && !ip) || (match[1].startsWith("[") && ip !== 6) || Number(match[2]) < 1 || Number(match[2]) > 65535)
     throw new Error("Use an IP address or localhost and a valid port for the coordinator listener");
-  if (allowIps(cfg)) throw new Error("IP allow-lists need a trusted local ingress; do not deploy this candidate yet");
+  const allowed = allowIps(cfg) ?? "";
+  const configuredProxies = cfg.cloud?.trusted_proxies;
+  const proxies = (Array.isArray(configuredProxies) ? configuredProxies.map(String) : String(configuredProxies ?? "").split(/[\s,]+/)).filter(Boolean).join(",");
+  const badAllowed = parseAllowList(allowed).bad, badProxies = parseAllowList(proxies).bad;
+  if (badAllowed.length) throw new Error(`invalid IP allow-list: ${badAllowed.join(", ")}`);
+  if (badProxies.length) throw new Error(`invalid trusted proxy: ${badProxies.join(", ")}`);
   let prior: Record<string, any>;
   try { prior = existsSync(hubTomlPath()) ? Bun.TOML.parse(readFileSync(hubTomlPath(), "utf8")) : {}; }
   catch { throw new Error("The local bootstrap configuration is invalid or unreadable; restore it from backup"); }
@@ -54,7 +60,7 @@ export async function localCoordinator(cfg: Cfg, listen = "127.0.0.1:8790") {
     }
   };
   persist(keyFile);
-  const built = await Bun.build({ entrypoints: [join(CODE, "cloud", "src", "index.ts"), join(CODE, "cloud", "src", "local-assets.ts")],
+  const built = await Bun.build({ entrypoints: [join(CODE, "cloud", "src", "index.ts"), join(CODE, "cloud", "src", "local-assets.ts"), join(CODE, "cloud", "src", "local-health.ts")],
     outdir: bundle, target: "browser", external: ["cloudflare:*"] });
   if (!built.success) throw new Error(`Could not build the coordinator: ${built.logs.map(String).join("\n")}`);
 
@@ -72,6 +78,9 @@ const config :Workerd.Config = (
         (name = "HUB_OWNER_EMAIL", fromEnvironment = "NOOP_LOCAL_OWNER_EMAIL"),
         (name = "HUB_SMTP", fromEnvironment = "NOOP_LOCAL_SMTP"),
         (name = "HUB_LANG", fromEnvironment = "NOOP_LOCAL_LANG"),
+        (name = "HUB_LOCAL_MODE", fromEnvironment = "NOOP_LOCAL_MODE"),
+        (name = "HUB_ALLOW_IPS", fromEnvironment = "NOOP_LOCAL_ALLOW_IPS"),
+        (name = "HUB_TRUSTED_PROXIES", fromEnvironment = "NOOP_LOCAL_TRUSTED_PROXIES"),
         (name = "ASSETS", service = "assets")]
     )),
     (name = "storage", disk = (path = ${q(storage)}, writable = true)),
@@ -79,9 +88,14 @@ const config :Workerd.Config = (
       modules = [(name = "local-assets.js", esModule = embed "bundle/local-assets.js")],
       compatibilityDate = "2026-10-01", bindings = [(name = "FILES", service = "web")]
     )),
+    (name = "health", worker = (
+      modules = [(name = "local-health.js", esModule = embed "bundle/local-health.js")],
+      compatibilityDate = "2026-10-01", bindings = [(name = "HUB", durableObjectNamespace = (className = "Hub", serviceName = "main"))]
+    )),
     (name = "web", disk = (path = ${q(assets)}))
   ],
-  sockets = [(name = "http", address = ${q(listen)}, http = (), service = "main")]
+  sockets = [(name = "http", address = ${q(listen)}, http = (), service = "main"),
+    (name = "health", address = ${q(`unix:${join(root, "health.sock")}`)}, http = (), service = "health")]
 );
 `;
   const configFile = join(root, "workerd.capnp");
@@ -90,10 +104,13 @@ const config :Workerd.Config = (
   const email = cfg.email ?? {};
   const smtp = email.to && email.host ? JSON.stringify({ host: email.host, port: email.port ?? 465,
     secure: email.secure ?? (email.port ?? 465) === 465, user: email.user, pass: email.pass, from: email.from ?? email.user }) : "";
+  const healthSocket = join(root, "health.sock");
+  if (existsSync(healthSocket)) unlinkSync(healthSocket);
   // The runtime keeps the lock if this launcher is killed.
   const child = Bun.spawn([workerd, "serve", configFile], { stdio: ["ignore", "inherit", "inherit", lockFd], env: {
     ...process.env, NOOP_LOCAL_TOKEN: token, NOOP_LOCAL_OWNER_EMAIL: String(email.to ?? ""),
-    NOOP_LOCAL_SMTP: smtp, NOOP_LOCAL_LANG: String(cfg.owner?.language ?? ""),
+    NOOP_LOCAL_SMTP: smtp, NOOP_LOCAL_LANG: String(cfg.owner?.language ?? ""), NOOP_LOCAL_MODE: "1",
+    NOOP_LOCAL_ALLOW_IPS: allowed, NOOP_LOCAL_TRUSTED_PROXIES: proxies,
   } });
   let exited = false;
   void child.exited.then(() => { exited = true; });
@@ -106,7 +123,7 @@ const config :Workerd.Config = (
     let ready = false;
     for (let i = 0; i < 100 && !exited; i++) {
       try {
-        const response = await fetch(`${url}/api/status`, { headers: { Authorization: `Bearer ${token}` }, signal: AbortSignal.timeout(500) });
+        const response = await fetch("http://localhost/api/status", { unix: healthSocket, headers: { Authorization: `Bearer ${token}` }, signal: AbortSignal.timeout(500) });
         if (response.ok) { ready = true; break; }
       } catch {}
       await Bun.sleep(100);
