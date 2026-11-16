@@ -80,12 +80,15 @@ try {
   });
   await new Promise<void>((ok) => proxy!.listen(proxyPort, "127.0.0.1", ok));
   const displayFile = join(out, "display"), appFd = openSync(join(out, "desktop.log"), "a");
-  app = spawn("dbus-run-session", ["--", "xvfb-run", "-a", "-s", "-screen 0 1280x800x24", "sh", "-c", 'printf "%s\\n" "$DISPLAY" > "$NOOP_E2E_DISPLAY"; exec "$NOOP_E2E_DESKTOP"'],
+  app = spawn("dbus-run-session", ["--", "xvfb-run", "-a", "-e", join(out, "xvfb.log"), "-s", "-screen 0 1280x800x24", "sh", "-c", 'printf "%s\\n" "$DISPLAY" > "$NOOP_E2E_DISPLAY"; exec "$NOOP_E2E_DESKTOP"'],
     { cwd: out, env: { ...env, GDK_BACKEND: "x11", NOOP_E2E_DISPLAY: displayFile, NOOP_E2E_DESKTOP: resolve(desktop) }, detached: true, stdio: ["ignore", appFd, appFd] }); closeSync(appFd);
   await waitFor(() => existsSync(displayFile) && !!readFileSync(displayFile, "utf8").trim(), "desktop display did not start");
   const display = readFileSync(displayFile, "utf8").trim(), guiEnv = { ...env, DISPLAY: display };
   let window = "";
-  await waitFor(() => { const r = spawnSync("xdotool", ["search", "--onlyvisible", "--name", "Noop"], { env: guiEnv, encoding: "utf8" }); window = r.stdout?.trim().split("\n")[0] || ""; return !!window; }, "desktop window did not open");
+  await waitFor(() => {
+    if (app!.exitCode !== null || app!.signalCode !== null) throw new Error("desktop exited before opening a window; see desktop.log and xvfb.log");
+    const r = spawnSync("xdotool", ["search", "--onlyvisible", "--name", "Noop"], { env: guiEnv, encoding: "utf8" }); window = r.stdout?.trim().split("\n")[0] || ""; return !!window;
+  }, "desktop window did not open");
   const gui = (...args: string[]) => { const r = spawnSync("xdotool", args, { env: guiEnv, timeout: 10_000 }); if (r.status !== 0) throw new Error(`desktop input failed: ${args[0]}`); };
   const click = (x: number, y: number) => gui("mousemove", "--window", window, String(x), String(y), "click", "1");
   await Bun.sleep(1000); click(125, 410); gui("type", "--clearmodifiers", "desktop@example.com"); click(125, 495); gui("type", "--clearmodifiers", clientBase); click(180, 598);
