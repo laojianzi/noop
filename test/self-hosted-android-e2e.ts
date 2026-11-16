@@ -10,7 +10,7 @@ import { join, resolve } from "node:path";
 const source = resolve(import.meta.dir, ".."), out = mkdtempSync(join(process.env.NOOP_E2E_OUT || tmpdir(), "noop-android-e2e-"));
 const repo = join(out, "repo"), home = join(out, "home"), bin = join(out, "bin");
 const assets = process.env.NOOP_E2E_WEB_ASSETS || "", workerd = process.env.NOOP_E2E_WORKERD || "", apk = process.env.NOOP_E2E_ANDROID_APK || "";
-const serial = process.env.ANDROID_SERIAL || "", checks: string[] = [], requests: string[] = [], sockets: Socket[] = [];
+const serial = process.env.ANDROID_SERIAL || "", checks: string[] = [], requests: string[] = [], sockets: Socket[] = [], emulatorEvents: string[] = [];
 let service: ChildProcess | undefined, proxy: HttpServer | undefined, error = "", incoming = "", proxyPort = 0, emulatorReady = false;
 function check(ok: unknown, message: string): asserts ok { if (!ok) throw new Error(message); checks.push(message); console.log(`PASS ${message}`); }
 function totp(secret: string, counter: number) {
@@ -34,7 +34,19 @@ const adb = (...args: string[]) => {
   if (r.status !== 0) throw new Error(`adb ${args.slice(0, 2).join(" ")} failed: ${r.stderr || r.stdout}`);
   return r.stdout;
 };
-const ui = () => { adb("shell", "uiautomator", "dump", "/sdcard/noop-e2e.xml"); return adb("exec-out", "cat", "/sdcard/noop-e2e.xml"); };
+const ui = () => {
+  adb("shell", "uiautomator", "dump", "/sdcard/noop-e2e.xml");
+  let xml = adb("exec-out", "cat", "/sdcard/noop-e2e.xml");
+  if (xml.includes("Pixel Launcher isn't responding")) {
+    const close = xml.match(/resource-id="android:id\/aerr_close"[^>]*bounds="\[(\d+),(\d+)\]\[(\d+),(\d+)\]"/);
+    if (close) {
+      emulatorEvents.push("dismissed Pixel Launcher not responding dialog");
+      adb("shell", "input", "tap", String(Math.round((+close[1] + +close[3]) / 2)), String(Math.round((+close[2] + +close[4]) / 2)));
+      adb("shell", "uiautomator", "dump", "/sdcard/noop-e2e.xml"); xml = adb("exec-out", "cat", "/sdcard/noop-e2e.xml");
+    }
+  }
+  return xml;
+};
 const tap = (id: string) => {
   const xml = ui(), match = xml.match(new RegExp(`<node\\b[^>]*resource-id="${id}"[^>]*bounds="\\[(\\d+),(\\d+)\\]\\[(\\d+),(\\d+)\\]"`));
   if (!match) throw new Error(`Android control ${id} was not visible`);
@@ -118,7 +130,7 @@ try {
   const hash = (p: string) => existsSync(p) ? createHash("sha256").update(readFileSync(p)).digest("hex") : null;
   const report = { status: error ? "failed" : "passed", source, revision: spawnSync("git", ["rev-parse", "HEAD"], { cwd: source, encoding: "utf8" }).stdout.trim(),
     platform: `${process.platform}-${process.arch}`, timestamp: new Date().toISOString(), bun: Bun.version, apkSha256: hash(apk),
-    workerd: { version: existsSync(workerd) ? spawnSync(workerd, ["--version"], { encoding: "utf8" }).stdout.trim() : "missing", sha256: hash(workerd) }, webIndexSha256: hash(join(assets, "index.html")), checks, error };
+    workerd: { version: existsSync(workerd) ? spawnSync(workerd, ["--version"], { encoding: "utf8" }).stdout.trim() : "missing", sha256: hash(workerd) }, webIndexSha256: hash(join(assets, "index.html")), checks, emulatorEvents, error };
   writeFileSync(join(out, "report.json"), `${JSON.stringify(report, null, 2)}\n`);
   const files = readdirSync(out, { withFileTypes: true }).filter((f) => f.isFile() && f.name !== "SHA256SUMS").map((f) => f.name);
   writeFileSync(join(out, "SHA256SUMS"), files.map((f) => `${hash(join(out, f))}  ${f}`).join("\n") + "\n"); console.log(`Evidence: ${out}`);
