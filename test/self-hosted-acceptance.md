@@ -185,3 +185,13 @@ to return a fixed result. It checks one-time invitations, task isolation,
 permissions, result recovery, acknowledgment and revocation. To test expiry
 without waiting ten minutes, it stops the isolated service and expires one
 synthetic invitation in its temporary database before restarting it.
+
+## Run Web message and attachment acceptance
+
+Set the Web, workerd and Playwright paths described above, then run
+`bun test/self-hosted-messages-e2e.ts`. The test signs two independent Web
+sessions in with CLI codes and TOTP. It selects a real PNG in the browser,
+checks live delivery, access control, image limits, automatic reconnect, missed
+message synchronization and persistence after restart. It saves a screenshot,
+logs, versions, report and checksums in a new temporary directory. Browser
+results do not establish native desktop or mobile device behavior.
