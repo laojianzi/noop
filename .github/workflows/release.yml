@@ -8,9 +8,6 @@ jobs:
       matrix:
         include:
           - { os: ubuntu-24.04, package: linux-64 }
-          - { os: ubuntu-24.04-arm, package: linux-arm64 }
-          - { os: macos-15-intel, package: darwin-64 }
-          - { os: macos-latest, package: darwin-arm64 }
     runs-on: ${{ matrix.os }}
     timeout-minutes: 20
     steps:
@@ -35,7 +32,8 @@ jobs:
           NOOP_E2E_WEB_VERSION: v0.3.18
           NOOP_E2E_WORKERD: ${{ runner.temp }}/runtime/package/bin/workerd
           NOOP_E2E_OUT: ${{ runner.temp }}/evidence
-        run: bun test/self-hosted-backup-e2e.ts
+          NOOP_E2E_DISPOSABLE: "1"
+        run: bun test/self-hosted-service-e2e.ts
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -43,4 +41,5 @@ jobs:
           path: |
             ${{ runner.temp }}/evidence/**/report.json
             ${{ runner.temp }}/evidence/**/coordinator.log
+            ${{ runner.temp }}/evidence/**/service-manager.log
           if-no-files-found: warn
