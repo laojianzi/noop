@@ -77,15 +77,16 @@ try {
   await waitFor(async () => !(await available()), "service remained reachable after stop");
   const stopped = cli(["cloud", "service", "status"]);
   check(stopped.status !== 0 || /inactive|stopped|not running/i.test(stopped.out), "status reports that the service is stopped");
-  unlinkSync(join(bin, "workerd")); writeFileSync(join(bin, "workerd"), '#!/bin/sh\nexit 1\n', { mode: 0o755 });
-  check(cli(["cloud", "service", "start"]).status !== 0, "service start reports a runtime integrity failure");
-  unlinkSync(join(bin, "workerd")); symlinkSync(resolve(workerd), join(bin, "workerd"));
-  check(cli(["cloud", "service", "start"]).status === 0, "native service restarts after the runtime is repaired");
+  const keyFile = join(home, "coordinator", "namespace-key"), namespace = readFileSync(keyFile, "utf8");
+  writeFileSync(keyFile, "invalid namespace");
+  check(cli(["cloud", "service", "start"]).status !== 0, "service start reports an invalid namespace");
+  writeFileSync(keyFile, namespace);
+  check(cli(["cloud", "service", "start"]).status === 0, "native service restarts after the namespace is repaired");
   await waitFor(available, "restarted service is not reachable");
   const feed = await fetch(base + "/api/feed", { headers: { authorization: `Bearer ${session}` } });
   check(feed.ok && existsSync(join(peer, "data", "tasks", "inbox", `${task}.md`)), "owner session and task survive a service restart");
   const logs = cli(["cloud", "service", "logs"]); writeFileSync(join(out, "service-manager.log"), logs.out);
-  check(logs.status === 0 && /Local coordinator candidate|checksum does not match/i.test(logs.out), "service logs show startup and runtime errors");
+  check(logs.status === 0 && /Local coordinator candidate|namespace key is invalid/i.test(logs.out), "service logs show startup and configuration errors");
   check(cli(["cloud", "service", "stop"]).status === 0, "service can be stopped after verification");
   await waitFor(async () => !(await available()), "service remained reachable after final stop");
 } catch (e) {

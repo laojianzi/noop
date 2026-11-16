@@ -32,6 +32,7 @@ async function waitFor(fn: () => boolean | Promise<boolean>, message: string, ti
   const end = Date.now() + timeout;
   while (Date.now() < end) {
     if (vm && (vm.exitCode !== null || vm.signalCode !== null)) throw new Error(`VM exited: ${existsSync(serial) ? readFileSync(serial, "utf8").slice(-3000) : "no serial log"}`);
+    if (existsSync(serial) && /^NOOP_VM_PROVISION_FAILED /m.test(readFileSync(serial, "utf8"))) throw new Error(`VM provisioning failed: ${readFileSync(serial, "utf8").slice(-8000)}`);
     if (await fn()) return; await Bun.sleep(500);
   }
   throw new Error(`${message}: ${existsSync(serial) ? readFileSync(serial, "utf8").slice(-3000) : "no serial log"}`);
@@ -62,10 +63,12 @@ try {
   for (const name of ["package.json", "bunfig.toml", "tsconfig.json"]) cpSync(join(source, name), join(stage, "repo", name));
   mkdirSync(join(stage, "repo", "app", "dist", "web"), { recursive: true }); cpSync(assets, join(stage, "repo", "app", "dist", "web", "noop"), { recursive: true });
   mkdirSync(join(stage, "bin"), { recursive: true }); copyFileSync(process.execPath, join(stage, "bin", "bun")); copyFileSync(workerd, join(stage, "bin", "workerd"));
-  const proof = `#!/bin/bash\nfor n in $(seq 1 100); do loginctl show-user nooptest >/dev/null 2>&1 && break; sleep .2; done\nprintf 'NOOP_VM_BOOT %s\\n' "$(cat /proc/sys/kernel/random/boot_id)" > /dev/ttyS0\nloginctl show-user nooptest -p Linger -p Sessions > /dev/ttyS0\n`;
+  const proof = `#!/bin/bash\nTASK_TTY=/dev/ttyS0; [ -e "$TASK_TTY" ] || TASK_TTY=/dev/ttyAMA0\nfor n in $(seq 1 100); do loginctl show-user nooptest >/dev/null 2>&1 && break; sleep .2; done\nprintf 'NOOP_VM_BOOT %s\\n' "$(cat /proc/sys/kernel/random/boot_id)" > "$TASK_TTY"\nloginctl show-user nooptest -p Linger -p Sessions > "$TASK_TTY"\n`;
   const provision = `#!/bin/bash
-exec > /dev/ttyS0 2>&1
+TASK_TTY=/dev/ttyS0; [ -e "$TASK_TTY" ] || TASK_TTY=/dev/ttyAMA0
+exec > "$TASK_TTY" 2>&1
 set -euxo pipefail
+trap 'TASK_RC=$?; echo "NOOP_VM_PROVISION_FAILED line=$LINENO status=$TASK_RC" > "$TASK_TTY"; journalctl --no-pager -n 150 > "$TASK_TTY"; exit "$TASK_RC"' ERR
 mkdir -p /mnt/noop-assets
 mount -L NOOPASSETS /mnt/noop-assets
 cp -a /mnt/noop-assets/repo /opt/noop
