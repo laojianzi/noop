@@ -47,16 +47,20 @@ export async function updateRelease(action: "update" | "rollback", start: () => 
   const operation = crypto.randomUUID(), backup = join(root, "backups", operation), clone = join(root, `.verify-${operation}`);
   const storage = join(root, "storage"), saved = join(root, `.storage-${operation}`), quarantine = join(root, `failed-storage-${operation}`);
   let stopped = false, savedStorage = false, newStorage = false, changedCurrent = false, changedPrevious = false;
+  let alias = "";
   try {
     stop(); stopped = true;
     mkdirSync(dirname(backup), { recursive: true, mode: 0o700 });
     await backupCoordinator(backup);
     await restoreCoordinator(backup, clone, true);
+    alias = mkdtempSync("/tmp/noop-check-");
+    const testHome = join(alias, "home");
+    symlinkSync(clone, testHome, "dir");
     const socket = createServer();
     await new Promise<void>((ok, fail) => socket.once("error", fail).listen(0, "127.0.0.1", ok));
     const port = (socket.address() as { port: number }).port;
     await new Promise<void>((ok) => socket.close(() => ok()));
-    const env: NodeJS.ProcessEnv = { ...process.env, NOOP_HOME: clone, PATH: `${join(selected, "bin")}:${process.env.PATH || ""}` };
+    const env: NodeJS.ProcessEnv = { ...process.env, NOOP_HOME: testHome, PATH: `${join(selected, "bin")}:${process.env.PATH || ""}` };
     delete env.HUB_DATA; delete env.HUB_CONF;
     const child = Bun.spawn([process.execPath, join(selected, "repo", "src", "cli.ts"), "cloud", "deploy", "--local", "--listen", `127.0.0.1:${port}`],
       { cwd: join(selected, "repo"), env, stdout: "ignore", stderr: "pipe" });
@@ -67,7 +71,7 @@ export async function updateRelease(action: "update" | "rollback", start: () => 
       let ready = false;
       for (let i = 0; i < 100 && !exited; i++) {
         try {
-          const response = await fetch("http://localhost/api/status", { unix: join(clone, "coordinator", "health.sock"), headers: { Authorization: `Bearer ${token}` }, signal: AbortSignal.timeout(500) });
+          const response = await fetch("http://localhost/api/status", { unix: join(testHome, "coordinator", "health.sock"), headers: { Authorization: `Bearer ${token}` }, signal: AbortSignal.timeout(500) });
           if (response.ok) { ready = true; break; }
         } catch {}
         await Bun.sleep(200);
@@ -95,6 +99,7 @@ export async function updateRelease(action: "update" | "rollback", start: () => 
     if (action === "update" && !preserved) rmSync(selected, { recursive: true, force: true });
     throw new Error(`Coordinator ${action} failed; the previous service was restored: ${error}.${preserved} Backup: ${backup}`);
   } finally {
+    if (alias) rmSync(alias, { recursive: true, force: true });
     try { if (existsSync(clone)) rmSync(clone, { recursive: true, force: true }); }
     catch { console.error(`Verification data remains at ${clone}`); }
   }
