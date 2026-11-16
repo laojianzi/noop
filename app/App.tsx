@@ -5397,7 +5397,8 @@ async function postJson(url: string, body: unknown): Promise<{ status: number; d
   let r: Response;
   try {
     r = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
-  } catch {
+  } catch (error) {
+    console.error("NOOP_ANDROID_FETCH_DIAGNOSTIC", String(error));
     throw new Error("unreachable");
   }
   let data: Record<string, unknown> = {};

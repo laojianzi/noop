@@ -22,6 +22,8 @@ jobs:
           nsh component add android
           export NSH_RUNTIME="$HOME/.nsh-dist/runtime"
           (cd app && nsh package --target android -o "$RUNNER_TEMP/android-package" --build "$GITHUB_RUN_NUMBER")
+          python3 -c 'import json,pathlib; p=pathlib.Path("app/nsh.json"); d=json.loads(p.read_text()); d.setdefault("android",{})["usesCleartextTraffic"]=True; p.write_text(json.dumps(d,indent=2)+"\n")'
+          (cd app && nsh package --target android -o "$RUNNER_TEMP/android-cleartext-package" --build "$GITHUB_RUN_NUMBER")
           mkdir -p "$RUNNER_TEMP/fixtures" "$RUNNER_TEMP/web" "$RUNNER_TEMP/workerd"
           (cd "$RUNNER_TEMP/fixtures" && gh release download v0.3.18 -R huacnlee/noop -p noop-web.tar.gz -p sha256sums && sha256sum --ignore-missing -c sha256sums)
           tar -xzf "$RUNNER_TEMP/fixtures/noop-web.tar.gz" -C "$RUNNER_TEMP/web"
@@ -50,6 +52,10 @@ jobs:
           export NOOP_E2E_DISPOSABLE_ANDROID=1 NOOP_E2E_ANDROID_APK="$RUNNER_TEMP/android-package/Noop.apk"
           export NOOP_E2E_WEB_ASSETS="$RUNNER_TEMP/web" NOOP_E2E_WORKERD="$RUNNER_TEMP/workerd/package/bin/workerd" NOOP_E2E_OUT="$RUNNER_TEMP/android-evidence"
           trap 'adb logcat -d -t 1000 > "$RUNNER_TEMP/android-logcat.log" || true' EXIT
+          adb logcat -c
+          if bun test/self-hosted-android-e2e.ts; then echo "Unmodified Android network policy passed"; else echo "Unmodified Android network policy failed"; fi
+          adb logcat -d | grep 'NOOP_ANDROID_FETCH_DIAGNOSTIC' > "$RUNNER_TEMP/android-fetch-diagnostic.log" || true
+          export NOOP_E2E_ANDROID_APK="$RUNNER_TEMP/android-cleartext-package/Noop.apk"
           bun test/self-hosted-android-e2e.ts
       - uses: actions/upload-artifact@v4
         if: always()
@@ -64,5 +70,6 @@ jobs:
             ${{ runner.temp }}/android-evidence/**/failed-window.xml
             ${{ runner.temp }}/android-evidence/**/SHA256SUMS
             ${{ runner.temp }}/android-logcat.log
+            ${{ runner.temp }}/android-fetch-diagnostic.log
             ${{ runner.temp }}/emulator.log
           if-no-files-found: warn
