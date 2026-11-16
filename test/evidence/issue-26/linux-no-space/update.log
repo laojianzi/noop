@@ -1,0 +1,44 @@
+$ noop cloud service
+Coordinator service installed and running
+
+$ noop cloud service
+Coordinator service stopped
+
+$ noop cloud service
+Coordinator service started
+
+$ noop cloud service
+ 8 | const root = join(HOME_DIR, "coordinator"), releases = join(root, "releases");
+ 9 | 
+10 | export function stageRelease(source = CODE, runtime = Bun.which("workerd")) {
+11 |   if (!runtime || !existsSync(runtime)) throw new Error("The selected workerd runtime does not exist");
+12 |   for (const path of ["src/cli.ts", "cloud/src/index.ts", "app/dist/web/noop/index.html", "package.json"])
+13 |     if (!existsSync(join(source, path))) throw new Error(`The selected release is missing ${path}`);
+                                                        ^
+error: The selected release is missing src/cli.ts
+      at stageRelease (/home/runner/work/_temp/full/noop-update-e2e-FRET9a/repo/src/local-release.ts:13:52)
+      at updateRelease (/home/runner/work/_temp/full/noop-update-e2e-FRET9a/repo/src/local-release.ts:46:42)
+
+
+$ noop cloud service
+19 |       cpSync(join(source, name), join(repo, name), { recursive: true, filter: (path) => !relative(source, path).split(/[\\/]/).some((part) => part === "node_modules" || part === "dist" || part === ".git") });
+20 |     for (const name of ["package.json", "bunfig.toml", "tsconfig.json"]) copyFileSync(join(source, name), join(repo, name));
+21 |     mkdirSync(join(repo, "app", "dist", "web"), { recursive: true });
+22 |     cpSync(join(source, "app", "dist", "web", "noop"), join(repo, "app", "dist", "web", "noop"), { recursive: true });
+23 |     mkdirSync(join(release, "bin"), { mode: 0o700 });
+24 |     copyFileSync(runtime, join(release, "bin", "workerd")); chmodSync(join(release, "bin", "workerd"), 0o700);
+         ^
+ENOSPC: no space left on device, copyfile '/home/runner/work/_temp/runtime/package/bin/workerd' -> '/home/runner/work/_temp/full/noop-update-e2e-FRET9a/home/coordinator/releases/release-ZM4Xct/bin/workerd'
+    path: "/home/runner/work/_temp/runtime/package/bin/workerd",
+    dest: "/home/runner/work/_temp/full/noop-update-e2e-FRET9a/home/coordinator/releases/release-ZM4Xct/bin/workerd",
+ syscall: "copyfile",
+   errno: -28,
+    code: "ENOSPC"
+
+      at stageRelease (/home/runner/work/_temp/full/noop-update-e2e-FRET9a/repo/src/local-release.ts:24:5)
+      at updateRelease (/home/runner/work/_temp/full/noop-update-e2e-FRET9a/repo/src/local-release.ts:46:42)
+
+
+$ noop cloud service
+Coordinator service stopped
+
