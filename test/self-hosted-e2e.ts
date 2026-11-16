@@ -74,7 +74,8 @@ async function start(env: NodeJS.ProcessEnv, address: string, base: string) {
       throw new Error(`local deployment exited: ${readFileSync(serviceLog, "utf8").slice(-2000)}`);
     try {
       const response = await fetch(`${base}/`);
-      if (response.ok && (await response.text()).includes("nsh")) return;
+      const bootstrap = Bun.TOML.parse(readFileSync(join(String(env.NOOP_HOME), "noop.toml"), "utf8")) as any;
+      if (response.ok && (await response.text()).includes("nsh") && bootstrap.cloud?.mode === "local" && bootstrap.cloud.url === base) return;
     } catch {}
     await Bun.sleep(200);
   }
