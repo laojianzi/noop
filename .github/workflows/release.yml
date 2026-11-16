@@ -23,12 +23,11 @@ jobs:
         run: |
           test -e /dev/kvm && sudo chmod o+rw /dev/kvm
           yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses >/dev/null || true
-          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "system-images;android-35;google_apis;x86_64"
-          export ANDROID_AVD_HOME="$RUNNER_TEMP/avd"
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platform-tools" "system-images;android-35;google_apis;x86_64"
           echo no | "$ANDROID_HOME/cmdline-tools/latest/bin/avdmanager" create avd --force --name noop-test --package "system-images;android-35;google_apis;x86_64" --device pixel_2
       - name: Launch Android app on emulator
         run: |
-          export ANDROID_AVD_HOME="$RUNNER_TEMP/avd"
+          export PATH="$ANDROID_HOME/platform-tools:$PATH"
           "$ANDROID_HOME/emulator/emulator" -avd noop-test -no-window -no-audio -no-boot-anim -no-snapshot -gpu swiftshader_indirect -accel on > "$RUNNER_TEMP/emulator.log" 2>&1 &
           adb wait-for-device
           for i in {1..180}; do [[ "$(adb shell getprop sys.boot_completed | tr -d '\r')" == 1 ]] && break; sleep 2; done
