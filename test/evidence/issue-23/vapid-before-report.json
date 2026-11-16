@@ -1,0 +1,22 @@
+{
+  "status": "failed",
+  "source": "/home/jeff/.codex/worktrees/noop-local-coordinator",
+  "revision": "a057fe6b4ffda0f2c34b516e0f015d43f9b19b4a",
+  "changes": "?? test/self-hosted-push-e2e.ts",
+  "platform": "linux-x64",
+  "timestamp": "2026-11-16T11:59:17.271Z",
+  "bun": "1.4.4",
+  "webVersion": "v0.3.18",
+  "webIndexSha256": "bd9ed72ccec6e59169751686b2383b27699b7b967b8fca5e85e55d33e3a16dfc",
+  "workerd": {
+    "version": "workerd 2026-11-10",
+    "sha256": "620d9f7e5eb461067e08af17316aaa087445b4232e0e98e3dd146763bd9ab394"
+  },
+  "checks": [
+    "Web assets and workerd are supplied",
+    "owner binds TOTP",
+    "owner requests a CLI login code",
+    "owner signs in with CLI code and TOTP"
+  ],
+  "error": "Error: local coordinator provides a VAPID key (HTTP 503)\n    at check (/home/jeff/.codex/worktrees/noop-local-coordinator/test/self-hosted-push-e2e.ts:15:79)\n    at /home/jeff/.codex/worktrees/noop-local-coordinator/test/self-hosted-push-e2e.ts:66:3"
+}
