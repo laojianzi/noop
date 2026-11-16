@@ -1,75 +1,51 @@
-name: Noop cross-platform feature acceptance
+name: Noop native service and release acceptance
 on:
   workflow_dispatch:
 jobs:
-  features:
+  native:
     strategy:
       fail-fast: false
       matrix:
         include:
-          - { os: ubuntu-24.04, package: linux-64, label: linux-x64, mail: linux-amd64, mailsha: 84d7fe375ebef25df26758984dc0d5d5e17d8c0734cb2e77be7873b14ab51716 }
-          - { os: ubuntu-24.04-arm, package: linux-arm64, label: linux-arm64, mail: linux-arm64, mailsha: 3c5f076cb676d6980e47da030861c6d60f1f5614103dea93cccbcdfc43198e12 }
-          - { os: macos-15-intel, package: darwin-64, label: darwin-x64, mail: darwin-amd64, mailsha: d8ca2a9da16c977189f2514a7fc28f8a47fe050bd2b0296a13c815288b5fe39f }
-          - { os: macos-15, package: darwin-arm64, label: darwin-arm64, mail: darwin-arm64, mailsha: 15703838762355d42befeb1c942f3a5cc53bcf1fa3ba6abc216a05dd254a8ac2 }
+          - { os: macos-15-intel, package: darwin-64, label: darwin-x64 }
+          - { os: macos-15, package: darwin-arm64, label: darwin-arm64 }
     runs-on: ${{ matrix.os }}
     timeout-minutes: 25
-    env:
-      NOOP_E2E_WEB_VERSION: v0.3.18
     steps:
       - uses: actions/checkout@v4
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: 1.4.4
-      - name: Prepare verified runtime, Web client and SMTP server
-        id: prepare
+      - name: Prepare pinned runtime and Web bundle
         shell: bash
         run: |
-          mkdir -p "$RUNNER_TEMP/runtime" "$RUNNER_TEMP/web" "$RUNNER_TEMP/mail" "$RUNNER_TEMP/evidence"
-          printf "NOOP_E2E_WEB_ASSETS=%s/web\nNOOP_E2E_WORKERD=%s/runtime/package/bin/workerd\nNOOP_E2E_OUT=%s/evidence\nNOOP_E2E_MAILPIT=%s/mail/mailpit\n" "$RUNNER_TEMP" "$RUNNER_TEMP" "$RUNNER_TEMP" "$RUNNER_TEMP" >> "$GITHUB_ENV"
+          mkdir -p "$RUNNER_TEMP/runtime" "$RUNNER_TEMP/web" "$RUNNER_TEMP/evidence"
           npm pack "@cloudflare/workerd-${{ matrix.package }}@1.20261110.1" --silent --pack-destination "$RUNNER_TEMP/runtime"
           tar -xzf "$RUNNER_TEMP/runtime/"*.tgz -C "$RUNNER_TEMP/runtime"
           curl -fsSL --retry 3 https://github.com/huacnlee/noop/releases/download/v0.3.18/noop-web.tar.gz -o "$RUNNER_TEMP/noop-web.tar.gz"
           curl -fsSL --retry 3 https://github.com/huacnlee/noop/releases/download/v0.3.18/sha256sums -o "$RUNNER_TEMP/web-sha256sums"
           (cd "$RUNNER_TEMP" && grep '  noop-web.tar.gz$' web-sha256sums | shasum -a 256 -c -)
           tar -xzf "$RUNNER_TEMP/noop-web.tar.gz" -C "$RUNNER_TEMP/web"
-          curl -fsSL --retry 3 "https://github.com/axllent/mailpit/releases/download/v1.33.1/mailpit-${{ matrix.mail }}.tar.gz" -o "$RUNNER_TEMP/mail.tar.gz"
-          (cd "$RUNNER_TEMP" && printf '%s  mail.tar.gz\n' '${{ matrix.mailsha }}' | shasum -a 256 -c -)
-          tar -xzf "$RUNNER_TEMP/mail.tar.gz" -C "$RUNNER_TEMP/mail"
-          npm install --silent --prefix "$RUNNER_TEMP/browser" playwright-core@1.64.0
-      - name: Guest lifecycle
-        if: always() && steps.prepare.outcome == 'success'
-        run: bun test/self-hosted-guest-e2e.ts
-      - name: MCP through HTTPS
-        if: always() && steps.prepare.outcome == 'success'
-        run: bun test/self-hosted-mcp-e2e.ts
-      - name: SMTP delivery
-        if: always() && steps.prepare.outcome == 'success'
-        run: bun test/self-hosted-smtp-e2e.ts
-      - name: Web Push protocol
-        if: always() && steps.prepare.outcome == 'success'
-        run: bun test/self-hosted-push-e2e.ts
-      - name: Backup and restore
-        if: always() && steps.prepare.outcome == 'success'
-        run: bun test/self-hosted-backup-e2e.ts
-      - name: Web client message and attachment
-        if: always() && steps.prepare.outcome == 'success'
+      - name: Test native service
         shell: bash
-        run: |
-          browser=$(command -v chromium || command -v google-chrome || true)
-          if [[ -z "$browser" && -x '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome' ]]; then browser='/Applications/Google Chrome.app/Contents/MacOS/Google Chrome'; fi
-          if [[ -z "$browser" ]]; then echo 'SKIP: no Chromium browser available on this runner'; exit 0; fi
-          NOOP_E2E_BROWSER="$browser" NOOP_E2E_PLAYWRIGHT="$RUNNER_TEMP/browser/node_modules/playwright-core/index.js" bun test/self-hosted-messages-e2e.ts
-      - name: Print acceptance results
+        env:
+          NOOP_E2E_WEB_ASSETS: ${{ runner.temp }}/web
+          NOOP_E2E_WORKERD: ${{ runner.temp }}/runtime/package/bin/workerd
+          NOOP_E2E_OUT: ${{ runner.temp }}/evidence
+          NOOP_E2E_DISPOSABLE: "1"
+        run: test/self-hosted-macos-offline.sh
+      - name: Print acceptance result
         if: always()
         shell: bash
         run: find "$RUNNER_TEMP/evidence" -name report.json -exec cat {} \; 2>/dev/null || true
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: features-${{ matrix.label }}
+          name: native-${{ matrix.label }}
           path: |
             ${{ runner.temp }}/evidence/**/report.json
-            ${{ runner.temp }}/evidence/**/*.log
+            ${{ runner.temp }}/evidence/**/install.log
+            ${{ runner.temp }}/evidence/**/service-manager.log
+            ${{ runner.temp }}/evidence/**/update.log
             ${{ runner.temp }}/evidence/**/SHA256SUMS
-            ${{ runner.temp }}/evidence/**/*.png
           if-no-files-found: warn
