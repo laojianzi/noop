@@ -46,7 +46,10 @@ try {
   const available = async () => { try { return (await fetch(base)).ok; } catch { return false; } };
   const result = cli(["cloud", "service", "install", "--listen", `127.0.0.1:${listenPort}`]);
   installed = existsSync(unit);
-  check(result.status === 0 && installed, "native service installs successfully");
+  const managerLog = process.platform === "linux" ? spawnSync("journalctl", ["--user", "-u", "noop-coordinator.service", "-n", "100", "--no-pager", "-o", "cat"], { env, encoding: "utf8" }).stdout || "" :
+    existsSync(join(home, "coordinator", "service.log")) ? readFileSync(join(home, "coordinator", "service.log"), "utf8") : "";
+  writeFileSync(join(out, "install.log"), result.out + managerLog);
+  check(result.status === 0 && installed, `native service installs successfully: ${result.out.slice(-1500)} ${managerLog.slice(-1500)}`);
   await waitFor(available, "installed service did not serve the real Web client");
   const status = cli(["cloud", "service", "status"]);
   check(status.status === 0 && /running|active/i.test(status.out), "service status reports the actual running state");
