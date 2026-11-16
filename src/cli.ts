@@ -1075,6 +1075,7 @@ const HELP = `Noop — your own AI team
   noop cloud deploy --local [--listen 127.0.0.1:8790]   run the local coordinator candidate in the foreground
   noop cloud service install [--listen 127.0.0.1:8790]   install and start the local coordinator service
   noop cloud service start | stop | status | logs   manage the local coordinator service
+  noop cloud service update [--source <directory>] [--workerd <file>] | rollback   update or roll back the service
   noop cloud backup <directory>   back up a stopped local coordinator
   noop cloud restore <directory>  restore into a new NOOP_HOME
   noop install                run as a service (systemd / launchd / Task Scheduler)
@@ -1240,9 +1241,10 @@ async function main() {
     }
     case "cloud": {
       if (rest[0] === "service") {
-        const { values, positionals } = parseArgs({ args: rest.slice(1), allowPositionals: true, options: { listen: { type: "string" } } });
-        if (positionals.length !== 1 || (values.listen && positionals[0] !== "install")) throw new Error("usage: noop cloud service install [--listen address] | start | stop | status | logs");
-        return void (await (await import("./local-service")).localService(positionals[0], values.listen));
+        const { values, positionals } = parseArgs({ args: rest.slice(1), allowPositionals: true, options: { listen: { type: "string" }, source: { type: "string" }, workerd: { type: "string" } } });
+        if (positionals.length !== 1 || (values.listen && positionals[0] !== "install") || ((values.source || values.workerd) && positionals[0] !== "update"))
+          throw new Error("usage: noop cloud service install [--listen address] | start | stop | status | logs | update [--source directory] [--workerd file] | rollback");
+        return void (await (await import("./local-service")).localService(positionals[0], values.listen, values.source, values.workerd));
       }
       if (rest[0] === "backup" || rest[0] === "restore") {
         if (rest.length !== 2 || rest[1].startsWith("-")) throw new Error(`usage: noop cloud ${rest[0]} <directory>`);
