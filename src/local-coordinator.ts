@@ -68,6 +68,7 @@ export async function localCoordinator(cfg: Cfg, listen = "127.0.0.1:8790") {
   const config = `using Workerd = import "/workerd/workerd.capnp";
 const config :Workerd.Config = (
   services = [
+    (name = "internet", network = (allow = ["public", "private"], tlsOptions = (trustBrowserCas = true))),
     (name = "main", worker = (
       modules = [(name = "index.js", esModule = embed "bundle/index.js")],
       compatibilityDate = "2026-10-01",

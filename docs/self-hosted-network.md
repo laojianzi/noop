@@ -21,9 +21,10 @@ When the allow-list is empty, the source-IP restriction is disabled.
 For a direct connection, Noop uses the source address reported by workerd. It
 ignores client-supplied forwarding headers. For a connection from a configured
 trusted proxy, Noop reads `X-Forwarded-For` from right to left and uses the first
-address outside the trusted proxy ranges. It rejects a missing or invalid client
-address. The proxy must replace that header or append the actual address of its
-peer. Configure only addresses that identify proxies under your control.
+address outside the trusted proxy ranges. When the allow-list is enabled, it
+rejects a missing or invalid client address. Login alerts use the same verified
+address; if it is unavailable, they report an unknown address. The proxy must
+replace that header or append the actual address of its peer. Configure only addresses that identify proxies under your control.
 
 An address is trusted for every process that can connect from it. For example,
 trusting `127.0.0.1` also trusts other local processes using that address. Limit
@@ -38,3 +39,14 @@ If the forwarded host is absent, it uses `Host`. A forwarded protocol must be
 `http` or `https`; malformed forwarded origins are rejected. Untrusted forwarding
 headers do not change the origin. HTTP, WebSocket and streaming responses work
 through the tested TLS proxy.
+
+The local coordinator permits outbound connections to public and private
+addresses. This lets it reach a local or LAN SMTP server and push endpoints.
+Use the host firewall to restrict outbound access when needed.
+
+To send login codes and security alerts through SMTP, set `[email]` in the
+coordinator's `data/config.local.toml` and restart it. Use the existing
+`to`, `host`, `port`, `user`, `pass`, and `from` settings. Port 465 uses
+implicit TLS; other ports use STARTTLS unless `secure = true`. The SMTP
+certificate must be trusted by the coordinator host. Without an SMTP host,
+owners can read login codes with `noop login`.

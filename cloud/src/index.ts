@@ -90,20 +90,17 @@ export default {
     const peer = endpoint.match(/^\[([^\]]+)\]:\d+$/)?.[1] ?? endpoint.match(/^([^:]+):\d+$/)?.[1] ?? "";
     const proxies = env.HUB_LOCAL_MODE ? parseAllowList(env.HUB_TRUSTED_PROXIES).nets : [];
     const trustedProxy = env.HUB_LOCAL_MODE && ipAllowed(peer, proxies);
+    let ip = env.HUB_LOCAL_MODE ? peer : req.headers.get("cf-connecting-ip") ?? "";
+    if (trustedProxy) {
+      ip = "";
+      const hops = (req.headers.get("x-forwarded-for") ?? "").split(",").map((s) => s.trim()).filter(Boolean);
+      for (let i = hops.length - 1; i >= 0; i--) if (!ipAllowed(hops[i], proxies)) { ip = hops[i]; break; }
+    }
     // Moved: machines still pointing here keep working (and pick up the new [cloud] url from the shared config).
     // IP allow-list (HUB_ALLOW_IPS): checked before anything else, static assets included
     if (env.HUB_ALLOW_IPS?.trim()) {
       const { nets, bad } = parseAllowList(env.HUB_ALLOW_IPS);
       if (bad.length) console.error(`HUB_ALLOW_IPS: ignored ${bad.join(" ")}`);
-      let ip = req.headers.get("cf-connecting-ip") ?? "";
-      if (env.HUB_LOCAL_MODE) {
-        ip = peer;
-        if (trustedProxy) {
-          ip = "";
-          const hops = (req.headers.get("x-forwarded-for") ?? "").split(",").map((s) => s.trim()).filter(Boolean);
-          for (let i = hops.length - 1; i >= 0; i--) if (!ipAllowed(hops[i], proxies)) { ip = hops[i]; break; }
-        }
-      }
       if (!ipAllowed(ip, nets)) return ipBlocked(req, ip);
     }
     if (env.HUB_MOVED_TO) return fetch(new Request(env.HUB_MOVED_TO.replace(/\/$/, "") + url.pathname + url.search, req));
@@ -125,6 +122,12 @@ export default {
     if (!mcp && HASHED.test(url.pathname) && req.method === "GET") return hashedAsset(req, env, url);
     if (!mcp && !url.pathname.startsWith("/api/") && !url.pathname.startsWith("/media/")) return env.ASSETS.fetch(req);
     if (!env.HUB_TOKEN) return json({ error: "HUB_TOKEN secret not set" }, 500);
+    if (env.HUB_LOCAL_MODE) {
+      const headers = new Headers(req.headers), parsed = parseAllowList(ip);
+      if (ip && !ip.includes("/") && parsed.nets.length === 1 && !parsed.bad.length) headers.set("cf-connecting-ip", ip);
+      else headers.delete("cf-connecting-ip");
+      req = new Request(req, { headers });
+    }
     return env.HUB.get(env.HUB.idFromName("hub")).fetch(req);
   },
 };

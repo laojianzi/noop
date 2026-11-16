@@ -195,3 +195,15 @@ checks live delivery, access control, image limits, automatic reconnect, missed
 message synchronization and persistence after restart. It saves a screenshot,
 logs, versions, report and checksums in a new temporary directory. Browser
 results do not establish native desktop or mobile device behavior.
+
+## Run SMTP acceptance
+
+Install Mailpit, OpenSSL, the Web bundle and the pinned workerd runtime. Set
+`NOOP_E2E_MAILPIT` to the Mailpit executable, and set the Web and workerd paths
+described above. Run `bun test/self-hosted-smtp-e2e.ts`. The test starts an
+isolated Mailpit SMTP server that requires STARTTLS and authentication. It
+creates a temporary CA, sends a login code and security alerts, checks direct
+and proxied source addresses, and verifies SMTP failure and CLI fallback. It
+writes logs, versions, report and checksums to a new temporary directory. The
+Mailpit server receives real SMTP traffic but does not deliver to an external
+mailbox.
