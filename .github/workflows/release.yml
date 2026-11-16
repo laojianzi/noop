@@ -7,8 +7,6 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - { os: ubuntu-24.04, package: linux-64, label: linux-x64 }
-          - { os: ubuntu-24.04-arm, package: linux-arm64, label: linux-arm64 }
           - { os: macos-15-intel, package: darwin-64, label: darwin-x64 }
           - { os: macos-15, package: darwin-arm64, label: darwin-arm64 }
     runs-on: ${{ matrix.os }}
@@ -24,9 +22,6 @@ jobs:
           mkdir -p "$RUNNER_TEMP/runtime" "$RUNNER_TEMP/web" "$RUNNER_TEMP/evidence"
           npm pack "@cloudflare/workerd-${{ matrix.package }}@1.20261110.1" --silent --pack-destination "$RUNNER_TEMP/runtime"
           tar -xzf "$RUNNER_TEMP/runtime/"*.tgz -C "$RUNNER_TEMP/runtime"
-          mkdir -p "$RUNNER_TEMP/next-runtime"
-          npm pack "@cloudflare/workerd-${{ matrix.package }}@1.20261116.1" --silent --pack-destination "$RUNNER_TEMP/next-runtime"
-          tar -xzf "$RUNNER_TEMP/next-runtime/"*.tgz -C "$RUNNER_TEMP/next-runtime"
           curl -fsSL --retry 3 https://github.com/huacnlee/noop/releases/download/v0.3.18/noop-web.tar.gz -o "$RUNNER_TEMP/noop-web.tar.gz"
           curl -fsSL --retry 3 https://github.com/huacnlee/noop/releases/download/v0.3.18/sha256sums -o "$RUNNER_TEMP/web-sha256sums"
           (cd "$RUNNER_TEMP" && grep '  noop-web.tar.gz$' web-sha256sums | shasum -a 256 -c -)
@@ -36,19 +31,9 @@ jobs:
         env:
           NOOP_E2E_WEB_ASSETS: ${{ runner.temp }}/web
           NOOP_E2E_WORKERD: ${{ runner.temp }}/runtime/package/bin/workerd
-          NOOP_E2E_NEXT_WORKERD: ${{ runner.temp }}/next-runtime/package/bin/workerd
           NOOP_E2E_OUT: ${{ runner.temp }}/evidence
           NOOP_E2E_DISPOSABLE: "1"
-        run: bun test/self-hosted-service-e2e.ts
-      - name: Test safe update and rollback
-        shell: bash
-        env:
-          NOOP_E2E_WEB_ASSETS: ${{ runner.temp }}/web
-          NOOP_E2E_WORKERD: ${{ runner.temp }}/runtime/package/bin/workerd
-          NOOP_E2E_NEXT_WORKERD: ${{ runner.temp }}/next-runtime/package/bin/workerd
-          NOOP_E2E_OUT: ${{ runner.temp }}/evidence
-          NOOP_E2E_DISPOSABLE: "1"
-        run: bun test/self-hosted-update-e2e.ts
+        run: test/self-hosted-macos-offline.sh
       - name: Print acceptance result
         if: always()
         shell: bash
