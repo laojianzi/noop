@@ -56,7 +56,7 @@ export async function localService(action: string, listen = "127.0.0.1:8790") {
       const quote = (s: string) => JSON.stringify(s.replace(/%/g, "%%"));
       const command = [process.execPath, join(CODE, "src", "cli.ts"), "cloud", "deploy", "--local", "--listen", listen].map((v) => quote(v.replace(/\$/g, "$$$$"))).join(" ");
       const env = Object.entries(environment).map(([name, value]) => `Environment=${quote(`${name}=${value}`)}`).join("\n");
-      writeFileSync(file, `# ${marker}\n[Unit]\nDescription=Noop coordination service\nAfter=network.target\n[Service]\nType=simple\nWorkingDirectory=${quote(CODE)}\n${env}\nExecStart=${command}\nRestart=on-failure\nRestartSec=2\n[Install]\nWantedBy=default.target\n`, { mode: 0o600, flag: "wx" });
+      writeFileSync(file, `# ${marker}\n[Unit]\nDescription=Noop coordination service\nAfter=network.target\n[Service]\nType=simple\nWorkingDirectory=${CODE.replace(/%/g, "%%")}\n${env}\nExecStart=${command}\nRestart=on-failure\nRestartSec=2\n[Install]\nWantedBy=default.target\n`, { mode: 0o600, flag: "wx" });
     } else {
       const xml = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&apos;");
       const args = [process.execPath, join(CODE, "src", "cli.ts"), "cloud", "deploy", "--local", "--listen", listen].map((s) => `<string>${xml(s)}</string>`).join("");
