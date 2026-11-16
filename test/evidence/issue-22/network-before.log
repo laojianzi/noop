@@ -1,0 +1,2 @@
+workerd/api/sockets.c++:1422: error: Socket proxy disconnected abruptly; e = rust/worker/ffi.rs:119: failed: connecting to 127.0.0.1:34159 is not allowed
+auth mail failed: Error: Stream was cancelled.

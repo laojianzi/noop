@@ -1,0 +1,11 @@
+PASS Web assets, workerd and a real Mailpit SMTP server are supplied
+PASS a temporary CA and SMTP TLS certificate are created
+PASS Mailpit starts a real SMTP server requiring STARTTLS and authentication
+PASS authenticator is bound in isolated home
+PASS SMTP login code is sent successfully (HTTP 200)
+PASS real SMTP server receives the owner login code
+PASS SMTP code and TOTP create an owner session
+FAIL Error: security alert reports the actual peer and ignores a forged source header (observed IP: 203.0.113.77)
+    at check (/var/tmp/noop-smtp-ablation-aEofmo/test/self-hosted-smtp-e2e.ts:16:79)
+    at /var/tmp/noop-smtp-ablation-aEofmo/test/self-hosted-smtp-e2e.ts:100:3
+Evidence: /var/tmp/noop-smtp-e2e-CPUC9A
