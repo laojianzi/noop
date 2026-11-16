@@ -166,9 +166,10 @@ export async function selfUpdate(opts: { busy?: number; force?: boolean; deploy?
   seedTemplates(); // new template agents/policies appear; existing ones untouched
   { // primary keeps its own Cloudflare hub in step with the code (Worker or app changed)
     const { loadConfig, hostName } = await import("./core");
+    const { readHubToml } = await import("./sync");
     const c = loadConfig();
     const changed = (await g("diff", "--name-only", head, up)).stdout.toString();
-    if (c.cloud?.url && c.fleet?.primary === hostName(c) && (opts.deploy || /^(cloud|app)\//m.test(changed))) {
+    if (c.cloud?.url && readHubToml().cloud?.mode !== "local" && c.fleet?.primary === hostName(c) && (opts.deploy || /^(cloud|app)\//m.test(changed))) {
       const { cloudDeploy } = await import("./cloud");
       await cloudDeploy(c);
     }

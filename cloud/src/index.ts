@@ -24,12 +24,12 @@ import { CODE_RE, newCode, normCode } from "./authcode";
 import { newSecret, otpauthUri, totpMatch } from "./totp";
 import { mediaHeaders, ownerAttachments, sniffImage, uploadId, uploadProblem } from "./uploads";
 import { sendMail, type SmtpCfg } from "./smtp";
-import { EmailMessage } from "cloudflare:email";
 
 import { GUEST_TOKEN, guestApi, guestJoin, guestWho, guestsAdmin, initGuestSchema } from "./guests";
 
 const b64 = (t: string) => btoa(String.fromCharCode(...new TextEncoder().encode(t)));
 async function cfMail(binding: SendEmail, from: string, to: string, subject: string, text: string) {
+  const { EmailMessage } = await import("cloudflare:email");
   const raw = [`From: Noop <${from}>`, `To: ${to}`, `Subject: =?UTF-8?B?${b64(subject)}?=`,
     `Message-ID: <${crypto.randomUUID()}@${from.split("@")[1]}>`, `Date: ${new Date().toUTCString()}`,
     "MIME-Version: 1.0", "Content-Type: text/plain; charset=UTF-8", "Content-Transfer-Encoding: base64", "", b64(text)].join("\r\n");

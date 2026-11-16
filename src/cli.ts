@@ -496,7 +496,7 @@ async function ownerUpdate(c: Cfg, host: string) {
   }
   const now7 = (Bun.spawnSync(["git", "-C", CODE, "rev-parse", "--short", "HEAD"], { stdout: "pipe" }).stdout.toString().trim()) || before;
   const stale = now7 !== before; // the code moved but this process could not take it (local edits, failing tests)
-  if (isPrimary(c, host) && c.cloud?.url) {
+  if (isPrimary(c, host) && c.cloud?.url && readHubToml().cloud?.mode !== "local") {
     await report("deploying", L("Redeploying", "重新发布线上"));
     const cloud = await import("./cloud");
     const err = await cloud.cloudDeploy(c).then((u) => (u ? "" : cloud.lastDeployError || "unknown"), (e) => String(e));
@@ -1070,6 +1070,7 @@ const HELP = `Noop — your own AI team
 
   noop init [<hub-url>] [--token <machine-token>]   join your hub (owner email login, or a machine token); asks for the URL if not given
   noop init --primary         the first machine, once: deploy your own Cloudflare Worker (holds the fleet data), seed ~/.noop/data
+  noop cloud deploy --local [--listen 127.0.0.1:8790]   run the local coordinator candidate in the foreground
   noop install                run as a service (systemd / launchd / Task Scheduler)
   noop update                 self-update framework now (also automatic in daemon)
   noop fix ["what is wrong"]  AI medic: diagnose & repair this install (auto-runs on install/update/daemon failures)
@@ -1233,6 +1234,9 @@ async function main() {
     }
     case "cloud": {
       if (rest[0] !== "deploy") return void console.log("usage: hub cloud deploy");
+      const { values } = parseArgs({ args: rest.slice(1), options: { local: { type: "boolean" }, listen: { type: "string" } } });
+      if (values.listen && !values.local) throw new Error("--listen requires --local");
+      if (values.local) return void (await (await import("./local-coordinator")).localCoordinator(cfg, values.listen));
       return void (await cloudDeploy(cfg));
     }
     case "notify": return void console.log(await notify(rest.join(" "), cfg));
