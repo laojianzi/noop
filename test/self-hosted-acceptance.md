@@ -95,10 +95,10 @@ runtime version, commands, logs, result and checksums with each run.
 ## Run the local candidate scenario
 
 Prepare the genuine Noop Web bundle and the pinned workerd binary separately.
-Install Chromium and Playwright Core. The candidate currently supports Linux
-x86_64 and requires the unmodified `@cloudflare/workerd-linux-64` binary from
-version `1.20261110.1`. No Cloudflare account or agent CLI is needed for this
-test.
+Install Chromium and Playwright Core. The candidate supports Linux and macOS
+on x86_64 and ARM64. Supply the unmodified platform-specific workerd binary
+from package version `1.20261110.1`. No Cloudflare account or agent CLI is
+needed for this test.
 
 Set `NOOP_E2E_WEB_ASSETS` to the unpacked Web bundle directory and
 `NOOP_E2E_WORKERD` to the workerd executable. If Playwright Core is not a
@@ -241,3 +241,33 @@ home. It checks permissions, running-service refusal, existing destinations,
 corrupt content and an unsupported format. It then signs in with the original
 TOTP, reads history and an attachment, and synchronizes a new execution host.
 It writes logs, versions, a report and checksums to a temporary directory.
+
+## Run native service and update acceptance
+
+Run these only on a disposable machine or VM without an existing Noop
+coordinator service. Set `NOOP_E2E_DISPOSABLE=1`, `NOOP_E2E_WEB_ASSETS`, and
+`NOOP_E2E_WORKERD`, then run:
+
+```sh
+bun test/self-hosted-service-e2e.ts
+bun test/self-hosted-update-e2e.ts
+```
+
+The service test uses the actual systemd or launchd manager and cleans up its
+service. The update test covers invalid source, a failed candidate, a live
+startup failure, successful update, and rollback after a new write. Set
+`NOOP_E2E_NEXT_WORKERD` to a second official workerd binary to test a runtime
+version change. For a full-disk test, run the update test on a small dedicated
+filesystem with `NOOP_E2E_EXPECT_NO_SPACE=1`. Do not fill an existing volume.
+
+On a disposable macOS runner with passwordless sudo, run
+`test/self-hosted-macos-offline.sh` with the same environment. It temporarily
+blocks outbound traffic on the default network interface, runs the native
+service test, and restores access. Do not run it on a shared machine.
+
+For unattended Linux reboot acceptance, provide a Debian 12 cloud image and
+the VM dependencies used by `test/self-hosted-reboot-vm.ts`. Set
+`NOOP_E2E_DEBIAN_IMAGE`, `NOOP_E2E_WEB_ASSETS`, and `NOOP_E2E_WORKERD`, then
+run `bun test/self-hosted-reboot-vm.ts`. The test creates a new QEMU VM, blocks
+its public network, resets it, and checks service state, login and host sync.
+Its report records whether the VM used KVM or software emulation.
