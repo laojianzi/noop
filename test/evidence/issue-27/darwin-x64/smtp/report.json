@@ -1,0 +1,38 @@
+{
+  "status": "passed",
+  "source": "/Users/runner/work/noop/noop",
+  "revision": "623e518faa74af86cacbba0caadcb4d553003fa2",
+  "changes": "",
+  "platform": "darwin-x64",
+  "timestamp": "2026-11-16T13:46:00.609Z",
+  "bun": "1.4.4",
+  "webVersion": "v0.3.18",
+  "webIndexSha256": "bd9ed72ccec6e59169751686b2383b27699b7b967b8fca5e85e55d33e3a16dfc",
+  "workerd": {
+    "version": "workerd 2026-11-10",
+    "sha256": "790d752a3e30fa429950fb664111fa088b1b2c15732f9541e722fbf253ffff44"
+  },
+  "mailpit": {
+    "version": "/Users/runner/work/_temp/mail/mailpit v1.33.1 compiled with go1.27.3 on darwin/amd64",
+    "sha256": "00fe759aeda7a5e49a876b94683e40d0e1e70ef6f40584f3c1525053a12b33af"
+  },
+  "checks": [
+    "Web assets, workerd and a real Mailpit SMTP server are supplied",
+    "a temporary CA and SMTP TLS certificate are created",
+    "Mailpit starts a real SMTP server requiring STARTTLS and authentication",
+    "authenticator is bound in isolated home",
+    "SMTP login code is sent successfully (HTTP 200)",
+    "real SMTP server receives the owner login code",
+    "SMTP code and TOTP create an owner session",
+    "security alert reports the actual peer and ignores a forged source header (observed IP: 127.0.0.1)",
+    "second owner receives an SMTP login code",
+    "owner can sign in through the trusted HTTPS proxy",
+    "security alert uses the verified proxy chain instead of forged source headers (observed IP: 127.0.0.2)",
+    "SMTP rejects a certificate from an untrusted CA",
+    "SMTP connection failure is reported to the user",
+    "authenticator is bound in isolated home",
+    "without SMTP the login code is delivered to the CLI",
+    "CLI code and TOTP log in without SMTP"
+  ],
+  "error": ""
+}

@@ -1,0 +1,8 @@
+Local coordinator candidate: http://127.0.0.1:49279
+Local coordinator candidate: http://127.0.0.1:49279
+workerd/api/sockets.c++:1422: error: Socket proxy disconnected abruptly; e = rust/worker/ffi.rs:119: failed: TLS handshake failed: received corrupt message of type InvalidContentType
+stack: 101ec2283 100a2c988 101bbd1f4
+auth mail failed: Error: Stream was cancelled.
+Local coordinator candidate: http://127.0.0.1:49279
+auth mail failed: Error: Stream was cancelled.
+Local coordinator candidate: http://127.0.0.1:49279

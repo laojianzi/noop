@@ -1,0 +1,8 @@
+Local coordinator candidate: http://127.0.0.1:38003
+Local coordinator candidate: http://127.0.0.1:38003
+workerd/api/sockets.c++:1422: error: Socket proxy disconnected abruptly; e = rust/worker/ffi.rs:119: failed: TLS handshake failed: received corrupt message of type InvalidContentType
+stack: /home/runner/work/_temp/evidence/noop-smtp-e2e-w5CmE0/bin/workerd@42e66a3 /home/runner/work/_temp/evidence/noop-smtp-e2e-w5CmE0/bin/workerd@2a248b0 /home/runner/work/_temp/evidence/noop-smtp-e2e-w5CmE0/bin/workerd@3f60f60
+auth mail failed: Error: Stream was cancelled.
+Local coordinator candidate: http://127.0.0.1:38003
+auth mail failed: Error: Stream was cancelled.
+Local coordinator candidate: http://127.0.0.1:38003
