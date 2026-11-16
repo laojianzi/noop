@@ -62,12 +62,29 @@ does not reduce other files to one version in local mode.
 
 ## Install and update the service
 
-Place the pinned `workerd` binary on `PATH` and install the Web client before
-running these commands. Linux uses a user systemd service with linger; macOS
-uses a launch agent that starts when the user logs in.
+Prepare Bun, this Noop source tree, the genuine Web bundle, and the matching
+workerd executable before installation. The candidate runtime is workerd
+`2026-11-10` from package version `1.20261110.1`. The platform checksums are
+in `src/local-coordinator.ts`. You can provide these files from local media or
+an artifact source of your choice. For example:
+
+The upstream workerd project marks its local Durable Object storage as
+experimental. This deployment remains a candidate until the release gates in
+issue #13 are complete.
 
 ```sh
-noop cloud service install --listen 127.0.0.1:8790
+cd /path/to/noop
+mkdir -p app/dist/web/noop
+cp -R /path/to/unpacked-web/. app/dist/web/noop/
+export PATH="/path/to/workerd-directory:$PATH"
+bun src/cli.ts cloud service install --listen 127.0.0.1:8790
+```
+
+If `noop` is already installed, use it in place of `bun src/cli.ts`. Linux
+uses a user systemd service with linger; macOS uses a launch agent that starts
+when the user logs in. The installed service starts without downloading files.
+
+```sh
 noop cloud service status
 noop cloud service logs
 noop cloud service stop
@@ -92,6 +109,13 @@ made after the update. If startup fails after the switch, Noop restores the
 previous service and reports the path of the failed candidate's data. Keep
 the printed backup path and remove old backups or releases when they are no
 longer needed. They contain credentials and can use significant disk space.
+
+After starting the coordinator, bind an authenticator with `noop 2fa setup`
+and `noop 2fa confirm`. A primary on another machine joins with
+`noop init --primary --local <coordinator-url> --token <machine-token>`.
+Other hosts use `noop init --local <coordinator-url>` and the existing login
+flow, or provide `--token`. The coordinator's machine token is stored in its
+Noop home; share it only with trusted hosts.
 
 ## Back up and restore
 
