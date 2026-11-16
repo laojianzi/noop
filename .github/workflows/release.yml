@@ -1,4 +1,4 @@
-name: Noop platform probe
+name: Noop service environment probe
 on:
   workflow_dispatch:
 jobs:
@@ -6,19 +6,21 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-24.04, ubuntu-24.04-arm, macos-15-intel, macos-15]
+        os: [ubuntu-24.04, ubuntu-24.04-arm, macos-15-intel]
     runs-on: ${{ matrix.os }}
     steps:
-      - name: Report native platform and service manager
+      - name: Inspect service-manager and virtual-machine capabilities
         shell: bash
         run: |
           uname -a
           id
           if [[ "$RUNNER_OS" == "Linux" ]]; then
-            command -v systemctl
-            command -v loginctl
-            systemctl is-system-running || true
+            loginctl show-user "$(id -un)" -p Linger || true
+            systemctl --user show-environment || true
+            ls -l /dev/kvm || true
+            sudo -n true && echo sudo-available || true
           else
-            command -v launchctl
-            sw_vers
+            launchctl print "gui/$(id -u)" >/dev/null && echo gui-domain-available || echo gui-domain-unavailable
+            launchctl print "user/$(id -u)" >/dev/null && echo user-domain-available || echo user-domain-unavailable
+            sudo -n true && echo sudo-available || true
           fi
