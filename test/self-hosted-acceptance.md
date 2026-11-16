@@ -207,3 +207,13 @@ and proxied source addresses, and verifies SMTP failure and CLI fallback. It
 writes logs, versions, report and checksums to a new temporary directory. The
 Mailpit server receives real SMTP traffic but does not deliver to an external
 mailbox.
+
+## Run Web Push acceptance
+
+With the same Web and workerd paths, run `bun test/self-hosted-push-e2e.ts`.
+The test subscribes a controlled local HTTP endpoint, verifies the VAPID
+signature, decrypts a Web Push payload, restarts the coordinator, and checks
+delivery, failure logging and unsubscribe. It saves logs, versions, a report
+and checksums in a new temporary directory. The endpoint emulates the push
+service; this does not establish delivery to an external push service or a
+physical device.

@@ -172,7 +172,7 @@ export function startCloudBridge(cfg: Cfg) {
 }
 
 /** Web Push VAPID keypair: generated once, kept in ~/.noop/vapid.json (0600) so redeploys keep phones subscribed. */
-async function vapidKeys(): Promise<{ publicKey: string; privateJwk: Jwk }> {
+export async function vapidKeys(): Promise<{ publicKey: string; privateJwk: Jwk }> {
   const f = join(HOME_DIR, "vapid.json");
   if (existsSync(f)) return JSON.parse(readFileSync(f, "utf8"));
   const k = await newVapidKeys();

@@ -3,7 +3,7 @@ import { isIP } from "node:net";
 import { dirname, join } from "node:path";
 import { dlopen } from "bun:ffi";
 import { type Cfg, CODE, HOME_DIR } from "./core";
-import { allowIps } from "./cloud";
+import { allowIps, vapidKeys } from "./cloud";
 import { parseAllowList } from "../cloud/src/ipallow";
 import { hubTomlPath, writeHubToml } from "./sync";
 
@@ -78,6 +78,8 @@ const config :Workerd.Config = (
         (name = "HUB_TOKEN", fromEnvironment = "NOOP_LOCAL_TOKEN"),
         (name = "HUB_OWNER_EMAIL", fromEnvironment = "NOOP_LOCAL_OWNER_EMAIL"),
         (name = "HUB_SMTP", fromEnvironment = "NOOP_LOCAL_SMTP"),
+        (name = "HUB_VAPID_PUBLIC", fromEnvironment = "NOOP_LOCAL_VAPID_PUBLIC"),
+        (name = "HUB_VAPID_PRIVATE", fromEnvironment = "NOOP_LOCAL_VAPID_PRIVATE"),
         (name = "HUB_LANG", fromEnvironment = "NOOP_LOCAL_LANG"),
         (name = "HUB_LOCAL_MODE", fromEnvironment = "NOOP_LOCAL_MODE"),
         (name = "HUB_ALLOW_IPS", fromEnvironment = "NOOP_LOCAL_ALLOW_IPS"),
@@ -105,12 +107,14 @@ const config :Workerd.Config = (
   const email = cfg.email ?? {};
   const smtp = email.to && email.host ? JSON.stringify({ host: email.host, port: email.port ?? 465,
     secure: email.secure ?? (email.port ?? 465) === 465, user: email.user, pass: email.pass, from: email.from ?? email.user }) : "";
+  const vapid = await vapidKeys();
   const healthSocket = join(root, "health.sock");
   if (existsSync(healthSocket)) unlinkSync(healthSocket);
   // The runtime keeps the lock if this launcher is killed.
   const child = Bun.spawn([workerd, "serve", configFile], { stdio: ["ignore", "inherit", "inherit", lockFd], env: {
     ...process.env, NOOP_LOCAL_TOKEN: token, NOOP_LOCAL_OWNER_EMAIL: String(email.to ?? ""),
-    NOOP_LOCAL_SMTP: smtp, NOOP_LOCAL_LANG: String(cfg.owner?.language ?? ""), NOOP_LOCAL_MODE: "1",
+    NOOP_LOCAL_SMTP: smtp, NOOP_LOCAL_VAPID_PUBLIC: vapid.publicKey, NOOP_LOCAL_VAPID_PRIVATE: JSON.stringify(vapid.privateJwk),
+    NOOP_LOCAL_LANG: String(cfg.owner?.language ?? ""), NOOP_LOCAL_MODE: "1",
     NOOP_LOCAL_ALLOW_IPS: allowed, NOOP_LOCAL_TRUSTED_PROXIES: proxies,
   } });
   let exited = false;

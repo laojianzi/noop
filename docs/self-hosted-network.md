@@ -50,3 +50,7 @@ coordinator's `data/config.local.toml` and restart it. Use the existing
 implicit TLS; other ports use STARTTLS unless `secure = true`. The SMTP
 certificate must be trusted by the coordinator host. Without an SMTP host,
 owners can read login codes with `noop login`.
+
+The coordinator generates its Web Push VAPID keypair once in
+`<NOOP_HOME>/vapid.json`. Keep this file when backing up or moving the
+coordinator. Replacing it invalidates existing push subscriptions.
