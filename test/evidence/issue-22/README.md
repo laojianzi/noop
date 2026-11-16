@@ -23,3 +23,16 @@ The isolated Wrangler cloud-mode MCP and OAuth regression passed; see
 `cloud-emulator-mcp.log`. The existing suite passed 290 tests with one
 macOS-only skip. The fleet-day budget remained 7595 requests and about 15427
 rows written against unchanged limits of 20000 each.
+
+## macOS private CA follow-up
+
+`macos-before` records a native macOS Intel SMTP failure. The local runtime
+rejected the synthetic SMTP certificate with `UnknownIssuer` even though the
+test supplied its CA through `SSL_CERT_FILE`. `macos-after` records the same
+real SMTP server after the coordinator added the supplied PEM certificates to
+workerd's trusted CA list. The test also supplies a different CA and confirms
+that the SMTP certificate is rejected. Certificate verification remains on.
+
+The test uses synthetic certificates. The archived directories contain the
+report and logs; their hashes are recorded in the top-level `SHA256SUMS`.
+The macOS feature run is https://github.com/laojianzi/noop/actions/runs/43878457103.

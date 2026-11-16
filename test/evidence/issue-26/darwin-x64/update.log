@@ -1,0 +1,68 @@
+$ noop cloud service
+Coordinator service installed and running
+
+$ noop cloud service
+Coordinator service stopped
+
+$ noop cloud service
+Coordinator service started
+
+$ noop cloud service
+ 8 | const root = join(HOME_DIR, "coordinator"), releases = join(root, "releases");
+ 9 | 
+10 | export function stageRelease(source = CODE, runtime = Bun.which("workerd")) {
+11 |   if (!runtime || !existsSync(runtime)) throw new Error("The selected workerd runtime does not exist");
+12 |   for (const path of ["src/cli.ts", "cloud/src/index.ts", "app/dist/web/noop/index.html", "package.json"])
+13 |     if (!existsSync(join(source, path))) throw new Error(`The selected release is missing ${path}`);
+                                                        ^
+error: The selected release is missing src/cli.ts
+      at stageRelease (/Users/runner/work/_temp/evidence/noop-update-e2e-NO95s9/repo/src/local-release.ts:13:52)
+      at updateRelease (/Users/runner/work/_temp/evidence/noop-update-e2e-NO95s9/repo/src/local-release.ts:46:42)
+
+
+$ noop cloud service
+Coordinator backup created: /Users/runner/work/_temp/evidence/noop-update-e2e-NO95s9/home/coordinator/backups/27475027-9910-43d6-995a-d6b276f795a1
+Coordinator restored to: /Users/runner/work/_temp/evidence/noop-update-e2e-NO95s9/home/coordinator/.verify-27475027-9910-43d6-995a-d6b276f795a1
+ 95 |         if (changedPrevious) { if (oldPrevious) pointRelease("previous", oldPrevious); else unlinkSync(previous); }
+ 96 |         await start();
+ 97 |       } catch (recovery) { throw new Error(`Coordinator ${action} failed: ${error}. Recovery failed: ${recovery}.${preserved} Backup: ${backup}`); }
+ 98 |     }
+ 99 |     if (action === "update" && !preserved) rmSync(selected, { recursive: true, force: true });
+100 |     throw new Error(`Coordinator ${action} failed; the previous service was restored: ${error}.${preserved} Backup: ${backup}`);
+                    ^
+error: Coordinator update failed; the previous service was restored: Error: Candidate validation failed: 923 | \n@@@ invalid TypeScript @@@\n
+      ^
+error: Unexpected escape sequence
+    at /Users/runner/work/_temp/evidence/noop-update-e2e-NO95s9/home/coordinator/releases/release-3jUYEp/repo/cloud/src/index.ts:923:1
+
+. Backup: /Users/runner/work/_temp/evidence/noop-update-e2e-NO95s9/home/coordinator/backups/27475027-9910-43d6-995a-d6b276f795a1
+      at updateRelease (/Users/runner/work/_temp/evidence/noop-update-e2e-NO95s9/repo/src/local-release.ts:100:15)
+
+
+$ noop cloud service
+Coordinator backup created: /Users/runner/work/_temp/evidence/noop-update-e2e-NO95s9/home/coordinator/backups/b73e8456-1184-42db-954a-043d671ce0ce
+Coordinator restored to: /Users/runner/work/_temp/evidence/noop-update-e2e-NO95s9/home/coordinator/.verify-b73e8456-1184-42db-954a-043d671ce0ce
+ 95 |         if (changedPrevious) { if (oldPrevious) pointRelease("previous", oldPrevious); else unlinkSync(previous); }
+ 96 |         await start();
+ 97 |       } catch (recovery) { throw new Error(`Coordinator ${action} failed: ${error}. Recovery failed: ${recovery}.${preserved} Backup: ${backup}`); }
+ 98 |     }
+ 99 |     if (action === "update" && !preserved) rmSync(selected, { recursive: true, force: true });
+100 |     throw new Error(`Coordinator ${action} failed; the previous service was restored: ${error}.${preserved} Backup: ${backup}`);
+                    ^
+error: Coordinator update failed; the previous service was restored: Error: Coordinator service did not become ready; inspect its logs. Candidate storage is preserved at /Users/runner/work/_temp/evidence/noop-update-e2e-NO95s9/home/coordinator/failed-storage-b73e8456-1184-42db-954a-043d671ce0ce. Backup: /Users/runner/work/_temp/evidence/noop-update-e2e-NO95s9/home/coordinator/backups/b73e8456-1184-42db-954a-043d671ce0ce
+      at updateRelease (/Users/runner/work/_temp/evidence/noop-update-e2e-NO95s9/repo/src/local-release.ts:100:15)
+
+
+$ noop cloud service
+Coordinator backup created: /Users/runner/work/_temp/evidence/noop-update-e2e-NO95s9/home/coordinator/backups/8cf0ef82-43a5-4689-9db0-1aa5c51493df
+Coordinator restored to: /Users/runner/work/_temp/evidence/noop-update-e2e-NO95s9/home/coordinator/.verify-8cf0ef82-43a5-4689-9db0-1aa5c51493df
+Coordinator update complete. Backup: /Users/runner/work/_temp/evidence/noop-update-e2e-NO95s9/home/coordinator/backups/8cf0ef82-43a5-4689-9db0-1aa5c51493df
+
+$ noop cloud service
+Coordinator backup created: /Users/runner/work/_temp/evidence/noop-update-e2e-NO95s9/home/coordinator/backups/b98a22ce-493f-4e88-9900-a3c3baf954c8
+Coordinator restored to: /Users/runner/work/_temp/evidence/noop-update-e2e-NO95s9/home/coordinator/.verify-b98a22ce-493f-4e88-9900-a3c3baf954c8
+Coordinator rollback complete. Backup: /Users/runner/work/_temp/evidence/noop-update-e2e-NO95s9/home/coordinator/backups/b98a22ce-493f-4e88-9900-a3c3baf954c8
+
+$ noop cloud service
+Coordinator service stopped
+

@@ -1,0 +1,33 @@
+{
+  "status": "passed",
+  "source": "/Users/runner/work/noop/noop",
+  "revision": "e38087cc88865982daae27b1e5911d32682b88be",
+  "changes": "",
+  "platform": "darwin-arm64",
+  "timestamp": "2026-11-16T13:21:37.097Z",
+  "bun": "1.4.4",
+  "noSpaceFixture": false,
+  "workerdSha256": "f08ed8b7be3588cc7393b274e7278bee3125a1015ed3e214293e5e75088dd5b1",
+  "webIndexSha256": "bd9ed72ccec6e59169751686b2383b27699b7b967b8fca5e85e55d33e3a16dfc",
+  "checks": [
+    "test runs on a disposable host without an existing coordinator service",
+    "real Web assets and pinned workerd are supplied",
+    "the coordinator service installs: Coordinator service installed and running\n",
+    "a host commits data before the update",
+    "the source-change fixture matches the real status path",
+    "a restart keeps the installed release when the source checkout changes",
+    "an invalid release is rejected and the old service remains available",
+    "a release that cannot build leaves the previous service and data intact",
+    "the startup-failure fixture matches the real coordinator entry point",
+    "a live startup failure restores the old service and original data",
+    "the candidate fixture matches the real status path",
+    "explicit candidate update succeeds: Coordinator backup created: /Users/runner/work/_temp/evidence/noop-update-e2e-vConZx/home/coordinator/backups/34dc67e3-49c6-4eaa-861d-9fedcc555c73\nCoordinator restored to: /Users/runner/work/_temp/evidence/noop-update-e2e-vConZx/home/coordinator/.verify-34dc67e3-49c6-4eaa-861d-9fedcc555c73\nCoordinator update complete. Backup: /Users/runner/work/_temp/evidence/noop-update-e2e-vConZx/home/coordinator/backups/34dc67e3-49c6-4eaa-861d-9fedcc555c73\n",
+    "the candidate starts with the previous data",
+    "the update reports its pre-update backup",
+    "a host writes new data after the successful update",
+    "explicit rollback completes: Coordinator backup created: /Users/runner/work/_temp/evidence/noop-update-e2e-vConZx/home/coordinator/backups/f6e56719-6218-4f7f-ad5a-13b49b7f5fa0\nCoordinator restored to: /Users/runner/work/_temp/evidence/noop-update-e2e-vConZx/home/coordinator/.verify-f6e56719-6218-4f7f-ad5a-13b49b7f5fa0\nCoordinator rollback complete. Backup: /Users/runner/work/_temp/evidence/noop-update-e2e-vConZx/home/coordinator/backups/f6e56719-6218-4f7f-ad5a-13b49b7f5fa0\n",
+    "rollback keeps the write made after the successful update",
+    "service stops after update verification"
+  ],
+  "error": ""
+}

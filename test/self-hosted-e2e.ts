@@ -310,6 +310,15 @@ try {
   check(update.status === 0 && update.output.includes("self-updated"), "local update reaches the deployment decision with simulated Git");
   check(!readFileSync(guard, "utf8"), "local update does not invoke Cloudflare deployment");
 
+  const cloudHome = join(artifacts, "cloud-update"), cloudMarker = join(artifacts, "cloud-update.log");
+  mkdirSync(join(cloudHome, "data"), { recursive: true });
+  writeFileSync(join(cloudHome, "noop.toml"), '[cloud]\nurl = "https://synthetic.invalid"\n[server]\ntoken = "synthetic-cloud-machine-token-000"\n');
+  writeFileSync(join(cloudHome, "data", "config.toml"), '[fleet]\nprimary = "synthetic-primary"\n');
+  writeFileSync(join(updateBin, "bunx"), '#!/bin/sh\nprintf "%s\\n" "$*" >> "$NOOP_FAKE_CLOUD_MARKER"\nprintf "authentication missing\\n"\n', { mode: 0o755 });
+  const cloudUpdate = cli(["update"], { ...env, NOOP_HOME: cloudHome, HUB_HOST: "synthetic-primary", NOOP_FAKE_CLOUD_MARKER: cloudMarker, PATH: `${updateBin}:${env.PATH}` });
+  check(cloudUpdate.status === 0 && cloudUpdate.output.includes("self-updated") && readFileSync(cloudMarker, "utf8").includes("wrangler whoami"),
+    "a cloud primary update still enters the existing cloud deployment path");
+
   await stop(base);
   await start(env, address, base);
   const after = cli(["2fa", "status"], env);

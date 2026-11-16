@@ -1,0 +1,26 @@
+{
+  "status": "failed",
+  "source": "/home/runner/work/noop/noop",
+  "revision": "931c91eca79bf6cddf750244a2502bd3d722d9b9",
+  "changes": "",
+  "platform": "linux-x64",
+  "timestamp": "2026-11-16T13:16:13.610Z",
+  "bun": "1.4.4",
+  "noSpaceFixture": false,
+  "workerdSha256": "620d9f7e5eb461067e08af17316aaa087445b4232e0e98e3dd146763bd9ab394",
+  "webIndexSha256": "bd9ed72ccec6e59169751686b2383b27699b7b967b8fca5e85e55d33e3a16dfc",
+  "checks": [
+    "test runs on a disposable host without an existing coordinator service",
+    "real Web assets and pinned workerd are supplied",
+    "the coordinator service installs: Coordinator service installed and running\n",
+    "a host commits data before the update",
+    "the source-change fixture matches the real status path",
+    "a restart keeps the installed release when the source checkout changes",
+    "an invalid release is rejected and the old service remains available",
+    "a release that cannot build leaves the previous service and data intact",
+    "the startup-failure fixture matches the real coordinator entry point",
+    "a live startup failure restores the old service and original data",
+    "the candidate fixture matches the real status path"
+  ],
+  "error": "Error: explicit candidate update succeeds:       const response = await fetch(\"http://localhost/api/status\", { unix: healthSocket, headers: { Authorization: `Bearer ${token}` }, signal: AbortSignal.timeout(500) });\n149 |         if (response.ok) { ready = true; break; }\n150 |       } catch {}\n151 |       await Bun.sleep(100);\n152 |     }\n153 |     if (!ready) throw new Error(\"The local coordinator did not start\");\n                                ^\nerror: The local coordinator did not start\n      at localCoordinator (/home/runner/work/_temp/evidence/noop-update-e2e-xf76x7/home/coordinator/releases/release-T6A2U0/repo/src/local-coordinator.ts:153:27)\n      at async main (/home/runner/work/_temp/evidence/noop-update-e2e-xf76x7/home/coordinator/releases/release-T6A2U0/repo/src/cli.ts:1257:82)\n\n. Backup: /home/runner/work/_temp/evidence/noop-update-e2e-xf76x7/home/coordinator/backups/8ba150c6-0c96-44c8-98be-4472966bfbed\n      at updateRelease (/home/runner/work/_temp/evidence/noop-update-e2e-xf76x7/repo/src/local-release.ts:96:15)\n\n\n    at check (/home/runner/work/noop/noop/test/self-hosted-update-e2e.ts:15:79)\n    at /home/runner/work/noop/noop/test/self-hosted-update-e2e.ts:82:5"
+}

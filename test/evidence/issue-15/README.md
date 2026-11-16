@@ -27,3 +27,7 @@ hardware or a deployed cloud service. The original GitHub artifact omitted
 test script and match the checksums produced by the run.
 
 Verify each directory with `sha256sum -c SHA256SUMS`.
+
+The `linux-x64-immediate-reset` run repeats the full reboot scenario after
+removing a five-second diagnostic delay from the fixture. It passed with the
+same unclean VM reset: https://github.com/laojianzi/noop/actions/runs/43878910898.

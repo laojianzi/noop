@@ -1,0 +1,9 @@
+time="2026/11/16 13:33:42" level=info msg="[smtpd] enabling any authentication"
+time="2026/11/16 13:33:42" level=info msg="[smtpd] starting on 127.0.0.1:49220 (STARTTLS required)"
+time="2026/11/16 13:33:42" level=info msg="[http] starting on 127.0.0.1:49221"
+time="2026/11/16 13:33:42" level=info msg="[http] accessible via http://127.0.0.1:49221/"
+time="2026/11/16 13:33:44" level=warning msg="[smtpd] response (127.0.0.1) 403 4.7.0 TLS handshake failed"
+time="2026/11/16 13:33:44" level=warning msg="[smtpd] response (127.0.0.1) 403 4.7.0 TLS handshake failed"
+time="2026/11/16 13:33:44" level=warning msg="[smtpd] response (127.0.0.1) 403 4.7.0 TLS handshake failed"
+time="2026/11/16 13:33:44" level=warning msg="[smtpd] response (127.0.0.1) 403 4.7.0 TLS handshake failed"
+[db] got terminated signal, shutting down

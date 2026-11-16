@@ -1,0 +1,24 @@
+{
+  "status": "failed",
+  "source": "/home/runner/work/noop/noop",
+  "revision": "0a02f9c45e2961e68ada9b74d3a9f33be967b2b5",
+  "changes": "",
+  "platform": "linux-x64",
+  "timestamp": "2026-11-16T13:03:20.849Z",
+  "bun": "1.4.4",
+  "noSpaceFixture": false,
+  "workerdSha256": "620d9f7e5eb461067e08af17316aaa087445b4232e0e98e3dd146763bd9ab394",
+  "webIndexSha256": "bd9ed72ccec6e59169751686b2383b27699b7b967b8fca5e85e55d33e3a16dfc",
+  "checks": [
+    "test runs on a disposable host without an existing coordinator service",
+    "real Web assets and pinned workerd are supplied",
+    "the coordinator service installs: Coordinator service installed and running\n",
+    "a host commits data before the update",
+    "an invalid release is rejected and the old service remains available",
+    "a release that cannot build leaves the previous service and data intact",
+    "the startup-failure fixture matches the real coordinator entry point",
+    "a live startup failure restores the old service and original data",
+    "the candidate fixture matches the real status path"
+  ],
+  "error": "Error: explicit candidate update succeeds: |       return void console.log(L(`✓ Revoked ${revoked} login(s) (phones, browsers, MCP connectors). Log in again with an email code.\\n  If you suspect the mailbox is compromised, change its password first, then consider rotating the machine key.`, `✓ 已撤销 ${revoked} 个登录（手机、浏览器、MCP 连接器）。需要重新用邮箱验证码登录。\\n  如果怀疑邮箱被盗，先改邮箱密码，再考虑轮换机器密钥。`));\n1240 |     }\n1241 |     case \"cloud\": {\n1242 |       if (rest[0] === \"service\") {\n1243 |         const { values, positionals } = parseArgs({ args: rest.slice(1), allowPositionals: true, options: { listen: { type: \"string\" } } });\n                                               ^\nTypeError: Unknown option '--source'. To specify a positional argument starting with a '-', place it at the end of the command after '--', as in '-- \"--source\"\n code: \"ERR_PARSE_ARGS_UNKNOWN_OPTION\"\n\n      at main (/home/runner/work/_temp/evidence/noop-update-e2e-f5vU8E/repo/src/cli.ts:1243:41)\n      at /home/runner/work/_temp/evidence/noop-update-e2e-f5vU8E/repo/src/cli.ts:1264:15\n\n\n    at check (/home/runner/work/noop/noop/test/self-hosted-update-e2e.ts:15:79)\n    at /home/runner/work/noop/noop/test/self-hosted-update-e2e.ts:73:5"
+}

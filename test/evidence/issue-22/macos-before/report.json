@@ -1,0 +1,26 @@
+{
+  "status": "failed",
+  "source": "/Users/runner/work/noop/noop",
+  "revision": "c7cc0a18e72b2113da2ec3dcd039d54e5e12a8f9",
+  "changes": "",
+  "platform": "darwin-x64",
+  "timestamp": "2026-11-16T13:33:44.413Z",
+  "bun": "1.4.4",
+  "webVersion": "v0.3.18",
+  "webIndexSha256": "bd9ed72ccec6e59169751686b2383b27699b7b967b8fca5e85e55d33e3a16dfc",
+  "workerd": {
+    "version": "workerd 2026-11-10",
+    "sha256": "790d752a3e30fa429950fb664111fa088b1b2c15732f9541e722fbf253ffff44"
+  },
+  "mailpit": {
+    "version": "/Users/runner/work/_temp/mail/mailpit v1.33.1 compiled with go1.27.3 on darwin/amd64",
+    "sha256": "00fe759aeda7a5e49a876b94683e40d0e1e70ef6f40584f3c1525053a12b33af"
+  },
+  "checks": [
+    "Web assets, workerd and a real Mailpit SMTP server are supplied",
+    "a temporary CA and SMTP TLS certificate are created",
+    "Mailpit starts a real SMTP server requiring STARTTLS and authentication",
+    "authenticator is bound in isolated home"
+  ],
+  "error": "Error: SMTP login code is sent successfully (HTTP 502)\n    at check (/Users/runner/work/noop/noop/test/self-hosted-smtp-e2e.ts:16:79)\n    at /Users/runner/work/noop/noop/test/self-hosted-smtp-e2e.ts:78:3"
+}

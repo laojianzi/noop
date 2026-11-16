@@ -1,0 +1,93 @@
+$ noop cloud service
+Coordinator service installed and running
+
+$ noop cloud service
+Coordinator service stopped
+
+$ noop cloud service
+Coordinator service started
+
+$ noop cloud service
+ 8 | const root = join(HOME_DIR, "coordinator"), releases = join(root, "releases");
+ 9 | 
+10 | export function stageRelease(source = CODE, runtime = Bun.which("workerd")) {
+11 |   if (!runtime || !existsSync(runtime)) throw new Error("The selected workerd runtime does not exist");
+12 |   for (const path of ["src/cli.ts", "cloud/src/index.ts", "app/dist/web/noop/index.html", "package.json"])
+13 |     if (!existsSync(join(source, path))) throw new Error(`The selected release is missing ${path}`);
+                                                        ^
+error: The selected release is missing src/cli.ts
+      at stageRelease (/home/runner/work/_temp/evidence/noop-update-e2e-xf76x7/repo/src/local-release.ts:13:52)
+      at updateRelease (/home/runner/work/_temp/evidence/noop-update-e2e-xf76x7/repo/src/local-release.ts:46:42)
+
+
+$ noop cloud service
+Coordinator backup created: /home/runner/work/_temp/evidence/noop-update-e2e-xf76x7/home/coordinator/backups/6b67ac1b-7a76-44ff-8ac6-84355a6f6793
+Coordinator restored to: /home/runner/work/_temp/evidence/noop-update-e2e-xf76x7/home/coordinator/.verify-6b67ac1b-7a76-44ff-8ac6-84355a6f6793
+91 |         if (changedPrevious) { if (oldPrevious) pointRelease("previous", oldPrevious); else unlinkSync(previous); }
+92 |         await start();
+93 |       } catch (recovery) { throw new Error(`Coordinator ${action} failed: ${error}. Recovery failed: ${recovery}.${preserved} Backup: ${backup}`); }
+94 |     }
+95 |     if (action === "update" && !preserved) rmSync(selected, { recursive: true, force: true });
+96 |     throw new Error(`Coordinator ${action} failed; the previous service was restored: ${error}.${preserved} Backup: ${backup}`);
+                   ^
+error: Coordinator update failed; the previous service was restored: Error: Candidate validation failed: 923 | \n@@@ invalid TypeScript @@@\n
+      ^
+error: Unexpected escape sequence
+    at /home/runner/work/_temp/evidence/noop-update-e2e-xf76x7/home/coordinator/releases/release-j0hsBE/repo/cloud/src/index.ts:923:1
+
+. Backup: /home/runner/work/_temp/evidence/noop-update-e2e-xf76x7/home/coordinator/backups/6b67ac1b-7a76-44ff-8ac6-84355a6f6793
+      at updateRelease (/home/runner/work/_temp/evidence/noop-update-e2e-xf76x7/repo/src/local-release.ts:96:15)
+
+
+$ noop cloud service
+Coordinator backup created: /home/runner/work/_temp/evidence/noop-update-e2e-xf76x7/home/coordinator/backups/5927b085-869f-4f31-974c-b0ffb7157861
+Coordinator restored to: /home/runner/work/_temp/evidence/noop-update-e2e-xf76x7/home/coordinator/.verify-5927b085-869f-4f31-974c-b0ffb7157861
+91 |         if (changedPrevious) { if (oldPrevious) pointRelease("previous", oldPrevious); else unlinkSync(previous); }
+92 |         await start();
+93 |       } catch (recovery) { throw new Error(`Coordinator ${action} failed: ${error}. Recovery failed: ${recovery}.${preserved} Backup: ${backup}`); }
+94 |     }
+95 |     if (action === "update" && !preserved) rmSync(selected, { recursive: true, force: true });
+96 |     throw new Error(`Coordinator ${action} failed; the previous service was restored: ${error}.${preserved} Backup: ${backup}`);
+                   ^
+error: Coordinator update failed; the previous service was restored: Error: Candidate validation failed: Socket "health": parseAddress: path must be shorter than SUN_LEN
+149 |         const response = await fetch("http://localhost/api/status", { unix: healthSocket, headers: { Authorization: `Bearer ${token}` }, signal: AbortSignal.timeout(500) });
+150 |         if (response.ok) { ready = true; break; }
+151 |       } catch {}
+152 |       await Bun.sleep(100);
+153 |     }
+154 |     if (!ready) throw new Error("The local coordinator did not start");
+                                ^
+error: The local coordinator did not start
+      at localCoordinator (/home/runner/work/_temp/evidence/noop-update-e2e-xf76x7/home/coordinator/releases/release-okZ3WI/repo/src/local-coordinator.ts:154:27)
+      at async main (/home/runner/work/_temp/evidence/noop-update-e2e-xf76x7/home/coordinator/releases/release-okZ3WI/repo/src/cli.ts:1257:82)
+
+. Backup: /home/runner/work/_temp/evidence/noop-update-e2e-xf76x7/home/coordinator/backups/5927b085-869f-4f31-974c-b0ffb7157861
+      at updateRelease (/home/runner/work/_temp/evidence/noop-update-e2e-xf76x7/repo/src/local-release.ts:96:15)
+
+
+$ noop cloud service
+Coordinator backup created: /home/runner/work/_temp/evidence/noop-update-e2e-xf76x7/home/coordinator/backups/8ba150c6-0c96-44c8-98be-4472966bfbed
+Coordinator restored to: /home/runner/work/_temp/evidence/noop-update-e2e-xf76x7/home/coordinator/.verify-8ba150c6-0c96-44c8-98be-4472966bfbed
+91 |         if (changedPrevious) { if (oldPrevious) pointRelease("previous", oldPrevious); else unlinkSync(previous); }
+92 |         await start();
+93 |       } catch (recovery) { throw new Error(`Coordinator ${action} failed: ${error}. Recovery failed: ${recovery}.${preserved} Backup: ${backup}`); }
+94 |     }
+95 |     if (action === "update" && !preserved) rmSync(selected, { recursive: true, force: true });
+96 |     throw new Error(`Coordinator ${action} failed; the previous service was restored: ${error}.${preserved} Backup: ${backup}`);
+                   ^
+error: Coordinator update failed; the previous service was restored: Error: Candidate validation failed: Socket "health": parseAddress: path must be shorter than SUN_LEN
+148 |         const response = await fetch("http://localhost/api/status", { unix: healthSocket, headers: { Authorization: `Bearer ${token}` }, signal: AbortSignal.timeout(500) });
+149 |         if (response.ok) { ready = true; break; }
+150 |       } catch {}
+151 |       await Bun.sleep(100);
+152 |     }
+153 |     if (!ready) throw new Error("The local coordinator did not start");
+                                ^
+error: The local coordinator did not start
+      at localCoordinator (/home/runner/work/_temp/evidence/noop-update-e2e-xf76x7/home/coordinator/releases/release-T6A2U0/repo/src/local-coordinator.ts:153:27)
+      at async main (/home/runner/work/_temp/evidence/noop-update-e2e-xf76x7/home/coordinator/releases/release-T6A2U0/repo/src/cli.ts:1257:82)
+
+. Backup: /home/runner/work/_temp/evidence/noop-update-e2e-xf76x7/home/coordinator/backups/8ba150c6-0c96-44c8-98be-4472966bfbed
+      at updateRelease (/home/runner/work/_temp/evidence/noop-update-e2e-xf76x7/repo/src/local-release.ts:96:15)
+
+
