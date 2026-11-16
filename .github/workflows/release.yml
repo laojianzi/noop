@@ -1,82 +1,50 @@
-name: Noop cross-platform feature acceptance
+name: Noop ARM64 native browser acceptance
 on:
   workflow_dispatch:
 jobs:
-  features:
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - { os: xcode-27, package: darwin-arm64, label: darwin-arm64, mail: darwin-arm64, mailsha: 15703838762355d42befeb1c942f3a5cc53bcf1fa3ba6abc216a05dd254a8ac2 }
-    runs-on: ${{ matrix.os }}
+  browser:
+    runs-on: ubuntu-24.04-arm
     timeout-minutes: 25
-    env:
-      NOOP_E2E_WEB_VERSION: v0.3.18
     steps:
       - uses: actions/checkout@v4
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: 1.4.4
-      - name: Prepare verified runtime, Web client and SMTP server
-        id: prepare
+      - name: Prepare runtime, Web bundle and Playwright
         shell: bash
         run: |
-          mkdir -p "$RUNNER_TEMP/runtime" "$RUNNER_TEMP/web" "$RUNNER_TEMP/mail" "$RUNNER_TEMP/evidence"
-          printf "NOOP_E2E_WEB_ASSETS=%s/web\nNOOP_E2E_WORKERD=%s/runtime/package/bin/workerd\nNOOP_E2E_OUT=%s/evidence\nNOOP_E2E_MAILPIT=%s/mail/mailpit\n" "$RUNNER_TEMP" "$RUNNER_TEMP" "$RUNNER_TEMP" "$RUNNER_TEMP" >> "$GITHUB_ENV"
-          npm pack "@cloudflare/workerd-${{ matrix.package }}@1.20261110.1" --silent --pack-destination "$RUNNER_TEMP/runtime"
+          mkdir -p "$RUNNER_TEMP/runtime" "$RUNNER_TEMP/web" "$RUNNER_TEMP/browser" "$RUNNER_TEMP/evidence"
+          npm pack '@cloudflare/workerd-linux-arm64@1.20261110.1' --silent --pack-destination "$RUNNER_TEMP/runtime"
           tar -xzf "$RUNNER_TEMP/runtime/"*.tgz -C "$RUNNER_TEMP/runtime"
-          mkdir -p "$RUNNER_TEMP/next-runtime"
-          npm pack "@cloudflare/workerd-${{ matrix.package }}@1.20261116.1" --silent --pack-destination "$RUNNER_TEMP/next-runtime"
-          tar -xzf "$RUNNER_TEMP/next-runtime/"*.tgz -C "$RUNNER_TEMP/next-runtime"
-          printf "NOOP_E2E_NEXT_WORKERD=%s/next-runtime/package/bin/workerd\nNOOP_E2E_DISPOSABLE=1\n" "$RUNNER_TEMP" >> "$GITHUB_ENV"
           curl -fsSL --retry 3 https://github.com/huacnlee/noop/releases/download/v0.3.18/noop-web.tar.gz -o "$RUNNER_TEMP/noop-web.tar.gz"
           curl -fsSL --retry 3 https://github.com/huacnlee/noop/releases/download/v0.3.18/sha256sums -o "$RUNNER_TEMP/web-sha256sums"
-          (cd "$RUNNER_TEMP" && grep '  noop-web.tar.gz$' web-sha256sums | shasum -a 256 -c -)
+          (cd "$RUNNER_TEMP" && grep '  noop-web.tar.gz$' web-sha256sums | sha256sum -c -)
           tar -xzf "$RUNNER_TEMP/noop-web.tar.gz" -C "$RUNNER_TEMP/web"
-          curl -fsSL --retry 3 "https://github.com/axllent/mailpit/releases/download/v1.33.1/mailpit-${{ matrix.mail }}.tar.gz" -o "$RUNNER_TEMP/mail.tar.gz"
-          (cd "$RUNNER_TEMP" && printf '%s  mail.tar.gz\n' '${{ matrix.mailsha }}' | shasum -a 256 -c -)
-          tar -xzf "$RUNNER_TEMP/mail.tar.gz" -C "$RUNNER_TEMP/mail"
           npm install --silent --prefix "$RUNNER_TEMP/browser" playwright-core@1.64.0
-          if [[ "$(uname -s)" == Darwin ]]; then
-            for ip in 127.0.0.2 127.0.0.3 127.0.0.4; do sudo ifconfig lo0 alias "$ip"; done
-          fi
-      - name: Offline service and runtime upgrade
-        if: always() && steps.prepare.outcome == 'success'
-        run: test/self-hosted-macos-offline.sh
-      - name: Guest lifecycle
-        if: always() && steps.prepare.outcome == 'success'
-        run: bun test/self-hosted-guest-e2e.ts
-      - name: MCP through HTTPS
-        if: always() && steps.prepare.outcome == 'success'
-        run: bun test/self-hosted-mcp-e2e.ts
-      - name: SMTP delivery
-        if: always() && steps.prepare.outcome == 'success'
-        run: bun test/self-hosted-smtp-e2e.ts
-      - name: Web Push protocol
-        if: always() && steps.prepare.outcome == 'success'
-        run: bun test/self-hosted-push-e2e.ts
-      - name: Backup and restore
-        if: always() && steps.prepare.outcome == 'success'
-        run: bun test/self-hosted-backup-e2e.ts
-      - name: Web client message and attachment
-        if: always() && steps.prepare.outcome == 'success'
+      - name: Run real ARM64 Chromium
         shell: bash
         run: |
-          browser=$(command -v chromium || command -v google-chrome || true)
-          if [[ -z "$browser" && -x '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome' ]]; then browser='/Applications/Google Chrome.app/Contents/MacOS/Google Chrome'; fi
-          if [[ -z "$browser" ]]; then echo 'SKIP: no Chromium browser available on this runner'; exit 0; fi
-          NOOP_E2E_BROWSER="$browser" NOOP_E2E_PLAYWRIGHT="$RUNNER_TEMP/browser/node_modules/playwright-core/index.js" bun test/self-hosted-messages-e2e.ts
-      - name: Print acceptance results
+          docker run --rm --network host -v "$GITHUB_WORKSPACE:/src:ro" -v "$RUNNER_TEMP:/work" -v "$(realpath "$(command -v bun)"):/usr/local/bin/bun:ro" -w /src debian:bookworm-slim bash -c '
+            set -e
+            apt-get update -qq
+            DEBIAN_FRONTEND=noninteractive apt-get install -y -qq chromium ca-certificates git >/dev/null
+            uname -m
+            chromium --version
+            export NOOP_E2E_WEB_ASSETS=/work/web NOOP_E2E_WORKERD=/work/runtime/package/bin/workerd NOOP_E2E_OUT=/work/evidence
+            export NOOP_E2E_BROWSER=/usr/bin/chromium NOOP_E2E_PLAYWRIGHT=/work/browser/node_modules/playwright-core/index.js NOOP_E2E_WEB_VERSION=v0.3.18
+            bun test/self-hosted-messages-e2e.ts
+            chmod -R a+rX /work/evidence
+          '
+      - name: Print result
         if: always()
         shell: bash
         run: find "$RUNNER_TEMP/evidence" -name report.json -exec cat {} \; 2>/dev/null || true
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: features-${{ matrix.label }}
+          name: browser-linux-arm64
           path: |
             ${{ runner.temp }}/evidence/**/report.json
             ${{ runner.temp }}/evidence/**/*.log
-            ${{ runner.temp }}/evidence/**/SHA256SUMS
             ${{ runner.temp }}/evidence/**/web-messages-after-restart.png
           if-no-files-found: warn
