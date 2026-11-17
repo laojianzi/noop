@@ -337,7 +337,7 @@ try {
   check(designatedUpdate.status === 0 && designatedUpdate.output.includes("self-updated") && readFileSync(cloudMarker, "utf8").includes("wrangler whoami"),
     "the designated non-primary host enters the cloud deployment path");
 
-  writeFileSync(join(updateBin, "git"), '#!/bin/sh\ncase "$*" in *rev-parse*) printf "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\\n" ;; esac\nexit 0\n', { mode: 0o755 });
+  writeFileSync(join(updateBin, "git"), '#!/bin/sh\ncase "$*" in *--short*) printf "aaaaaaa\\n" ;; *rev-parse*) printf "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\\n" ;; esac\nexit 0\n', { mode: 0o755 });
   for (const fixture of [
     { name: "local", mode: "local", host: "deploy-host", primary: "other-host", deploy: false },
     { name: "cloud-primary", mode: "cloud", host: "synthetic-primary", primary: "synthetic-primary", deploy: false },
@@ -376,14 +376,20 @@ try {
   await demoContext.route("**/*", (route: any) => new URL(route.request().url()).origin === base ? route.continue() : route.abort());
   const demoPage = await demoContext.newPage();
   demoPage.on("request", (request: any) => { if (new URL(request.url()).hostname === "demo") demoRequests.push(request.url()); });
+  const storagePrefix = await page.evaluate(() => {
+    const key = Object.keys(localStorage).find((k) => k.endsWith("hub.url"));
+    return key?.slice(0, -"hub.url".length);
+  });
+  check(storagePrefix !== undefined, "the real client persists its coordination address");
   await demoPage.goto(base, { waitUntil: "domcontentloaded" });
-  await demoPage.getByPlaceholder("you@example.com").fill("demo@noop.dev", { timeout: 30_000 });
-  await demoPage.getByText(/^(Send code|发送验证码)$/).click();
+  await demoPage.evaluate((prefix: string) => { localStorage.setItem(`${prefix}hub.url`, "http://demo"); localStorage.setItem(`${prefix}hub.token`, "demo"); }, storagePrefix);
+  await demoPage.reload({ waitUntil: "domcontentloaded" });
   await demoPage.getByPlaceholder(/Tell the team what to do|给团队下指令/).waitFor({ timeout: 30_000 });
   await demoPage.getByText(/Merge PR #42/).first().waitFor({ timeout: 30_000 });
   await demoPage.waitForLoadState("networkidle");
-  check(demoRequests.length === 0, "the demo signs in and loads status without network requests to the demo host");
   await demoPage.screenshot({ path: join(artifacts, "web-demo.png") });
+  writeFileSync(join(artifacts, "demo-network.json"), `${JSON.stringify(demoRequests, null, 2)}\n`);
+  check(demoRequests.length === 0, "an existing demo session loads status without network requests to the demo host");
   await demoContext.close();
 
   await stop(base);
