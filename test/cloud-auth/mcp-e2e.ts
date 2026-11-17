@@ -162,11 +162,15 @@ ok(list.includes(`noop://tasks/${tid}`), "resources/list has the new task");
 const wait = (rid: string, cur: number, secs: number) => fetch(`${BASE}/mcp`, { method: "POST", headers: H({ accept: "application/json, text/event-stream" }),
   body: JSON.stringify({ jsonrpc: "2.0", id: rid, method: "tools/call", params: { name: "wait_for_events", arguments: { cursor: cur, timeout_seconds: secs }, _meta: { progressToken: rid } } }) });
 const { cursor: c2 } = await tool("get_feed", { limit: 1 });
-const w1 = await wait("w1", c2, 8);
+const w1 = await wait("w1", c2, 20);
 ok(w1.headers.get("content-type") === "text/event-stream", "wait_for_events with progressToken → SSE response");
 const m4 = `progress ${Date.now()}`;
-setTimeout(() => emit(m4), 6000);
-const wf = await readFrames(w1, (f) => f.some((x) => x.data?.id === "w1"), 15000);
+let emitted: Promise<Response> | undefined;
+const wf = await readFrames(w1, (f) => {
+  if (!emitted && f.filter((x) => x.data?.method === "notifications/progress").length >= 2) emitted = emit(m4);
+  return f.some((x) => x.data?.id === "w1");
+}, 25000);
+ok(emitted && (await emitted).ok, "event is accepted while the progress stream is waiting");
 const prog = wf.filter((x) => x.data?.method === "notifications/progress");
 const resp = wf.find((x) => x.data?.id === "w1");
 ok(prog.length >= 2 && prog.every((x) => x.data.params.progressToken === "w1" && x.id), `${prog.length} notifications/progress with ids before the response`);
