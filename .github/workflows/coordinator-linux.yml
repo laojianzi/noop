@@ -28,6 +28,11 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
+      - name: Verify evidence checksums
+        run: |
+          for sums in test/evidence/issue-*/SHA256SUMS; do
+            (cd "$(dirname "$sums")" && sha256sum -c --quiet SHA256SUMS)
+          done
       - uses: ./.github/actions/setup-nsh
         with:
           ref: nightly
