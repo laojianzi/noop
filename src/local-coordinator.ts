@@ -151,6 +151,7 @@ const config :Workerd.Config = (
   const smtp = email.to && email.host ? JSON.stringify({ host: email.host, port: email.port ?? 465,
     secure: email.secure ?? (email.port ?? 465) === 465, user: email.user, pass: email.pass, from: email.from ?? email.user }) : "";
   const vapid = await vapidKeys();
+  persist(join(HOME_DIR, "vapid.json"));
   const healthSocket = join(root, "health.sock");
   if (existsSync(healthSocket)) unlinkSync(healthSocket);
   // The runtime keeps the lock if this launcher is killed.

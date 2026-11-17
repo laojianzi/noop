@@ -156,12 +156,19 @@ if (process.argv[2] === "conflict") {
   await waitFor(() => (Bun.TOML.parse(readFileSync(legacyFile, "utf8")) as any).cloud.url === "https://advertised.invalid", "cloud mode did not retain automatic address adoption");
   check(true, "cloud mode retains automatic adoption of the shared address");
 
+  const pushKey = () => {
+    const r = exec("worker1", ["curl", "--max-time", "2", "-sf", "-H", `Authorization: Bearer ${token}`, `${base}/api/push/vapid`], false);
+    try { return JSON.parse(r.out).publicKey as string; } catch { return ""; }
+  };
+  const originalPushKey = pushKey();
+  check(!!originalPushKey, "push has a public key before the coordinator stops");
   docker(["stop", "-t", "5", container("coordinator")]);
   const offline = cli("primary", ["add", "queued while disconnected"]);
   const offlineTask = offline.out.match(/\bT-[A-Z0-9-]+\b/)?.[0] || "";
   check(!!offlineTask, "the primary retains a task created during disconnection");
   docker(["start", container("coordinator")]);
   await waitFor(() => apiStatus() !== null, "coordinator did not restart");
+  check(pushKey() === originalPushKey, "push retains its public key after the coordinator restarts");
   const recovered = exec("worker2", ["env", "NOOP_HOME=/state/recovered", "bun", "/repo/src/cli.ts", "init", "--local", base, "--token", token], false);
   check(recovered.status === 0 && existsSync(join(out, "recovered", "data", "tasks", "active", `${task}.md`)) &&
     existsSync(join(out, "recovered", "data", "reports", "network-conflict.md")), "a fresh host recovers previously committed files and the claimed task");
