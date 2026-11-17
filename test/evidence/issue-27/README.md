@@ -25,9 +25,9 @@ packaged application in an isolated Xvfb display and tests sign-in, messages,
 WebSocket delivery and the first primary status snapshot.
 
 `android-simulator` records a native Android app launch and an HTTP policy
-comparison. The unchanged app rejected cleartext HTTP. A separately built test
-package that allowed cleartext completed sign-in and WebSocket messaging. This
-does not establish HTTPS or physical-device acceptance.
+comparison. A diagnostic build using the existing network policy rejected
+cleartext HTTP. A test package that allowed cleartext completed sign-in and
+WebSocket messaging. This does not establish HTTPS or physical-device acceptance.
 
 The separate service, unattended Linux reboot, backup, protected update and
 network-topology evidence is in `test/evidence/issue-15` through `issue-26`.

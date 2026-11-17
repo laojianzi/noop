@@ -13,9 +13,10 @@ an unreachable-server message. The proxy recorded no request. `report.json`,
 fixture hashes. The app source was not modified for this run.
 
 The subsequent [policy comparison](https://github.com/laojianzi/noop/actions/runs/43897160269)
-repeated the test with two packages. The unchanged package failed, and its
-diagnostic reported that Android did not permit cleartext HTTP. A test package
-with `usesCleartextTraffic` enabled completed sign-in and two-way WebSocket
+repeated the test with two packages. Both used a diagnostic source change that
+logged fetch errors. The package with the existing network policy failed, and
+its diagnostic reported that Android did not permit cleartext HTTP. A test
+package with `usesCleartextTraffic` enabled completed sign-in and two-way WebSocket
 messaging through the same `adb reverse` route. The two reports and diagnostic
 are retained here. This does not test HTTPS, a real mobile device or a
 production push service, and the test package is not a production change.
