@@ -24,12 +24,12 @@ import { collect, LEARN_PROMPT } from "./sessions";
 import { medic } from "./medic";
 import { githubStarved } from "./github";
 import { doctor, visual } from "./visual";
-import { answerFromChat, appendEvent, cancelTask, drainInbound, feed, handleOwnerMessage, mediaDays, pruneMedia, recentChat, setApplyOp, setCancelTask, setUpdateFleet, onSettingsSaved, startServer, status as hubStatus } from "./server";
+import { ackInbound, answerFromChat, appendEvent, cancelTask, feed, handleOwnerMessage, mediaDays, pendingInbound, pruneMedia, recentChat, setApplyOp, setCancelTask, setUpdateFleet, onSettingsSaved, startServer, status as hubStatus } from "./server";
 import { addFollowUp, reopenTask, routeWithoutModel, type BrainOut, ClaudeModel, systemPrompt, dataActs, localStore, logBrain, think } from "./brain";
 import { isWrite, runTool } from "../cloud/src/tools";
 import { cloudDeploy, startCloudBridge } from "./cloud";
 import { adoptCloudUrl, hubDialUrl, readHubToml } from "./sync";
-import { judgeAccuracy, level, needsApproval, noteStuckRoutine, proposeBatch, resolveProposals, routineQueued, supersedeProposed } from "./autonomy";
+import { judgeAccuracy, level, needsApproval, noteStuckRoutine, proposeBatch, resolveProposals, routineParkedOnDecision, routineQueued, supersedeProposed } from "./autonomy";
 import { CODE, L, UPDATE_REQUEST, type UpdateState, setUpdateState, updateState, allowedClis, cliHintPatch, capOk, idTagFor, isPrimary, runningRev, setApprovalGate, setIdTag } from "./core";
 import { accountEnv, accountsStatus, classify, failoverAccount, pendingLoginIds, pickAccount, reportFailure, retryLogins, submitLoginCode } from "./accounts";
 import { channelPrompt, channels, resolveChannels, updateChannel } from "./channels";
@@ -102,6 +102,18 @@ function runRoutines(cfg: Cfg, host: string, primary: boolean) {
       state[r.name] = new Date().toISOString();
       journal(host, `⏰ routine \`${r.name}\` skipped: ${queued} still queued/running`);
       noteStuckRoutine(cfg, r.name, queued, state);
+      continue;
+    }
+    // opt-in: a copy already parked on an unanswered decision would only be repeated by every later run
+    const parked = r.skip_while_decision_open ? routineParkedOnDecision(r.name, pin) : "";
+    if (parked) {
+      state[r.name] = new Date().toISOString();
+      // once per parked copy, not once per skipped tick: a 10m routine would otherwise fill the journal with the same line
+      const key = `${r.name}#parked`;
+      if (state[key] !== parked) {
+        state[key] = parked;
+        journal(host, `⏰ routine \`${r.name}\` skipped: ${parked} waits on the owner's answer`);
+      }
       continue;
     }
     if (r.signal && !signalChanged(r, state)) { state[r.name] = new Date().toISOString(); continue; } // nothing new → no AI run
@@ -344,10 +356,17 @@ export const followupsOf = (res: ReturnType<typeof parseResult>, limit: number):
 
 const FOLLOW_UP = "## Owner follow-up";
 
+/** Chat answers are dropped from the on-disk queue only after the loop: a restart mid-loop hands them to the next daemon
+ * (a card already answered is not answered twice), and one that throws is not replayed every tick. */
 async function handleReplies(cfg: Cfg, host: string) {
+  const queued = pendingInbound();
+  try { await answerReplies(cfg, host, queued); } finally { ackInbound(queued.length); }
+}
+
+async function answerReplies(cfg: Cfg, host: string, queued: ReturnType<typeof pendingInbound>) {
   const open = openDecisionIds();
   const judged = recentJudgeIds();
-  const replies = [...drainInbound(), ...await pollReplies(cfg, new Set([...open, ...judged, ...pendingLoginIds()]))];
+  const replies = [...queued, ...await pollReplies(cfg, new Set([...open, ...judged, ...pendingLoginIds()]))];
   for (const r of replies) {
     if (r.id.startsWith("P-")) {
       if (resolveProposals(r.id, r.answer, `owner(${r.source})`)) {

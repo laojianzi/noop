@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { classify } from "../src/accounts";
+import { classify, quotaCooldownUntil } from "../src/accounts";
 
 test("a gateway 5xx that says 'try again in a moment' is not a quota wall", () => {
   // What Claude Code prints when its API endpoint answers 502: no usage limit anywhere, only a vague retry hint.
@@ -23,6 +23,8 @@ test("quota walls are still recognised, including reset hints that carry a time"
     "429 Too Many Requests",
     "Your credit balance is too low to access the API",
     "The server is overloaded",
+    // Command Code Plan's 402 wording (T-1953): credits exhausted, resets only on renewal — failover now
+    "API Error: 402 Command Code Plan: You have insufficient credits to make this request. Please purchase more credits to continue using the service.",
   ]) expect(classify(msg)).toBe("quota");
 });
 
@@ -39,4 +41,15 @@ test("Claude's expired OAuth session enters the auth failover path", () => {
   expect(classify("OAuth token has expired")).toBe("auth");
   expect(classify("OAuth session has expired")).toBe("auth");
   expect(classify("OAuth session created; tests failed: 3 of 40")).toBeNull();
+});
+
+test("the production gateway 503 is not exhausted API credit", () => {
+  expect(classify("API Error: 503 No available accounts: no available accounts. This is a server-side issue, usually temporary — try again in a moment. If it persists, check your inference gateway.")).toBeNull();
+});
+
+test("concurrent quota failures retain one cooldown and notification key", () => {
+  const until = new Date(Date.now() + 3600000).toISOString();
+  expect(quotaCooldownUntil(until, "usage limit")).toBe(until);
+  expect(quotaCooldownUntil(until, "try again in 2h")).toBe(until);
+  expect(Date.parse(quotaCooldownUntil("2000-01-01", "usage limit"))).toBeGreaterThan(Date.now());
 });

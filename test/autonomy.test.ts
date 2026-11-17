@@ -46,8 +46,63 @@ test("open batch with stale tasks is closed and rebuilt (no deadlock)", async ()
   await A.proposeBatch(cfg, "pc");
   expect(files("decisions", "closed")).toEqual(["P-0001.md"]);
   expect(files("decisions", "open")).toEqual(["P-0002.md"]);
-  expect(readDoc(P("decisions", "open", "P-0002.md")).meta.items).toBe("T-0002,T-0003");
+  // the task the owner never saw (T-0003) comes first: a rebuild must surface it, not bury it behind T-0002
+  expect(readDoc(P("decisions", "open", "P-0002.md")).meta.items).toBe("T-0003,T-0002");
   expect(sent.length).toBe(2);
+});
+
+test("an unanswered batch stopped at nine never hides proposals that arrived later", async () => {
+  // the owner ignores the menu: nine proposals go out and stay unanswered
+  for (let i = 1; i <= 9; i++) task("proposed", `T-000${i}`, "followup:T-0000");
+  await A.proposeBatch(cfg, "pc");
+  expect(readDoc(P("decisions", "open", "P-0001.md")).meta.items).toBe("T-0001,T-0002,T-0003,T-0004,T-0005,T-0006,T-0007,T-0008,T-0009");
+  // later work keeps arriving outside those nine (created after the batch went out)
+  task("proposed", "T-0010", "routine:pr-review", new Date().toISOString());
+  task("proposed", "T-0011", "followup:T-0001", new Date().toISOString());
+  await A.proposeBatch(cfg, "pc");
+  expect(files("decisions", "closed")).toEqual([]); // still inside renotify_hours
+
+  // once the throttle expires, the rebuild offers the unseen tasks instead of repeating the same nine
+  const f = P("decisions", "open", "P-0001.md");
+  const { meta, body } = readDoc(f);
+  writeDoc(f, { ...meta, created: ago(300), notified: ago(300) }, body);
+  await A.proposeBatch(cfg, "pc");
+  const rebuilt = readDoc(P("decisions", "open", "P-0002.md")).meta.items.split(",");
+  expect(rebuilt.slice(0, 2)).toEqual(["T-0010", "T-0011"]);
+  expect(rebuilt.length).toBe(9);
+  expect(rebuilt).toContain("T-0001"); // the unanswered ones stay offered as filler, not dropped
+});
+
+test("an ignored backlog larger than nine is rotated daily, not re-notified every renotify window", async () => {
+  // 12 proposals, the owner answers none: the batch holds nine and three never made the slice
+  for (let i = 1; i <= 12; i++) task("proposed", `T-01${String(i).padStart(2, "0")}`, "followup:T-0000", ago(600));
+  await A.proposeBatch(cfg, "pc");
+  expect(sent.length).toBe(1);
+  const f = P("decisions", "open", "P-0001.md");
+  const rewind = (min: number) => {
+    const { meta, body } = readDoc(f);
+    writeDoc(f, { ...meta, created: ago(min), notified: ago(min) }, body);
+  };
+
+  // five hours later nothing new arrived: rotate_hours (24h) has not passed, so the owner is not pinged again
+  rewind(300);
+  await A.proposeBatch(cfg, "pc");
+  expect(files("decisions", "closed")).toEqual([]);
+  expect(sent.length).toBe(1);
+
+  // a day later the three unseen proposals get their turn
+  rewind(25 * 60);
+  await A.proposeBatch(cfg, "pc");
+  expect(files("decisions", "closed")).toEqual(["P-0001.md"]);
+  expect(readDoc(P("decisions", "open", "P-0002.md")).meta.items.split(",").length).toBe(9);
+  expect(sent.length).toBe(2);
+});
+
+test("a high-priority proposal is not queued behind nine normal ones", async () => {
+  for (let i = 1; i <= 9; i++) task("proposed", `T-000${i}`, "followup:T-0000");
+  writeDoc(P("tasks", "proposed", "T-0020.md"), { id: "T-0020", title: "urgent", agent: "lead", source: "followup:T-0000", created: ago(5), priority: "high" }, "body");
+  await A.proposeBatch(cfg, "pc");
+  expect(readDoc(P("decisions", "open", "P-0001.md")).meta.items.split(",")[0]).toBe("T-0020");
 });
 
 test("open batch whose tasks are all gone is closed right away", async () => {
@@ -140,6 +195,46 @@ test("routine dedupe: parked (waiting/blocked) copies never block the next run",
   unlinkSync(P("tasks", "active", "T-0103.md"));
   park("waiting", "T-0104", 1);
   expect(A.routineQueued("parked")).toBe("");
+});
+
+test("a copy parked on an unanswered decision is found only while that decision is open", () => {
+  writeDoc(P("decisions", "open", "D-0004.md"), { id: "D-0004", question: "告警源？" }, "x");
+  writeDoc(P("tasks", "waiting", "T-0201.md"), {
+    id: "T-0201", source: "routine:uptime-watch", wait_kind: "human", waiting_on: "等待主人答复 decisions/open/D-0004.md",
+  }, "");
+  expect(A.routineParkedOnDecision("uptime-watch")).toBe("T-0201");
+  expect(A.routineParkedOnDecision("other")).toBe("");
+  expect(A.routineParkedOnDecision("uptime-watch", "linux")).toBe(""); // not this machine's copy
+  expect(A.routineQueued("uptime-watch")).toBe(""); // parked copies still never block a run on their own
+  unlinkSync(P("decisions", "open", "D-0004.md"));
+  expect(A.routineParkedOnDecision("uptime-watch")).toBe(""); // answered or closed → the routine continues
+});
+
+test("a copy parked in tasks/blocked by needs_decision counts while its decision is open", () => {
+  // the standard path most routine copies take: returning needs_decision parks the task in tasks/blocked with
+  // meta.decision, not a waiting_on string. Missing it made skip_while_decision_open a no-op for those copies.
+  writeDoc(P("decisions", "open", "D-0009.md"), { id: "D-0009", question: "q" }, "x");
+  writeDoc(P("tasks", "blocked", "T-0211.md"), { id: "T-0211", source: "routine:pr-review", status: "needs_decision", decision: "D-0009" }, "");
+  expect(A.routineParkedOnDecision("pr-review")).toBe("T-0211");
+  expect(A.routineParkedOnDecision("pr-review", "linux")).toBe(""); // per-machine routine: another host's copy
+  unlinkSync(P("decisions", "open", "D-0009.md"));
+  expect(A.routineParkedOnDecision("pr-review")).toBe(""); // answered or closed → the routine continues
+  // a blocked copy whose decision file is gone (or an id that is not a card) must not silence the routine
+  writeDoc(P("tasks", "blocked", "T-0212.md"), { id: "T-0212", source: "routine:pr-review", status: "needs_decision", decision: "D-9999" }, "");
+  expect(A.routineParkedOnDecision("pr-review")).toBe("");
+});
+
+test("waiting on CI or on a merge is not waiting on a decision", () => {
+  writeDoc(P("decisions", "open", "D-0004.md"), { id: "D-0004", question: "q" }, "x");
+  writeDoc(P("tasks", "waiting", "T-0202.md"), {
+    id: "T-0202", source: "routine:uptime-watch", wait_kind: "ci", waiting_on: "CI run https://github.com/o/r/actions/runs/1",
+  }, "");
+  writeDoc(P("tasks", "waiting", "T-0203.md"), {
+    id: "T-0203", source: "routine:own-prs-ci", wait_kind: "human", waiting_on: "PR https://github.com/o/r/pull/1 merged? then re-read D-0004",
+  }, "");
+  expect(A.routineParkedOnDecision("uptime-watch")).toBe("");
+  // a bare or incidental id mention is not a wait on the card: only the decisions/open path counts
+  expect(A.routineParkedOnDecision("own-prs-ci")).toBe("");
 });
 
 test("a routine stuck behind a copy no host can run for 30+ minutes notifies the owner once per copy", async () => {

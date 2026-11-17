@@ -43,9 +43,27 @@ export function gatewayAuth(dir: string, env: Record<string, string | undefined>
   return base && !/^https?:\/\/api\.anthropic\.com(\/|$)/.test(base) ? "base-url" : null;
 }
 
+/** Codex can authenticate through a gateway too: `model_provider` in ~/.codex/config.toml names an entry of
+ *  `[model_providers.*]` that carries a bearer token / env key / non-OpenAI base URL. `codex login --device-auth`
+ *  only performs the ChatGPT OAuth dance and exits immediately against such a config, so it can never renew the
+ *  key. Returns what makes the account gateway-backed. */
+export function codexGatewayAuth(dir: string): string | null {
+  let conf: { model_provider?: string; model_providers?: Record<string, Record<string, unknown>> };
+  try { conf = Bun.TOML.parse(readFileSync(join(dir, "config.toml"), "utf8")) as typeof conf; } catch { return null; }
+  const id = conf.model_provider;
+  if (!id || id === "openai") return null;
+  const p = conf.model_providers?.[id];
+  if (!p) return null;
+  if (p.experimental_bearer_token || p.env_key) return "api-key";
+  const base = typeof p.base_url === "string" ? p.base_url : "";
+  return base && !/^https?:\/\/api\.openai\.com(\/|$)/.test(base) ? "base-url" : null;
+}
+
 function usesGateway(a: Account): boolean {
-  if (a.cli !== "claude") return false;
-  return !!gatewayAuth(a.default ? join(homedir(), ".claude") : a.dir);
+  const dir = a.default ? join(homedir(), a.cli === "claude" ? ".claude" : ".codex") : a.dir;
+  if (a.cli === "claude") return !!gatewayAuth(dir);
+  if (a.cli === "codex") return !!codexGatewayAuth(dir);
+  return false;
 }
 
 /** When the CLI's login was last written: a new login (another account) changes it. */
@@ -58,6 +76,12 @@ function credStamp(a: Account): number {
 export function usable(a: Account): boolean {
   const all = load();
   const s = all.accounts[key(a)] ?? {};
+  if (s.cooldown_until && !s.needs_login && s.last_error && /API Error: 50[234]\b/.test(s.last_error) && classify(s.last_error) === null) {
+    // Older versions treated the gateway's vague retry hint as exhausted credits.
+    all.accounts[key(a)] = { ...s, cooldown_until: undefined, told: undefined };
+    save(all);
+    return true;
+  }
   if ((s.needs_login || s.cooldown_until) && s.cred && credStamp(a) > s.cred) {
     // the owner logged in again (maybe another account): try it right away instead of waiting out the old limit
     all.accounts[key(a)] = { ...s, needs_login: false, cooldown_until: undefined, cred: undefined, told: undefined };
@@ -103,7 +127,7 @@ export function accountEnv(a: Account): Record<string, string> {
 // "try again at/in <time>" is a quota reset hint. A vague "try again in a moment" is what a gateway 5xx says
 // ("a server-side issue, usually temporary"): counting it as quota put the account on a one-hour cooldown
 // and moved all its work to the other CLI over a blip.
-const QUOTA = /usage limit|rate[ -]?limit|limit reached|quota|credit balance is too low|no credits remaining|add credits to continue|too many requests|\b429\b|overloaded|hit your .*limit|try again (at|in)(?! (?:a|a few|some) (?:moments?|bit|while|seconds?|minutes?)\b)/i;
+const QUOTA = /usage limit|rate[ -]?limit|limit reached|quota|credit balance is too low|no credits remaining|insufficient credits|purchase more credits|\b402\b|add credits to continue|too many requests|\b429\b|overloaded|hit your .*limit|try again (at|in)(?! (?:a|a few|some) (?:moments?|bit|while|seconds?|minutes?)\b)/i;
 const AUTH = /not logged in|please run \/login|invalid api key|authentication[_ ]error|\b401\b|oauth (token|session) (has )?expired|login required|unauthorized|codex login/i;
 
 export type Failure = "quota" | "auth" | null;
@@ -130,6 +154,11 @@ function resetTime(output: string): Date {
   return new Date(Date.now() + 60 * 60_000);
 }
 
+/** Keep concurrent failures in the same cooldown episode so they share one notification. */
+export function quotaCooldownUntil(current: string | undefined, output: string): string {
+  return current && Date.parse(current) > Date.now() ? current : resetTime(output).toISOString();
+}
+
 export async function reportFailure(a: Account, kind: Failure, output: string, cfg: Cfg) {
   if (!kind) return;
   const s = load();
@@ -139,7 +168,7 @@ export async function reportFailure(a: Account, kind: Failure, output: string, c
   st.cred = credStamp(a);
   const gateway = kind === "auth" && usesGateway(a);
   if (kind === "quota") {
-    st.cooldown_until = resetTime(output).toISOString();
+    st.cooldown_until = quotaCooldownUntil(st.cooldown_until, output);
     journal(host, `${key(a)} hit usage limit → cooldown until ${st.cooldown_until.slice(11, 16)}Z`);
     if (st.told !== st.cooldown_until) {
       st.told = st.cooldown_until;
@@ -151,16 +180,19 @@ export async function reportFailure(a: Account, kind: Failure, output: string, c
         cfg, { kind: "notice" });
     }
   } else if (gateway) {
-    // Gateway/API-key auth has no OAuth login to refresh. Retrying `claude setup-token` against a gateway 401s,
-    // which used to mail a dead login link every 30 minutes while parking the account forever.
+    // Gateway/API-key auth has no OAuth login to refresh. Retrying `claude setup-token` / `codex login --device-auth`
+    // against a gateway 401s or exits at once, which used to mail a dead login link every 30 minutes while parking
+    // the account forever (L-0288…L-0310 for claude, L-0019…L-0073 for a codex gateway).
     st.needs_login = false;
     st.cooldown_until = new Date(Date.now() + 60 * 60_000).toISOString();
     const day = new Date().toISOString().slice(0, 10);
     if (st.told !== `gateway:${day}`) {
       st.told = `gateway:${day}`;
       journal(host, `${key(a)} gateway auth failed → cooldown 1h (no OAuth login for gateway accounts)`);
-      void notify([L(`Claude (${host}) uses an API gateway (ANTHROPIC_BASE_URL / ANTHROPIC_AUTH_TOKEN) and the gateway rejected the token. Tasks go to Codex for now. No login link will be sent: fix the gateway or the token in ~/.claude/settings.json.`,
-        `Claude（${host}）使用 API 网关鉴权（ANTHROPIC_BASE_URL / ANTHROPIC_AUTH_TOKEN），网关拒绝了令牌，任务暂时交给 Codex。这里不适用 OAuth 登录，不会再发登录链接；请检查网关是否在运行，以及 ~/.claude/settings.json 里的令牌。`)].join("\n"), cfg, { kind: "notice" });
+      const other = a.cli === "claude" ? "Codex" : "Claude";
+      const where = a.cli === "claude" ? "~/.claude/settings.json (ANTHROPIC_BASE_URL / ANTHROPIC_AUTH_TOKEN)" : "~/.codex/config.toml ([model_providers.*]: experimental_bearer_token / env_key / base_url)";
+      void notify([L(`${a.cli === "claude" ? "Claude" : "Codex"} (${host}) authenticates through an API gateway and the gateway rejected the token. Tasks go to ${other} for now. No login link will be sent: replace the token in ${where}.`,
+        `${a.cli === "claude" ? "Claude" : "Codex"}（${host}）使用 API 网关鉴权，网关拒绝了令牌，任务暂时交给 ${other}。这里不适用 OAuth 登录，不会再发登录链接；请更换 ${where} 里的令牌。`)].join("\n"), cfg, { kind: "notice" });
     }
   } else {
     st.needs_login = true;

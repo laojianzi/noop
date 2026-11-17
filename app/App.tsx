@@ -67,6 +67,7 @@ import { type Channel, channelDigest, sortChannels } from "./channels";
 import { isRead, markRead, unreadEvents, toggleMessageRead, type MessageReadState as ReadState } from "./read";
 import { setupTray, type TrayChat } from "./tray";
 import { createTimelineWindow } from "./timeline";
+import { ShellUpdate } from "./shell-update";
 import { CHECK_EVERY_MS, createUpdates, shellLine, type ShellInfo, type UpdateState } from "./update";
 import {
   alpha,
@@ -463,6 +464,8 @@ function toggleTheme() {
 
 /** Shared edge for controls and grouped settings surfaces. */
 const surfaceEdge = () => colors.line;
+/** The report reader's width when it first opens. */
+const READER_WIDTH = 760;
 
 /** Links use a quiet, underlined accent shared by the app's themes. */
 const linkColor = () => token("link");
@@ -1260,36 +1263,37 @@ function OwnerBubble(props: { hub: Hub; event: HubEvent; out?: Outgoing; onRetry
                 testID={`reply-to-${ref}`}
                 accessibilityLabel={L(`Preview ${ref}`, `预览 ${ref}`)}
                 hoverStyle={{ opacity: 1 }}
-                style={{ cursor: "pointer", opacity: peek() ? 1 : 0.85, flexDirection: "row", alignItems: "center", gap: 6, maxWidth: "100%", paddingHorizontal: 4 }}
+                style={{ cursor: "pointer", opacity: peek() ? 1 : 0.85, flexDirection: "row", alignItems: "center", gap: 6, maxWidth: 360, minWidth: 0, overflow: "hidden", paddingHorizontal: 4 }}
               >
                 <Icon name="reply" size={13} tint={colors.faint} />
-                <Text style={{ ...chipText, fontFamily: MONO, fontSize: 12, color: colors.muted }}>{ref}</Text>
+                <Text style={{ ...chipText, flexShrink: 0, fontFamily: MONO, fontSize: 12, color: colors.muted }}>{ref}</Text>
                 <If when={asked()}>
-                  <Text style={{ ...chipText, flexShrink: 1, numberOfLines: 1, fontSize: 13, color: colors.faint }}>{asked()}</Text>
+                  <Text style={{ ...chipText, flexShrink: 1, minWidth: 0, numberOfLines: 1, fontSize: 13, color: colors.faint }}>{asked()}</Text>
                 </If>
               </View>
             }
           >
-            <PopIn style={[popupSurface(), { width: 420, maxWidth: "100%", padding: 12, gap: 8 }]}>
-              <View testID={`reply-preview-${ref}`} style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+            {/* No padding on the card: the body scrolls edge to edge, so its scroll bar sits on the card's edge. */}
+            <PopIn style={{ ...popupSurface(), width: 400, maxWidth: "100%", padding: 0, overflow: "hidden" }}>
+              <View testID={`reply-preview-${ref}`} style={{ flexDirection: "row", alignItems: "center", gap: 8, paddingLeft: 14, paddingRight: 6, paddingVertical: 6, minHeight: 44, borderBottomWidth: 0.5, borderBottomColor: surfaceEdge() }}>
                 <If when={original()}>
                   <Avatar from={original()!.from} small />
-                  <Text style={{ fontSize: size.small, fontWeight: "600", color: colors.text }}>{displayName(original()!.from)}</Text>
+                  <Text style={{ flexShrink: 1, fontSize: size.small, fontWeight: "600", color: colors.text, numberOfLines: 1 }}>{displayName(original()!.from)}</Text>
                 </If>
                 <Text style={{ fontFamily: MONO, fontSize: 12, color: colors.muted }}>{ref}</Text>
-                <View style={{ flex: 1 }} />
                 <If when={original()}>
                   <Text style={{ fontSize: 12, color: colors.faint, fontVariant: ["tabular-nums"] }}>{timeOf(original()!.ts)}</Text>
                 </If>
-              </View>
-              <Scroll style={{ maxHeight: 320 }}>
-                <If when={original()} else={<Text style={{ fontSize: size.small, color: colors.muted, userSelect: "text" }}>{asked() || L("The original message is no longer loaded.", "原消息已不在当前记录里。")}</Text>}>
-                  <Rich text={original()!.text} />
-                </If>
-              </Scroll>
-              <View style={{ flexDirection: "row", justifyContent: "flex-end" }}>
+                <View style={{ flex: 1 }} />
                 <Button testID={`reply-goto-${ref}`} label={L("Go to message", "跳到原消息")} variant="ghost" size="sm" onPress={() => { peek.set(false); props.onRef?.(ref!); }} />
               </View>
+              <Scroll style={{ maxHeight: 320 }}>
+                <View style={{ paddingHorizontal: 14, paddingTop: 10, paddingBottom: 12 }}>
+                  <If when={original()} else={<Text style={{ fontSize: size.small, color: colors.muted, userSelect: "text" }}>{asked() || L("The original message is no longer loaded.", "原消息已不在当前记录里。")}</Text>}>
+                    <Rich text={original()!.text} scale={0.9} />
+                  </If>
+                </View>
+              </Scroll>
             </PopIn>
           </Popover>
         </If>
@@ -1723,6 +1727,44 @@ function TaskHistory(props: { hub: Hub; wide: boolean; onTask: (id: string) => v
   );
 }
 
+/** Images attached to a message being written (pasted, dropped, picked); one set per composer. */
+function createAttachments() {
+  const list = signal<Attachment[]>([]);
+  const note = signal<string | null>(null);
+  let seq = 0;
+  function attach(file: Blob, name: string, fromPicker = false) {
+    // the photo picker only returns images, but phones often give them no type or extension; the server reads the bytes
+    const type = imageType(file.type, name) ?? (fromPicker ? "image/jpeg" : null);
+    const problem = attachProblem(type, file.size, list().length);
+    if (problem) return note.set(problem);
+    note.set(null);
+    const typed = file.type === type ? file : new Blob([file], { type: type! });
+    const preview = URL.createObjectURL(typed);
+    list.update((a) => [...a, { id: `a${++seq}`, name: name || `image-${seq}.png`, type: type!, size: file.size, file: typed, preview }]);
+  }
+  function unattach(id: string) {
+    const a = list().find((x) => x.id === id);
+    if (a) URL.revokeObjectURL(a.preview);
+    list.update((l) => l.filter((x) => x.id !== id));
+    note.set(null);
+  }
+  /** Local files (`file:` URLs from a drop or a file manager's copy): read the images among them. */
+  async function attachUris(uris: string[]) {
+    for (const u of uris) {
+      const path = filePath(u);
+      const name = path.split(/[\\/]/).pop() ?? "image";
+      if (!imageType(undefined, name)) { note.set(L("Only images can be sent", "只能发送图片")); continue; }
+      try {
+        const bytes = await fs.readFile(path);
+        attach(new Blob([bytes as Uint8Array<ArrayBuffer>]), name);
+      } catch {
+        note.set(L(`Can’t read ${name}`, `读不到 ${name}`));
+      }
+    }
+  }
+  return { list, note, attach, unattach, attachUris };
+}
+
 function TaskDetail(props: { hub: Hub; id: string; wide: boolean; onFold?: (folded: Folded | null) => void }) {
   // a task past the status snapshot's newest few is read on its own
   const older = signal<(TaskInfo & { decisions?: string[]; events?: HubEvent[] }) | null>(null);
@@ -1765,18 +1807,26 @@ function TaskDetail(props: { hub: Hub; id: string; wide: boolean; onFold?: (fold
   const note = signal("");
   const hint = signal("");
   let said = 0;
+  // images pasted or dropped on the box go with the message, as in the main chat
+  const files = createAttachments();
   async function say() {
     const v = text().trim();
-    if (!v) return;
+    const sent = files.list();
+    if (!v && !sent.length) return;
     // reads as sent at once; only a failure brings the words back to the box, with the reason
     const id = `local:${++said}`;
-    saying.update((l) => [...l, { id, ts: new Date().toISOString(), from: "owner", kind: "owner", ref: props.id, thread: true, text: v }]);
+    saying.update((l) => [...l, { id, ts: new Date().toISOString(), from: "owner", kind: "owner", ref: props.id, thread: true, text: v, ...(sent.length ? { attachments: sent.map((f) => f.preview) } : {}) }]);
     text.set("");
     note.set("");
+    files.note.set(null);
+    files.list.set([]);
+    // what the owner just said is at the end of the page: go there, as the main chat does
+    setTimeout(() => page?.scrollToEnd({ animated: !reduceMotion() }), 40);
     try {
-      await props.hub.send(v, props.id, [], true);
+      await props.hub.send(v, props.id, sent, true);
     } catch (e) {
       text.update((now) => (now.trim() ? `${v}\n${now}` : v));
+      files.list.update((now) => [...sent, ...now]);
       note.set(String((e as Error)?.message ?? e));
     }
     saying.update((l) => l.filter((x) => x.id !== id));
@@ -1873,6 +1923,30 @@ function TaskDetail(props: { hub: Hub; id: string; wide: boolean; onFold?: (fold
         <If when={hint() && !note()}>
           <Text style={{ fontSize: 13, color: colors.muted }}>{hint()}</Text>
         </If>
+        <If when={files.note()}>
+          <Text testID="task-attach-note" style={{ fontSize: 13, color: colors.danger }}>{files.note()}</Text>
+        </If>
+        <If when={files.list().length}>
+          <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8, paddingHorizontal: 4 }}>
+            <Each of={files.list()} key={(a) => a.id}>
+              {(a) => (
+                <View testID="task-attachment" style={{ width: 56, height: 56 }}>
+                  <Image src={a().preview} style={{ width: 56, height: 56, borderRadius: radius.inset, backgroundColor: colors.inset, objectFit: "cover" }} />
+                  <View
+                    role="button"
+                    accessibilityLabel={L(`Remove ${a().name}`, `移除 ${a().name}`)}
+                    tooltip={touch ? undefined : <Tooltip label={L("Remove", "移除")} />}
+                    onPress={() => files.unattach(a().id)}
+                    hoverStyle={{ opacity: 0.85 }}
+                    style={{ position: "absolute", top: -6, right: -6, width: 22, height: 22, borderRadius: 11, alignItems: "center", justifyContent: "center", backgroundColor: colors.text }}
+                  >
+                    <Icon name="close" size={10} tint={colors.background} />
+                  </View>
+                </View>
+              )}
+            </Each>
+          </View>
+        </If>
         <View style={{ flexDirection: "row", alignItems: "flex-end", gap: 8, paddingLeft: 16, paddingRight: 8, paddingVertical: 8, ...composerGlass() }}>
           <Input
             testID="task-composer"
@@ -1881,13 +1955,17 @@ function TaskDetail(props: { hub: Hub; id: string; wide: boolean; onFold?: (fold
             multiline
             value={text()}
             onChange={({ value }) => text.set(value)}
+            onPaste={({ files: pasted, uris }) => {
+              for (const f of pasted) files.attach(f, f.name);
+              if (uris.length) void files.attachUris(uris);
+            }}
             submitBehavior={touch ? "newline" : "submit"}
             onSubmit={() => void say()}
             placeholder={L(`Continue in ${props.id}…`, `在 ${props.id} 里继续说…`)}
             class="placeholder:text-faint"
             style={{ flex: 1, minHeight: 36, maxHeight: 160, paddingVertical: 8, fontSize: 15, lineHeight: 21, color: colors.text, borderWidth: 0, backgroundColor: "transparent" }}
           />
-          <IconButton variant="primary" icon="arrow-up" label={L("Send", "发送")} shortcut="Enter" testID="task-send" disabled={!text().trim()} onPress={() => void say()} />
+          <IconButton variant="primary" icon="arrow-up" label={L("Send", "发送")} shortcut="Enter" testID="task-send" disabled={!text().trim() && !files.list().length} onPress={() => void say()} />
         </View>
       </View>
     </If>
@@ -2449,9 +2527,11 @@ function UserMenu(props: { hub: Hub; onSettings: () => void; reads: MessageReads
 const appUpdate = signal<UpdateState>({ kind: "none" });
 const updates = createUpdates(
   {
-    check: checkForUpdate, download: () => downloadUpdate(), install: installAndRestart,
+    check: checkForUpdate,
+    download: (progress) => downloadUpdate((p) => progress?.(p.total && p.total > 0 ? Math.min(100, p.received / p.total * 100) : null)),
+    install: installAndRestart, open: async (url) => { if (!(await openUrl(url)).opened) throw new Error(L("Could not open the update link", "无法打开更新链接")); },
     // OTA: a signed package of the app's code. Phones cannot restart an app, so there it runs from the next launch.
-    packages: { check: checkForPackage, download: () => downloadPackage(), restart: platform.os === "ios" || platform.os === "android" ? null : restartToPackage, running: runningPackage },
+    packages: { check: checkForPackage, download: () => downloadPackage(), restart: platform.os === "ios" || platform.os === "android" ? null : restartToPackage },
   },
   (state) => appUpdate.set(state),
 );
@@ -2479,7 +2559,7 @@ function UpdateRow(props: { onRestart: () => void }) {
     else if (u.kind !== "installing") props.onRestart();
   };
   return (
-    <If when={state().kind !== "none" && state().kind !== "staged"}>
+    <If when={state().kind !== "none" && state().kind !== "staged" && state().kind !== "shell"}>
       <View
         role="button"
         testID="app-update"
@@ -3298,7 +3378,7 @@ function VersionRows(props: { hub: Hub }) {
     <>
       <SetRow first label={L("This app", "本机客户端")} value={client} testID="version-client" />
       <If when={shell}>
-        <SetRow label={L("App shell", "外壳")} value={shell?.tone === "ok" ? shellText : undefined} detail={shell?.tone === "bad" ? shellText : undefined} tone={shell?.tone === "bad" ? "danger" : undefined} testID="version-shell" />
+        <SetRow label={L("App shell", "外壳")} value={shell?.tone === "ok" ? shellText : undefined} detail={shell?.tone === "bad" ? shellText : undefined} tone={shell?.tone === "bad" ? "danger" : undefined} testID="version-shell" below={<ShellUpdate state={appUpdate()} onUpdate={() => void updates.installShell()} />} />
       </If>
       <Each of={hosts()} key={(h) => h.host}>
         {(h) => {
@@ -4021,7 +4101,8 @@ function Chat(props: { hub: Hub; openRef?: string | null; onConnection: () => vo
   /** The sheet covers only the conversation, keeping the navigation sidebar accessible. */
   const chatRoom = () => windowSize().width - (wide() && sidebarOpen() ? size.sidebar : 0);
   const readerSide = () => wide() && chatRoom() >= 860;
-  const readerWidth = () => Math.min(chatRoom(), resizedReaderWidth() ?? Math.max(360, Math.min(460, Math.round(chatRoom() * 0.42))));
+  // It opens at a reading width (about 70 characters of report text), leaving a strip of the chat to click back to.
+  const readerWidth = () => Math.min(chatRoom(), resizedReaderWidth() ?? Math.max(360, Math.min(READER_WIDTH, chatRoom() - 200)));
   const shownDoc = () => { const d = reading(); return d && d.at === readerAt() ? d : null; };
   /**
    * When the conversation was entered: reports already there stay closed (their cards and the header's button open
@@ -4292,44 +4373,15 @@ function Chat(props: { hub: Hub; openRef?: string | null; onConnection: () => vo
   }
 
   // Images the owner attaches: pasted, dropped on the window, or picked.
-  const attachments = signal<Attachment[]>([]);
+  const { list: attachments, note: attachNote, attach, unattach: dropAttachment, attachUris } = createAttachments();
   /** The thumbnail whose full-size view is open; it pages through every attached image. */
   const viewing = signal<string | null>(null);
   const viewingIndex = () => Math.max(0, attachments().findIndex((a) => a.id === viewing()));
-  const attachNote = signal<string | null>(null);
   // A file drag over the window: null when none, else the offered files (empty until the shell reports them).
   const dropping = signal<string[] | null>(null);
-  let attachSeq = 0;
-  function attach(file: Blob, name: string, fromPicker = false) {
-    // the photo picker only returns images, but phones often give them no type or extension; the server reads the bytes
-    const type = imageType(file.type, name) ?? (fromPicker ? "image/jpeg" : null);
-    const problem = attachProblem(type, file.size, attachments().length);
-    if (problem) return attachNote.set(problem);
-    attachNote.set(null);
-    const typed = file.type === type ? file : new Blob([file], { type: type! });
-    const preview = URL.createObjectURL(typed);
-    attachments.update((a) => [...a, { id: `a${++attachSeq}`, name: name || `image-${attachSeq}.png`, type: type!, size: file.size, file: typed, preview }]);
-  }
   function unattach(id: string) {
-    const a = attachments().find((x) => x.id === id);
-    if (a) URL.revokeObjectURL(a.preview);
     if (viewing() === id) viewing.set(null);
-    attachments.update((list) => list.filter((x) => x.id !== id));
-    attachNote.set(null);
-  }
-  /** Local files (`file:` URLs from a drop or a file manager's copy): read the images among them. */
-  async function attachUris(uris: string[]) {
-    for (const u of uris) {
-      const path = filePath(u);
-      const name = path.split(/[\\/]/).pop() ?? "image";
-      if (!imageType(undefined, name)) { attachNote.set(L("Only images can be sent", "只能发送图片")); continue; }
-      try {
-        const bytes = await fs.readFile(path);
-        attach(new Blob([bytes as Uint8Array<ArrayBuffer>]), name);
-      } catch {
-        attachNote.set(L(`Can’t read ${name}`, `读不到 ${name}`));
-      }
-    }
+    dropAttachment(id);
   }
   async function pickImages() {
     try {
@@ -4902,6 +4954,8 @@ function Chat(props: { hub: Hub; openRef?: string | null; onConnection: () => vo
                   paddingLeft: 18,
                   paddingRight: 8,
                   ...composerGlass(focused()),
+                  // The compact outline and its round controls share a center: radius + 4pt inset.
+                  ...(compactComposer() ? { borderRadius: corner.composerCompact } : {}),
                   ...(dropping() && onChannel() ? { borderColor: colors.accent, borderStyle: "dashed" as const } : {}),
                 }}
               >
@@ -5008,7 +5062,7 @@ function Chat(props: { hub: Hub; openRef?: string | null; onConnection: () => vo
                   }}
                 />
                 {/* Keep the toolbar and its buttons in one place in the tree as the field expands. */}
-                <View style={{ position: "absolute", left: 18, right: 8, bottom: compactComposer() ? 4 : 8, flexDirection: "row", alignItems: "center", gap: 8, pointerEvents: "box-none" }}>
+                <View style={{ position: "absolute", left: compactComposer() ? 12 : 18, right: compactComposer() ? 4 : 8, bottom: compactComposer() ? 4 : 8, flexDirection: "row", alignItems: "center", gap: 8, pointerEvents: "box-none" }}>
                   <View style={{ flex: 1, flexDirection: "row", alignItems: "center", gap: 6, minWidth: 0, pointerEvents: "box-none" }}>
                     <View
                       testID="attach"

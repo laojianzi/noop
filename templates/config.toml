@@ -51,6 +51,7 @@ level = "onboarding"                  # onboarding → assisted → autonomous. 
                                       # (the architect proposes graduation from metrics: shadow-judge accuracy, approval rate).
 batch_minutes = 15                    # onboarding: self-generated tasks are batched into one approval message (P-xxxx)
 renotify_hours = 3                    # an unanswered batch is rebuilt (stale/new items) at most this often
+rotate_hours = 24                     # proposals older than the batch that never made its nine rotate in this often
 # auto_routines = ["uptime-watch"]    # extra read-only routines that skip approval (same as readonly = true)
 
 [idle]
@@ -108,6 +109,8 @@ extra = []                            # more Claude Code tool patterns to hard-b
 
 # ------------------------------------------------------------------ routines (signal → task generators)
 # every: "15m" | "hourly" | "daily HH:MM" | "weekdays HH:MM" | "weekly MON HH:MM"
+# skip_while_decision_open = true: while a previous copy of this routine waits on an unanswered decision, do not start
+# new copies (each would only repeat the same report); the parked copy resumes when the owner answers.
 # More examples (PR review, CI, uptime, nightly builds): presets/routines.toml in the Noop code.
 # requires = hard capability (task waits for such a host) ; prefer = soft (falls back to anyone)
 
