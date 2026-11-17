@@ -7,7 +7,7 @@ import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 
 const source = resolve(import.meta.dir, ".."), out = mkdtempSync(join(process.env.NOOP_E2E_OUT || tmpdir(), "noop-backup-e2e-"));
-const repo = join(out, "repo"), home = join(out, "source-home"), restored = join(out, "restored-home"), bin = join(out, "bin"), log = join(out, "coordinator.log");
+const repo = join(out, "repo"), homes = join(out, "long-home-" + "x".repeat(110)), home = join(homes, "source"), restored = join(homes, "restored"), bin = join(out, "bin"), log = join(out, "coordinator.log");
 const backup = join(out, "backup"), assets = process.env.NOOP_E2E_WEB_ASSETS || "", workerd = process.env.NOOP_E2E_WORKERD || "";
 const token = "synthetic-backup-machine-token-0000", checks: string[] = [];
 let service: ChildProcess | undefined, error = "";

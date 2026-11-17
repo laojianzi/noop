@@ -73,10 +73,14 @@ try {
   }, "coordinator did not start with a local allow-list");
   check(true, "local coordinator starts with an IP allow-list");
   const healthPath = join(home, "coordinator", "health.sock");
-  check((await request({ socketPath: healthPath })).status === 200 &&
-    (await request({ socketPath: healthPath, headers: { Authorization: "Bearer invalid" } })).status === 401,
-    "private health access still requires the machine credential");
-  check((await request({ socketPath: healthPath, path: "/api/feed" })).status === 404, "private health access exposes no other API");
+  const previousDirectory = process.cwd();
+  process.chdir(join(home, "coordinator"));
+  try {
+    check((await request({ socketPath: "health.sock" })).status === 200 &&
+      (await request({ socketPath: "health.sock", headers: { Authorization: "Bearer invalid" } })).status === 401,
+      "private health access still requires the machine credential");
+    check((await request({ socketPath: "health.sock", path: "/api/feed" })).status === 404, "private health access exposes no other API");
+  } finally { process.chdir(previousDirectory); }
   check((await request({ port: listenPort, localAddress: "127.0.0.2" })).status === 200, "allowed direct source can connect");
   check((await request({ port: listenPort, localAddress: "127.0.0.2", headers: { "cf-connecting-ip": "127.0.0.4" } })).status === 200,
     "a forged header cannot block an allowed direct source");
@@ -127,7 +131,7 @@ try {
   const config = readFileSync(join(coordinator, "workerd.capnp"), "utf8").replace(`address = "127.0.0.1:${listenPort}"`, `address = ${JSON.stringify(`unix:${unixPath}`)}`);
   writeFileSync(unixConfig, config);
   const rawLog = openSync(join(out, "unix.log"), "a");
-  raw = spawn(workerd, ["serve", unixConfig], { detached: true, stdio: ["ignore", rawLog, rawLog], env: { ...env,
+  raw = spawn(workerd, ["serve", unixConfig], { cwd: coordinator, detached: true, stdio: ["ignore", rawLog, rawLog], env: { ...env,
     NOOP_LOCAL_TOKEN: token, NOOP_LOCAL_OWNER_EMAIL: "", NOOP_LOCAL_SMTP: "", NOOP_LOCAL_LANG: "",
     NOOP_LOCAL_ALLOW_IPS: allowed, NOOP_LOCAL_TRUSTED_PROXIES: trusted, NOOP_LOCAL_MODE: "1" } }); closeSync(rawLog);
   await waitFor(async () => existsSync(unixPath), "Unix socket did not start");

@@ -4,10 +4,10 @@ import { createHash } from "node:crypto";
 import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, symlinkSync, unlinkSync, writeFileSync } from "node:fs";
 import { createServer } from "node:net";
 import { homedir, tmpdir } from "node:os";
-import { basename, dirname, join, resolve } from "node:path";
+import { basename, dirname, join, relative, resolve } from "node:path";
 
 const source = resolve(import.meta.dir, ".."), out = mkdtempSync(join(process.env.NOOP_E2E_OUT || tmpdir(), "noop-update-e2e-"));
-const repo = join(out, "repo"), home = join(out, "home"), bin = join(out, "bin"), log = join(out, "update.log");
+const repo = join(out, "repo"), home = join(out, "long-home-" + "x".repeat(110)), bin = join(out, "bin"), log = join(out, "update.log");
 const assets = process.env.NOOP_E2E_WEB_ASSETS || "", workerd = process.env.NOOP_E2E_WORKERD || "", archive = process.env.NOOP_E2E_ARCHIVE || "", nextWorkerd = process.env.NOOP_E2E_NEXT_WORKERD || "", token = "synthetic-update-machine-token-000";
 const unit = process.platform === "linux" ? join(homedir(), ".config", "systemd", "user", "noop-coordinator.service") : join(homedir(), "Library", "LaunchAgents", "dev.noop.coordinator.plist");
 const checks: string[] = [];
@@ -104,7 +104,7 @@ try {
       check(!!nextVersion && nextVersion !== initialVersion && code.includes(initialVersion) && code.includes(digest(workerd)), "the candidate pins a different runtime and matching checksum");
       writeFileSync(launch, code.replace(initialVersion, nextVersion).replace(digest(workerd), digest(nextWorkerd)));
     }
-    const applied = update(candidate, nextWorkerd || workerd);
+    const applied = update(relative(repo, candidate), relative(repo, nextWorkerd || workerd));
     check(applied.status === 0, `explicit candidate update succeeds: ${applied.out.slice(-1000)}`);
     await waitFor(async () => (await status())?.release_marker === "candidate-v2", "new coordinator release did not become active");
     if (nextVersion) {
