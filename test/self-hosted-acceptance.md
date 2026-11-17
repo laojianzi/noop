@@ -95,6 +95,13 @@ runtime version, commands, logs, result and checksums with each run.
     in the gate. If a required gate fails, retain the evidence and reassess the
     runtime choice. The workerd local storage remains experimental.
 
+The `ci` workflow runs its existing checks on Linux for pushes and pull requests.
+Its manual run also includes macOS. GitHub requires the manual trigger to exist
+on the default branch before the workflow can be dispatched.
+The separate tag release workflow still waits for all platform packages.
+Issue #30 tracks an independent Linux delivery path that preserves existing
+client updates.
+
 ## Run the local candidate scenario
 
 Prepare the genuine Noop Web bundle and the pinned workerd binary separately.

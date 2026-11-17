@@ -50,6 +50,8 @@ updates, offline operation, functionality and the unchanged Cloudflare budget
 and local regression checks remain required. A real macOS logout and login,
 other native desktops, mobile HTTPS and device push, VPS, and deployed
 Cloudflare and mail binding remain follow-up acceptance work.
+The current tag release workflow still waits for all platform packages. Its
+independent Linux delivery path is tracked in issue #30.
 
 `linux-x64/tailscale` records two authenticated Web sessions through the
 existing local Tailscale Serve HTTPS route. The test covered WebSocket delivery,

@@ -1,0 +1,11 @@
+time="2026-11-17T11:53:07+08:00" level=info msg="Using docker host 'unix:///var/run/docker.sock', and daemon socket 'unix:///var/run/docker.sock'"
+*DRYRUN* [ci/ubuntu-latest] ⭐ Run Set up job
+*DRYRUN* [ci/ubuntu-latest]   ✅  Success - Set up job
+*DRYRUN* [ci/ubuntu-latest] 🧪  Matrix: map[os:ubuntu-latest]
+*DRYRUN* [ci/ubuntu-latest] ⭐ Run Main echo selected
+[ci/ubuntu-latest]   | selected
+*DRYRUN* [ci/ubuntu-latest]   ✅  Success - Main echo selected [7.240656ms]
+*DRYRUN* [ci/ubuntu-latest] ⭐ Run Complete job
+*DRYRUN* [ci/ubuntu-latest] Cleaning up container for job ubuntu-latest
+*DRYRUN* [ci/ubuntu-latest]   ✅  Success - Complete job
+*DRYRUN* [ci/ubuntu-latest] 🏁  Job succeeded
