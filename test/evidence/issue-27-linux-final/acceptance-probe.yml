@@ -1,0 +1,198 @@
+name: Isolated Linux acceptance probe
+on:
+  push:
+    branches: [codex/noop-acceptance-probe-20261117]
+permissions:
+  contents: read
+  actions: read
+
+env:
+  CANDIDATE: 65eab6b0907b3f7beefd0a2d1fc0ced3bea604a3
+  ARTIFACT_RUN: 44061419526
+  GH_TOKEN: ${{ github.token }}
+
+jobs:
+  arm-features:
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: 65eab6b0907b3f7beefd0a2d1fc0ced3bea604a3
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.4
+      - name: Prepare verified candidate and test tools
+        run: |
+          mkdir -p "$RUNNER_TEMP/artifact" "$RUNNER_TEMP/release" "$RUNNER_TEMP/mail" "$RUNNER_TEMP/browser" "$RUNNER_TEMP/evidence"
+          gh run download "$ARTIFACT_RUN" -R "$GITHUB_REPOSITORY" -n noop-coordinator-linux-arm64 -D "$RUNNER_TEMP/artifact"
+          (cd "$RUNNER_TEMP/artifact" && sha256sum -c ./*.sha256)
+          tar -xzf "$RUNNER_TEMP/artifact/"*.tar.gz -C "$RUNNER_TEMP/release"
+          test "$(jq -r .sourceCommit "$RUNNER_TEMP/release/manifest.json")" = "$CANDIDATE"
+          curl -fsSL --retry 3 https://github.com/axllent/mailpit/releases/download/v1.33.1/mailpit-linux-arm64.tar.gz -o "$RUNNER_TEMP/mail.tar.gz"
+          echo '3c5f076cb676d6980e47da030861c6d60f1f5614103dea93cccbcdfc43198e12  mail.tar.gz' | (cd "$RUNNER_TEMP" && sha256sum -c -)
+          tar -xzf "$RUNNER_TEMP/mail.tar.gz" -C "$RUNNER_TEMP/mail"
+          npm install --silent --prefix "$RUNNER_TEMP/browser" playwright-core@1.64.0
+      - name: Prepare native ARM browser container
+        run: |
+          docker build -t noop-arm-acceptance - <<'DOCKERFILE'
+          FROM debian:bookworm-slim
+          RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends chromium ca-certificates git openssl && rm -rf /var/lib/apt/lists/*
+          DOCKERFILE
+      - name: Run feature journeys without public network
+        run: |
+          docker run --rm --network none \
+            -v "$GITHUB_WORKSPACE:/src:ro" -v "$RUNNER_TEMP:/work" \
+            -v "$(realpath "$(command -v bun)"):/usr/local/bin/bun:ro" -w /src \
+            -e NOOP_E2E_WEB_ASSETS=/work/release/repo/app/dist/web/noop \
+            -e NOOP_E2E_WORKERD=/work/release/bin/workerd \
+            -e NOOP_E2E_BROWSER=/usr/bin/chromium \
+            -e NOOP_E2E_PLAYWRIGHT=/work/browser/node_modules/playwright-core/index.js \
+            -e NOOP_E2E_MAILPIT=/work/mail/mailpit \
+            -e NOOP_E2E_WEB_VERSION=65eab6b0907b -e NOOP_E2E_OUT=/work/evidence \
+            -e TEST_UID="$(id -u)" -e TEST_GID="$(id -g)" \
+            noop-arm-acceptance bash -c '
+              git config --global --add safe.directory /src
+              test "$(git rev-parse HEAD)" = 65eab6b0907b3f7beefd0a2d1fc0ced3bea604a3 || exit 1
+              result=0
+              for test in self-hosted-e2e self-hosted-messages-e2e self-hosted-smtp-e2e self-hosted-push-e2e; do
+                echo "START $test"; bun "test/$test.ts" || result=1; echo "END $test"
+              done
+              chown -R "$TEST_UID:$TEST_GID" /work/evidence
+              exit "$result"
+            '
+      - name: Collect feature reports
+        if: always()
+        run: |
+          mkdir -p "$RUNNER_TEMP/publish"
+          for dir in "$RUNNER_TEMP"/evidence/*; do
+            [ -d "$dir" ] || continue
+            target="$RUNNER_TEMP/publish/$(basename "$dir")"; mkdir -p "$target"
+            find "$dir" -maxdepth 1 -type f -exec cp -t "$target" {} +
+            (cd "$target" && sha256sum -c --quiet SHA256SUMS)
+          done
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: noop-acceptance-features-arm64
+          path: ${{ runner.temp }}/publish/
+          if-no-files-found: warn
+
+  reboot:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: ubuntu-24.04, arch: x86_64, debian: amd64 }
+          - { os: ubuntu-24.04-arm, arch: arm64, debian: arm64 }
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: 65eab6b0907b3f7beefd0a2d1fc0ced3bea604a3
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.4
+      - name: Prepare VM tools
+        run: |
+          sudo apt-get update -qq
+          if [ "${{ matrix.debian }}" = amd64 ]; then
+            sudo env DEBIAN_FRONTEND=noninteractive apt-get install -y -qq qemu-system-x86 qemu-utils cloud-image-utils genisoimage
+          else
+            sudo env DEBIAN_FRONTEND=noninteractive apt-get install -y -qq qemu-system-arm qemu-efi-aarch64 qemu-utils cloud-image-utils genisoimage
+          fi
+      - name: Prepare verified candidate and VM image
+        run: |
+          mkdir -p "$RUNNER_TEMP/artifact" "$RUNNER_TEMP/release" "$RUNNER_TEMP/evidence"
+          gh run download "$ARTIFACT_RUN" -R "$GITHUB_REPOSITORY" -n noop-coordinator-linux-${{ matrix.arch }} -D "$RUNNER_TEMP/artifact"
+          (cd "$RUNNER_TEMP/artifact" && sha256sum -c ./*.sha256)
+          tar -xzf "$RUNNER_TEMP/artifact/"*.tar.gz -C "$RUNNER_TEMP/release"
+          test "$(jq -r .sourceCommit "$RUNNER_TEMP/release/manifest.json")" = "$CANDIDATE"
+          curl -fsSL --retry 3 https://cloud.debian.org/images/cloud/bookworm/latest/SHA512SUMS -o "$RUNNER_TEMP/SHA512SUMS"
+          curl -fsSL --retry 3 "https://cloud.debian.org/images/cloud/bookworm/latest/debian-12-genericcloud-${{ matrix.debian }}.qcow2" -o "$RUNNER_TEMP/debian.qcow2"
+          expected=$(awk '$2 == "debian-12-genericcloud-${{ matrix.debian }}.qcow2" {print $1}' "$RUNNER_TEMP/SHA512SUMS")
+          test -n "$expected"
+          echo "$expected  $RUNNER_TEMP/debian.qcow2" | sha512sum -c -
+      - name: Enable KVM on the disposable runner
+        if: matrix.debian == 'amd64'
+        run: sudo chmod a+rw /dev/kvm
+      - name: Verify unattended reboot offline
+        env:
+          NOOP_E2E_WEB_ASSETS: ${{ runner.temp }}/release/repo/app/dist/web/noop
+          NOOP_E2E_WORKERD: ${{ runner.temp }}/release/bin/workerd
+          NOOP_E2E_DEBIAN_IMAGE: ${{ runner.temp }}/debian.qcow2
+          NOOP_E2E_OUT: ${{ runner.temp }}/evidence
+        run: bun test/self-hosted-reboot-vm.ts
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: noop-acceptance-reboot-${{ matrix.arch }}
+          path: |
+            ${{ runner.temp }}/evidence/**/report.json
+            ${{ runner.temp }}/evidence/**/SHA256SUMS
+            ${{ runner.temp }}/evidence/**/serial.log
+            ${{ runner.temp }}/evidence/**/user-data
+            ${{ runner.temp }}/evidence/**/meta-data
+            ${{ runner.temp }}/evidence/**/network-config
+          if-no-files-found: warn
+
+  update:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: ubuntu-24.04, arch: x86_64, package: linux-64, nextsha: d2411239a3025ff206d6cb30251c25c8c5ba9a3dbcf5a86e2219bdfe8c778b0e }
+          - { os: ubuntu-24.04-arm, arch: arm64, package: linux-arm64, nextsha: f542b6c1ffe27944459499ef8fe9bc91552facb804fde5880af3837f7021cc2a }
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: 65eab6b0907b3f7beefd0a2d1fc0ced3bea604a3
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.4
+      - name: Prepare verified candidate and next runtime
+        run: |
+          mkdir -p "$RUNNER_TEMP/artifact" "$RUNNER_TEMP/release" "$RUNNER_TEMP/next" "$RUNNER_TEMP/evidence" "$RUNNER_TEMP/full"
+          gh run download "$ARTIFACT_RUN" -R "$GITHUB_REPOSITORY" -n noop-coordinator-linux-${{ matrix.arch }} -D "$RUNNER_TEMP/artifact"
+          (cd "$RUNNER_TEMP/artifact" && sha256sum -c ./*.sha256)
+          tar -xzf "$RUNNER_TEMP/artifact/"*.tar.gz -C "$RUNNER_TEMP/release"
+          test "$(jq -r .sourceCommit "$RUNNER_TEMP/release/manifest.json")" = "$CANDIDATE"
+          npm pack --silent --ignore-scripts @cloudflare/workerd-${{ matrix.package }}@1.20261116.1 --pack-destination "$RUNNER_TEMP/next"
+          tar -xzf "$RUNNER_TEMP/next/"*.tgz -C "$RUNNER_TEMP/next"
+          echo '${{ matrix.nextsha }}  '"$RUNNER_TEMP/next/package/bin/workerd" | sha256sum -c -
+      - name: Verify runtime change and full disk offline
+        run: |
+          cleanup() {
+            sudo iptables -D OUTPUT ! -o lo -j REJECT || true
+            sudo ip6tables -D OUTPUT ! -o lo -j REJECT || true
+            mountpoint -q "$RUNNER_TEMP/full" && sudo umount "$RUNNER_TEMP/full" || true
+          }
+          trap cleanup EXIT
+          sudo iptables -I OUTPUT 1 ! -o lo -j REJECT
+          sudo ip6tables -I OUTPUT 1 ! -o lo -j REJECT
+          if timeout 3 bash -c 'echo >/dev/tcp/1.1.1.1/443' 2>/dev/null; then exit 1; fi
+          export NOOP_E2E_DISPOSABLE=1 NOOP_E2E_WEB_ASSETS="$RUNNER_TEMP/release/repo/app/dist/web/noop"
+          export NOOP_E2E_WORKERD="$RUNNER_TEMP/release/bin/workerd" NOOP_E2E_NEXT_WORKERD="$RUNNER_TEMP/next/package/bin/workerd"
+          export NOOP_E2E_OUT="$RUNNER_TEMP/evidence" NOOP_E2E_ARCHIVE="$(find "$RUNNER_TEMP/artifact" -name '*.tar.gz' -print -quit)"
+          bun test/self-hosted-update-e2e.ts
+          sudo mount -t tmpfs -o size=240m tmpfs "$RUNNER_TEMP/full"
+          sudo chown "$(id -u):$(id -g)" "$RUNNER_TEMP/full"
+          set +e
+          env -u NOOP_E2E_ARCHIVE -u NOOP_E2E_NEXT_WORKERD NOOP_E2E_OUT="$RUNNER_TEMP/full" NOOP_E2E_EXPECT_NO_SPACE=1 bun test/self-hosted-update-e2e.ts
+          result=$?
+          set -e
+          mkdir -p "$RUNNER_TEMP/evidence/no-space"
+          find "$RUNNER_TEMP/full" -mindepth 2 -maxdepth 2 -type f -exec cp -t "$RUNNER_TEMP/evidence/no-space" {} +
+          exit "$result"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: noop-acceptance-update-${{ matrix.arch }}
+          path: |
+            ${{ runner.temp }}/evidence/**/report.json
+            ${{ runner.temp }}/evidence/**/SHA256SUMS
+            ${{ runner.temp }}/evidence/**/update.log
+          if-no-files-found: warn

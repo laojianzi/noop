@@ -1,0 +1,26 @@
+{
+  "status": "passed",
+  "source": "/home/runner/work/noop/noop",
+  "revision": "65eab6b0907b3f7beefd0a2d1fc0ced3bea604a3",
+  "changes": "",
+  "platform": "linux-x64",
+  "timestamp": "2026-11-17T10:12:31.043Z",
+  "bun": "1.4.4",
+  "noSpaceFixture": true,
+  "workerdSha256": "620d9f7e5eb461067e08af17316aaa087445b4232e0e98e3dd146763bd9ab394",
+  "nextWorkerdSha256": null,
+  "webIndexSha256": "6291026e12b5fbc7f6a3015ced704a1ba192b6a4c478bdd35897e92118a94785",
+  "checks": [
+    "test runs on a disposable host without an existing coordinator service",
+    "real Web assets and pinned workerd are supplied",
+    "the coordinator service installs: Coordinator service installed and running\n",
+    "a host commits data before the update",
+    "the source-change fixture matches the real status path",
+    "a restart keeps the installed release when the source checkout changes",
+    "an invalid release is rejected and the old service remains available",
+    "actual insufficient space is reported: e/coordinator/releases/release-BscIIq/bin/workerd'\n    path: \"/home/runner/work/_temp/release/bin/workerd\",\n    dest: \"/home/runner/work/_temp/full/noop-update-e2e-lv3WV1/home/coordinator/releases/release-BscIIq/bin/workerd\",\n syscall: \"copyfile\",\n   errno: -28,\n    code: \"ENOSPC\"\n\n      at stageRelease (/home/runner/work/_temp/full/noop-update-e2e-lv3WV1/repo/src/local-release.ts:24:5)\n      at updateRelease (/home/runner/work/_temp/full/noop-update-e2e-lv3WV1/repo/src/local-release.ts:46:42)\n\n",
+    "insufficient space preserves the running service and its data",
+    "service stops after update verification"
+  ],
+  "error": ""
+}

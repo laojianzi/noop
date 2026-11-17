@@ -1,0 +1,52 @@
+diff --git i/test/self-hosted-guest-e2e.ts w/test/self-hosted-guest-e2e.ts
+index f58bdb9..ee3719c 100644
+--- i/test/self-hosted-guest-e2e.ts
++++ w/test/self-hosted-guest-e2e.ts
+@@ -26,14 +26,14 @@ try {
+   for (const name of ["package.json", "bunfig.toml", "tsconfig.json"]) cpSync(join(source, name), join(repo, name));
+   mkdirSync(join(repo, "app", "dist", "web"), { recursive: true }); cpSync(assets, join(repo, "app", "dist", "web", "noop"), { recursive: true });
+   mkdirSync(bin, { recursive: true }); symlinkSync(resolve(workerd), join(bin, "workerd"));
+-  writeFileSync(join(bin, "codex"), '#!/bin/sh\ncat >/dev/null\nprintf "synthetic guest result\\n"\n', { mode: 0o755 });
++  writeFileSync(join(bin, "codex"), '#!/bin/sh\nshift\nexec /home/jeff/.vite-plus/bin/codex exec --ephemeral --ignore-user-config "$@"\n', { mode: 0o755 });
+   mkdirSync(home, { recursive: true }); writeFileSync(join(home, "noop.toml"), `[server]\ntoken = "${token}"\n`);
+   const env: NodeJS.ProcessEnv = { ...process.env, NOOP_HOME: home, HUB_NO_MEDIC: "1", PATH: `${bin}:${process.env.PATH || ""}` };
+   for (const key of ["HUB_CONF", "HUB_DATA", "HUB_SYNC", "HUB_SYNC_FAKE", "NOOP_GUEST_HOME", "CLOUDFLARE_API_TOKEN", "CLOUDFLARE_ACCOUNT_ID"]) delete env[key];
+   const listenPort = await port(), base = `http://127.0.0.1:${listenPort}`;
+   const cli = (args: string[], guestHome?: string) => {
+     const r = spawnSync(process.execPath, [join(repo, "src", "cli.ts"), ...args], { cwd: repo,
+-      env: { ...env, ...(guestHome ? { NOOP_GUEST_HOME: guestHome } : {}) }, encoding: "utf8", timeout: 20_000 });
++      env: { ...env, ...(guestHome ? { NOOP_GUEST_HOME: guestHome } : {}) }, encoding: "utf8", timeout: 180_000 });
+     return { status: r.status, out: `${r.stdout || ""}${r.stderr || ""}` };
+   };
+   const start = async () => {
+@@ -70,14 +70,15 @@ try {
+   check(cli(["guest", "join", base, bCode], bHome).out.includes("joined as guest"), "guest B joins independently");
+   const a = JSON.parse(readFileSync(join(aHome, "guest.json"), "utf8")), b = JSON.parse(readFileSync(join(bHome, "guest.json"), "utf8"));
+   check(a.id !== b.id && a.token !== b.token && (statSync(join(aHome, "guest.json")).mode & 0o077) === 0, "guest identities have separate protected credentials");
+-  check(cli(["guest", "assign", a.id, "T-1001", "Guest A task", "-b", "Only guest A may run this"]).out.includes("queued"), "owner assigns a task to guest A");
++  check(cli(["guest", "assign", a.id, "T-1001", "Guest A task", "-b", "Reply with exactly NOOP_AGENT_ACCEPTANCE_OK. Do not call tools."]).out.includes("queued"), "owner assigns a task to guest A");
+   check(cli(["guest", "assign", b.id, "T-1002", "Guest B task", "-b", "Only guest B may run this"]).out.includes("queued"), "owner assigns a different task to guest B");
+   check((await api("/api/guest/result", b.token, "POST", { id: "T-1001", ok: true, text: "spoof" })).status === 403,
+     "guest B cannot submit a result for guest A's task");
+   for (const path of ["/api/feed", "/api/status", "/api/settings", "/api/files/changes?since=0", "/api/files/read?path=memory%2Flessons.md", "/api/guests"])
+     check((await api(path, a.token)).status === 403, `guest cannot access ${path}`);
+   const aRun = cli(["guest", "run", "--cli", "codex", "--once"], aHome);
+-  check(aRun.status === 0 && aRun.out.includes("T-1001") && aRun.out.includes("reported (200)"), "guest A claims and returns its task through the real CLI using a synthetic executor");
++  writeFileSync(join(bin, "codex"), '#!/bin/sh\ncat >/dev/null\nprintf "synthetic guest result\\n"\n', { mode: 0o755 });
++  check(aRun.status === 0 && aRun.out.includes("✓ T-1001 reported (200)"), "guest A completes its task through the real Codex CLI");
+   check((await (await api("/api/guest/next", a.token)).json() as any).task === null, "guest A cannot claim guest B's queued task");
+   const expiredCode = invite("expired-guest");
+   await stop();
+@@ -91,8 +92,10 @@ try {
+   check(cli(["guest", "join", base, expiredCode], join(out, "guest-expired")).out.includes("join failed") &&
+     (await api("/api/guest/join", "", "POST", { code: expiredCode })).status === 401, "an expired invitation is rejected after restart");
+   const results = cli(["guest", "results"]);
+-  check(results.status === 0 && results.out.includes("T-1001") && results.out.includes("synthetic guest result") && results.out.includes("UNTRUSTED"),
+-    "guest A's untrusted result survives coordinator restart");
++  const realReply = results.out.split("\n").slice(1).join("\n").trim();
++  check(results.status === 0 && results.out.includes("T-1001") && results.out.includes(" · ok · UNTRUSTED") && realReply === "NOOP_AGENT_ACCEPTANCE_OK",
++    "the exact successful Codex reply survives coordinator restart");
++  writeFileSync(join(out, "real-codex-proof.json"), `${JSON.stringify({ cli: "codex exec --ephemeral --ignore-user-config", task: "T-1001", result: realReply, status: "ok" }, null, 2)}\n`);
+   const bRun = cli(["guest", "run", "--cli", "codex", "--once"], bHome);
+   check(bRun.status === 0 && bRun.out.includes("T-1002") && bRun.out.includes("reported (200)"), "guest B's assigned task survives restart");
+   check(cli(["guest", "results", "--ack"]).out.includes("T-1002") && !cli(["guest", "results"]).out.includes("T-1002"), "the owner can acknowledge completed guest results");

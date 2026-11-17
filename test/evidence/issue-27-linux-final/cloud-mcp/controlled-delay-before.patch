@@ -1,0 +1,26 @@
+diff --git i/test/cloud-auth/mcp-e2e.ts w/test/cloud-auth/mcp-e2e.ts
+index 008d824..e6517fb 100644
+--- i/test/cloud-auth/mcp-e2e.ts
++++ w/test/cloud-auth/mcp-e2e.ts
+@@ -162,13 +162,20 @@ ok(list.includes(`noop://tasks/${tid}`), "resources/list has the new task");
+ const wait = (rid: string, cur: number, secs: number) => fetch(`${BASE}/mcp`, { method: "POST", headers: H({ accept: "application/json, text/event-stream" }),
+   body: JSON.stringify({ jsonrpc: "2.0", id: rid, method: "tools/call", params: { name: "wait_for_events", arguments: { cursor: cur, timeout_seconds: secs }, _meta: { progressToken: rid } } }) });
+ const { cursor: c2 } = await tool("get_feed", { limit: 1 });
++const timingStart = Date.now();
+ const w1 = await wait("w1", c2, 8);
+ ok(w1.headers.get("content-type") === "text/event-stream", "wait_for_events with progressToken → SSE response");
+ const m4 = `progress ${Date.now()}`;
+-setTimeout(() => emit(m4), 6000);
++const delivery = new Promise<{ start: number; end: number; status: number }>((resolve) => setTimeout(async () => {
++  const start = Date.now() - timingStart;
++  const response = await emit(m4);
++  resolve({ start, end: Date.now() - timingStart, status: response.status });
++}, 8500));
+ const wf = await readFrames(w1, (f) => f.some((x) => x.data?.id === "w1"), 15000);
++const responseAt = Date.now() - timingStart;
+ const prog = wf.filter((x) => x.data?.method === "notifications/progress");
+ const resp = wf.find((x) => x.data?.id === "w1");
++console.log("[DEBUG-MCP-TIMING]", JSON.stringify({ responseAt, delivery: await delivery, response: resp?.data?.result?.content?.[0]?.text }));
+ ok(prog.length >= 2 && prog.every((x) => x.data.params.progressToken === "w1" && x.id), `${prog.length} notifications/progress with ids before the response`);
+ ok(resp && JSON.parse(resp.data.result.content[0].text).events.some((e: any) => e.text === m4), "…then the result with the new event");
+ const { cursor: c3 } = await tool("get_feed", { limit: 1 });

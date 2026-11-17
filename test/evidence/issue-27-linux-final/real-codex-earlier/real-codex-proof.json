@@ -1,0 +1,6 @@
+{
+  "cli": "codex exec --ephemeral --ignore-user-config",
+  "task": "T-1001",
+  "result": "NOOP_AGENT_ACCEPTANCE_OK",
+  "status": "ok"
+}
