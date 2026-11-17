@@ -118,4 +118,8 @@ jobs:
             ${{ runner.temp }}/coordinator-e2e/**/report.json
             ${{ runner.temp }}/coordinator-e2e/**/SHA256SUMS
             ${{ runner.temp }}/coordinator-e2e/**/*.log
+            ${{ runner.temp }}/coordinator-e2e/**/proxy.key
+            ${{ runner.temp }}/coordinator-e2e/**/proxy.crt
+            ${{ runner.temp }}/coordinator-e2e/**/discovery.json
+            ${{ runner.temp }}/coordinator-e2e/**/bad-workerd
           if-no-files-found: warn
