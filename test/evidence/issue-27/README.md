@@ -56,8 +56,9 @@ independent Linux delivery path is tracked in issue #30.
 `linux-x64/tailscale` records two authenticated Web sessions through the
 existing local Tailscale Serve HTTPS route. The test covered WebSocket delivery,
 attachments and restart recovery. OAuth and MCP passed with the IP allow-list
-disabled. With a trusted loopback proxy and an enabled allow-list, local CLI
-authentication failed with HTTP 403; issue #29 blocks release. The client and
+disabled. With a trusted loopback proxy and an enabled allow-list, the initial
+local CLI authentication failed with HTTP 403. The fix and retest are recorded
+in `test/evidence/issue-29-30`. The client and
 coordinator ran on the same host; this is not a cross-device Tailscale test. The SMTP test uses a local
 Mailpit server, and cloud checks use a local Wrangler emulator and deployment
 stubs. These results do not establish the deferred external environments.

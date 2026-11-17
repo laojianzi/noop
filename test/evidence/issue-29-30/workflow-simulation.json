@@ -1,0 +1,16 @@
+{
+  "status": "passed",
+  "scope": "local workflow graph simulation; not a GitHub Actions execution",
+  "checks": [
+    "existing Linux and macOS CI retains its triggers and matrix",
+    "existing client release retains all six targets and waits for its complete matrix",
+    "the independent coordinator workflow has its own triggers and web dependency",
+    "both native Linux architectures run without cancelling one another",
+    "Linux delivery requires budget, coordinator and package checks without hidden failures",
+    "the artifact is uploaded only after earlier Linux steps succeed",
+    "simulated macOS and Android failures and queued iOS do not gate a successful Linux delivery",
+    "simulated Linux or Web build failure prevents Linux delivery",
+    "coordinator delivery does not write the client release or latest manifest"
+  ],
+  "error": ""
+}
