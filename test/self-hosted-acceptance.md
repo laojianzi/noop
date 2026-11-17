@@ -319,6 +319,11 @@ startup failure, successful update, and rollback after a new write. Set
 version change. For a full-disk test, run the update test on a small dedicated
 filesystem with `NOOP_E2E_EXPECT_NO_SPACE=1`. Do not fill an existing volume.
 
+On Linux, set `NOOP_E2E_ARCHIVE` to a coordinator archive to install and update
+the code and runtime extracted from that archive. Keep its `.sha256` file next
+to it. The tests verify the checksum, source commit, architecture and Web build.
+The Linux coordinator workflow runs both tests with public networking blocked.
+
 On a disposable macOS runner with passwordless sudo, run
 `test/self-hosted-macos-offline.sh` with the same environment. It temporarily
 blocks outbound traffic on the default network interface, runs the native

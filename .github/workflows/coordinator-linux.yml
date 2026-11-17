@@ -104,6 +104,23 @@ jobs:
             --web-commit "$(cat "$RUNNER_TEMP/coordinator-web/web-source-commit")"
           archive=$(find "$RUNNER_TEMP/coordinator-artifacts" -name '*.tar.gz' -type f -print -quit)
           NOOP_E2E_ARCHIVE="$archive" bun test/local-package-e2e.ts
+      - name: Test archive service without public network
+        run: |
+          cleanup() {
+            sudo iptables -D OUTPUT ! -o lo -j REJECT || true
+            sudo ip6tables -D OUTPUT ! -o lo -j REJECT || true
+          }
+          trap cleanup EXIT
+          sudo iptables -I OUTPUT 1 ! -o lo -j REJECT
+          sudo ip6tables -I OUTPUT 1 ! -o lo -j REJECT
+          if timeout 3 bash -c 'echo > /dev/tcp/1.1.1.1/443' 2>/dev/null; then
+            echo "Public network remains available"
+            exit 1
+          fi
+          export NOOP_E2E_DISPOSABLE=1
+          export NOOP_E2E_ARCHIVE="$(find "$RUNNER_TEMP/coordinator-artifacts" -name '*.tar.gz' -type f -print -quit)"
+          bun test/self-hosted-service-e2e.ts
+          bun test/self-hosted-update-e2e.ts
       - uses: actions/upload-artifact@v4
         with:
           name: noop-coordinator-linux-${{ matrix.arch }}

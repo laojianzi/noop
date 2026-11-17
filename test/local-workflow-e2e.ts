@@ -28,6 +28,8 @@ try {
     steps.some((step) => String(step.run || "").includes("test/self-hosted-mcp-e2e.ts")) &&
     steps.some((step) => String(step.run || "").includes("test/local-package-e2e.ts")),
     "Linux delivery requires budget, coordinator and package checks without hidden failures");
+  check(steps.some((step) => String(step.run || "").includes("iptables") && String(step.run || "").includes("test/self-hosted-service-e2e.ts") &&
+    String(step.run || "").includes("test/self-hosted-update-e2e.ts")), "the archive's native service installation and update run without public network");
   const upload = steps.find((step) => String(step.uses || "").startsWith("actions/upload-artifact@"));
   check(!!upload && !upload.if, "the artifact is uploaded only after earlier Linux steps succeed");
   const needs = Array.isArray(packageJob.needs) ? packageJob.needs : [packageJob.needs];

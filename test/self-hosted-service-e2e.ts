@@ -4,11 +4,11 @@ import { createHash, createHmac } from "node:crypto";
 import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, symlinkSync, unlinkSync, writeFileSync } from "node:fs";
 import { createServer } from "node:net";
 import { homedir, tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { basename, dirname, join, resolve } from "node:path";
 
 const source = resolve(import.meta.dir, ".."), out = mkdtempSync(join(process.env.NOOP_E2E_OUT || tmpdir(), "noop-service-e2e-"));
 const repo = join(out, "repo with spaces"), home = join(out, "coordinator home"), bin = join(out, "bin with spaces");
-const assets = process.env.NOOP_E2E_WEB_ASSETS || "", workerd = process.env.NOOP_E2E_WORKERD || "", token = "synthetic-service-machine-token-000";
+const assets = process.env.NOOP_E2E_WEB_ASSETS || "", workerd = process.env.NOOP_E2E_WORKERD || "", archive = process.env.NOOP_E2E_ARCHIVE || "", token = "synthetic-service-machine-token-000";
 const unit = process.platform === "linux" ? join(homedir(), ".config", "systemd", "user", "noop-coordinator.service") : join(homedir(), "Library", "LaunchAgents", "dev.noop.coordinator.plist");
 const checks: string[] = [];
 let error = "", installed = false;
@@ -30,11 +30,26 @@ async function waitFor(fn: () => boolean | Promise<boolean>, message: string) {
 try {
   check(process.env.NOOP_E2E_DISPOSABLE === "1" && !existsSync(unit), "test runs on a disposable host without an existing coordinator service");
   check(existsSync(join(assets, "index.html")) && existsSync(workerd), "real Web assets and native workerd are supplied");
-  for (const name of ["src", "cloud", "app", "templates", "presets"])
-    cpSync(join(source, name), join(repo, name), { recursive: true, filter: (p) => !p.includes("/node_modules/") && !p.includes("/dist/") });
-  for (const name of ["package.json", "bunfig.toml", "tsconfig.json"]) cpSync(join(source, name), join(repo, name));
-  mkdirSync(join(repo, "app", "dist", "web"), { recursive: true }); cpSync(assets, join(repo, "app", "dist", "web", "noop"), { recursive: true });
-  mkdirSync(bin, { recursive: true }); symlinkSync(resolve(workerd), join(bin, "workerd")); mkdirSync(home, { recursive: true });
+  let runtime = workerd;
+  if (archive) {
+    const file = resolve(archive), unpacked = join(out, "archive"), digest = (p: string) => createHash("sha256").update(readFileSync(p)).digest("hex");
+    check(spawnSync("sha256sum", ["-c", `${basename(file)}.sha256`], { cwd: dirname(file) }).status === 0, "the supplied archive checksum verifies");
+    mkdirSync(unpacked);
+    check(spawnSync("tar", ["-xzf", file, "-C", unpacked]).status === 0, "the supplied archive extracts");
+    const manifest = JSON.parse(readFileSync(join(unpacked, "manifest.json"), "utf8"));
+    const revision = spawnSync("git", ["rev-parse", "HEAD"], { cwd: source, encoding: "utf8" }).stdout.trim();
+    runtime = join(unpacked, "bin", "workerd");
+    check(manifest.sourceCommit === revision && manifest.webSourceCommit === revision && manifest.platform === process.platform && manifest.arch === process.arch &&
+      manifest.workerdSha256 === digest(runtime) && manifest.workerdSha256 === digest(workerd) && manifest.webIndexSha256 === digest(join(assets, "index.html")),
+      "the supplied archive matches this source, architecture, Web build and pinned runtime");
+    cpSync(join(unpacked, "repo"), repo, { recursive: true });
+  } else {
+    for (const name of ["src", "cloud", "app", "templates", "presets"])
+      cpSync(join(source, name), join(repo, name), { recursive: true, filter: (p) => !p.includes("/node_modules/") && !p.includes("/dist/") });
+    for (const name of ["package.json", "bunfig.toml", "tsconfig.json"]) cpSync(join(source, name), join(repo, name));
+    mkdirSync(join(repo, "app", "dist", "web"), { recursive: true }); cpSync(assets, join(repo, "app", "dist", "web", "noop"), { recursive: true });
+  }
+  mkdirSync(bin, { recursive: true }); symlinkSync(resolve(runtime), join(bin, "workerd")); mkdirSync(home, { recursive: true });
   writeFileSync(join(home, "noop.toml"), `[server]\ntoken = "${token}"\n`);
   const env: NodeJS.ProcessEnv = { ...process.env, NOOP_HOME: home, HUB_NO_MEDIC: "1", PATH: `${bin}:${process.env.PATH || ""}` };
   for (const key of ["HUB_CONF", "HUB_DATA", "HUB_SYNC", "HUB_SYNC_FAKE", "CLOUDFLARE_API_TOKEN", "CLOUDFLARE_ACCOUNT_ID"]) delete env[key];
