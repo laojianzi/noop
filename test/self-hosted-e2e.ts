@@ -340,6 +340,7 @@ try {
   writeFileSync(join(updateBin, "git"), '#!/bin/sh\ncase "$*" in *--short*) printf "aaaaaaa\\n" ;; *rev-parse*) printf "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\\n" ;; esac\nexit 0\n', { mode: 0o755 });
   for (const fixture of [
     { name: "local", mode: "local", host: "deploy-host", primary: "other-host", deploy: false },
+    { name: "cloud-default", mode: "cloud", host: "synthetic-primary", primary: "synthetic-primary", deploy: true },
     { name: "cloud-primary", mode: "cloud", host: "synthetic-primary", primary: "synthetic-primary", deploy: false },
     { name: "cloud-designated", mode: "cloud", host: "deploy-host", primary: "synthetic-primary", deploy: true },
   ]) {
@@ -348,7 +349,7 @@ try {
     const daemonInit = cli(["init", "--primary"], { ...env, NOOP_HOME: home, HUB_SYNC: "local", HUB_HOST: fixture.host });
     if (daemonInit.status !== 0) throw new Error(`daemon ${fixture.name} init failed: ${daemonInit.output}`);
     writeFileSync(join(home, "noop.toml"), `[cloud]\n${fixture.mode === "local" ? 'mode = "local"\n' : ""}url = "http://127.0.0.1:9"\n[server]\ntoken = "synthetic-daemon-token-000000"\n`);
-    writeFileSync(join(data, "config.toml"), `[fleet]\nprimary = "${fixture.primary}"\n[cloud]\ndeploy_host = "deploy-host"\n[host]\ntick_seconds = 1\n[router]\ncli = "not-installed"\n[server]\nenabled = false\n[idle]\nenabled = false\n[supervisor]\nenabled = false\n[medic]\nenabled = false\n[tunnel]\nmode = "off"\n`);
+    writeFileSync(join(data, "config.toml"), `[fleet]\nprimary = "${fixture.primary}"\n[cloud]\n${fixture.name === "cloud-default" ? "" : 'deploy_host = "deploy-host"\n'}[host]\ntick_seconds = 1\n[router]\ncli = "not-installed"\n[server]\nenabled = false\n[idle]\nenabled = false\n[supervisor]\nenabled = false\n[medic]\nenabled = false\n[tunnel]\nmode = "off"\n`);
     writeFileSync(join(data, "fleet", "update.json"), JSON.stringify({ at: new Date().toISOString(), by: "owner" }));
     const fd = openSync(log, "w");
     const child = spawn(process.execPath, [join(repo, "src", "cli.ts"), "daemon"], { cwd: repo, detached: true, stdio: ["ignore", fd, fd],
