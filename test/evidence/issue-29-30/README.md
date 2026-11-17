@@ -13,6 +13,6 @@ The passing reports use clean source commit `0101a190ff274ee57ae96a0dd7e6beb6fa8
 | `linux-package.json` | The archive for the source commit passed checksum, provenance, extraction and native startup checks. |
 | `workflow-simulation.json` | Local workflow graph simulation preserved platform jobs and isolated the Linux delivery dependency. |
 
-The Tailscale client and coordinator ran on the same physical host. The workflow graph simulation is not a GitHub Actions run. Native Linux ARM64 delivery and the full-platform CI run remain pending: GitHub paused Actions on the fork due to its Actions usage. See the repository's Actions page for the current state.
+The Tailscale client and coordinator ran on the same physical host. The workflow graph simulation is not a GitHub Actions run. GitHub paused Actions on the fork due to its Actions usage; the repository owner re-enabled it on 2026-11-17. Native Linux ARM64 delivery and the full-platform CI run remain pending until their runs complete.
 
 The tests in `test/self-hosted-acceptance.md`, `test/local-package-e2e.ts` and `test/local-workflow-e2e.ts` reproduce these results. For the Tailscale runs, set `NOOP_E2E_CLIENT_ORIGIN` to the existing Serve URL, `NOOP_E2E_LISTEN_PORT` to its backend port, and `NOOP_E2E_ALLOWED_IP` to the current Tailscale IPv4 address. Verify this directory with `sha256sum -c SHA256SUMS`.
