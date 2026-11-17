@@ -1,0 +1,18 @@
+{
+  "status": "failed",
+  "source": "/home/runner/work/noop/noop",
+  "revision": "ea91039a986fc8581c0dc56862928362664541f5",
+  "changes": "",
+  "platform": "linux-arm64",
+  "timestamp": "2026-11-17T13:30:33.436Z",
+  "bun": "1.4.4",
+  "noSpaceFixture": false,
+  "workerdSha256": "9d557f449060e57feb17541092929801dd7f8df79be9424fd8b61b772c7237c0",
+  "nextWorkerdSha256": "f542b6c1ffe27944459499ef8fe9bc91552facb804fde5880af3837f7021cc2a",
+  "webIndexSha256": "c77717bcb0c38a769ffe4bbda46ce4b4794eb1e0e319c4fb151c485f757942a2",
+  "checks": [
+    "test runs on a disposable host without an existing coordinator service",
+    "real Web assets and pinned workerd are supplied"
+  ],
+  "error": "Error: the coordinator service installs: 30 |           headers: { Authorization: `Bearer ${token}` }, signal: AbortSignal.timeout(500) });\n31 |         if (response.ok) return;\n32 |       } catch {}\n33 |       await Bun.sleep(200);\n34 |     }\n35 |     throw new Error(\"Coordinator service did not become ready; inspect its logs\");\n                   ^\nerror: Coordinator service did not become ready; inspect its logs\n      at <anonymous> (/home/runner/work/_temp/evidence/noop-update-e2e-WUfEno/repo/src/local-service.ts:35:15)\n      at async localService (/home/runner/work/_temp/evidence/noop-update-e2e-WUfEno/repo/src/local-service.ts:72:130)\n      at async main (/home/runner/work/_temp/evidence/noop-update-e2e-WUfEno/repo/src/cli.ts:1266:62)\n\n\n    at check (/home/runner/work/noop/noop/test/self-hosted-update-e2e.ts:15:79)\n    at /home/runner/work/noop/noop/test/self-hosted-update-e2e.ts:61:3\n    at processTicksAndRejections (native:7:39)"
+}

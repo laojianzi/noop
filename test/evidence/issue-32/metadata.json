@@ -1,0 +1,19 @@
+{
+  "baseline": "fc735e5bc4b62dcced4bb0a719cea58ca53ace59",
+  "testCommit": "b77744c",
+  "candidate": "dee518ce939d8f7aed994ce35d5f0f28eebfd06d",
+  "redProbe": "ea91039",
+  "redRun": 44093301622,
+  "greenProbe": "efa4b79902a14186fdaf2ff2f03143176ec6fb23",
+  "greenRun": 44094560119,
+  "workerd": "2026-11-10",
+  "bun": "1.4.4",
+  "webIndexSha256": "c77717bcb0c38a769ffe4bbda46ce4b4794eb1e0e319c4fb151c485f757942a2",
+  "artifacts": {
+    "red-linux-x86_64": "sha256:ea982c81eab74029bd28c5ed63934e4ba8ce378bf2518d0b04a3a5a26bab9975",
+    "red-linux-arm64": "sha256:61ac19f23420a08a3f81472ea702440fbad1d0527f2a8793c0a218ad5497729b",
+    "green-linux-x86_64": "sha256:94b27175852b656abf2e7eec1a16f95cb05b216e5d6cbb59b1dfa13af95aba0d",
+    "green-linux-arm64": "sha256:10f50527f1baf11dc03bad5978d113f38d864b5e98ec67f412e2573910b2f16f",
+    "green-macos-x86_64": "sha256:b3acddbc7d791755a55ff28fce10c85766716f38cafa30ad5d35014b92ee94c0"
+  }
+}
