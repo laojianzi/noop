@@ -101,10 +101,11 @@ try {
   check(true, "desktop signs in with the CLI code and TOTP");
   await waitFor(() => requests.includes("GET /api/stream 101"), "desktop did not connect its WebSocket");
   check(true, "desktop opens the live WebSocket");
+  const composerScreenshot = join(out, "desktop-composer.png");
   await waitFor(() => {
-    const image = spawnSync("import", ["-window", window, "png:-"], { env: guiEnv, timeout: 15_000 });
-    const text = spawnSync("tesseract", ["stdin", "stdout"], { input: image.stdout, encoding: "utf8", timeout: 15_000 });
-    return image.status === 0 && text.status === 0 && /tell the team/i.test(text.stdout);
+    const image = spawnSync("import", ["-window", window, composerScreenshot], { env: guiEnv, timeout: 15_000 });
+    const text = spawnSync("tesseract", [composerScreenshot, "stdout"], { encoding: "utf8", timeout: 15_000 });
+    return image.status === 0 && text.status === 0 && /tell\s*the\s+team/i.test(text.stdout);
   }, "desktop composer did not appear", 30_000);
   click(125, 765); gui("type", "--clearmodifiers", "Native desktop sends a message"); gui("key", "Return");
   await waitFor(() => requests.includes("POST /api/messages 200") && sentMessages.includes("Native desktop sends a message"), "desktop did not send the message");
