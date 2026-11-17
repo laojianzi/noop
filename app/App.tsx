@@ -88,6 +88,7 @@ import {
   Button,
   composerGlass,
   corner,
+  menuGlass,
   Count,
   glass,
   IconButton,
@@ -190,6 +191,7 @@ import {
   type TaskInfo,
 } from "./hub";
 import { notificationFor, type NotifyRules } from "./notify";
+import { DEMO_CODE, DEMO_EMAIL, DEMO_TOKEN, DEMO_TOTP, DEMO_URL, hubFetch, isDemo, openSocket, type Socket } from "./demo";
 // Email sign-in code length (cloud/src/index.ts CODE_LEN): letters and digits, case-insensitive.
 const CODE_LEN = 8;
 
@@ -232,7 +234,7 @@ async function loadConfig(): Promise<Boot> {
   if (page.theme === "light" || page.theme === "dark") setColorScheme(page.theme);
   else {
     const saved = await Storage.getItem(KEYS.theme);
-    if (saved === "light" || saved === "dark") setColorScheme(saved);
+    if (saved === "light" || saved === "dark") { setColorScheme(saved); themePref.set(saved); }
   }
   const saved = await Storage.getItem(LANG_KEY);
   if (saved === "en" || saved === "zh") lang.set(saved);
@@ -266,7 +268,7 @@ function createHub(cfg: Config) {
   const loaded = signal(false);
   const headers = { Authorization: `Bearer ${cfg.token}`, "Content-Type": "application/json" };
   let disposed = false;
-  let socket: WebSocket | null = null;
+  let socket: Socket | null = null;
   let retry: ReturnType<typeof setTimeout> | undefined;
   let failures = 0;
   let lastFrame = 0;
@@ -279,7 +281,7 @@ function createHub(cfg: Config) {
   async function loadFeed() {
     const since = last();
     try {
-      const r = await fetch(`${cfg.url}/api/feed${since ? `?since=${encodeURIComponent(since)}` : ""}`, { headers });
+      const r = await hubFetch(`${cfg.url}/api/feed${since ? `?since=${encodeURIComponent(since)}` : ""}`, { headers });
       if (r.status === 401) return conn.set("unauthorized");
       const body = (await r.json()) as { events: HubEvent[] };
       const ip = ipBlocked(r.status, body);
@@ -295,7 +297,7 @@ function createHub(cfg: Config) {
 
   async function loadStatus() {
     try {
-      const r = await fetch(`${cfg.url}/api/status`, { headers });
+      const r = await hubFetch(`${cfg.url}/api/status`, { headers });
       if (r.ok) setStatus((await r.json()) as Partial<Status>);
     } catch {
       /* the feed reports the connection */
@@ -304,7 +306,7 @@ function createHub(cfg: Config) {
 
   function stream() {
     if (disposed || untracked(conn) === "unauthorized") return;
-    const ws = new WebSocket(wsUrl(cfg.url, cfg.token));
+    const ws = openSocket(wsUrl(cfg.url, cfg.token));
     socket = ws;
     ws.onopen = () => {
       failures = 0;
@@ -339,7 +341,7 @@ function createHub(cfg: Config) {
   async function upload(a: Attachment): Promise<string> {
     const fd = new FormData();
     fd.append("file", a.file, a.name);
-    const r = await fetch(`${cfg.url}/api/uploads`, { method: "POST", headers: { Authorization: headers.Authorization }, body: fd });
+    const r = await hubFetch(`${cfg.url}/api/uploads`, { method: "POST", headers: { Authorization: headers.Authorization }, body: fd });
     if (r.status === 401) conn.set("unauthorized");
     if (!r.ok) throw new Error(L(`Image upload failed (${r.status})`, `图片上传失败（${r.status}）`));
     return ((await r.json()) as { url: string }).url;
@@ -348,7 +350,7 @@ function createHub(cfg: Config) {
   async function send(text: string, replyTo: string | null, files: Attachment[] = [], thread = false, clientId?: string, channel?: string) {
     const attachments: string[] = [];
     for (const f of files) attachments.push(await upload(f));
-    const r = await fetch(`${cfg.url}/api/messages`, {
+    const r = await hubFetch(`${cfg.url}/api/messages`, {
       method: "POST",
       headers,
       body: JSON.stringify({ text, ...(clientId ? { client_id: clientId } : {}), ...(replyTo ? { reply_to: replyTo } : {}), ...(attachments.length ? { attachments } : {}), ...(thread ? { thread } : {}), ...(channel ? { channel } : {}) }),
@@ -361,7 +363,7 @@ function createHub(cfg: Config) {
   }
 
   async function settings(patch?: Record<string, unknown>): Promise<SettingsView> {
-    const r = await fetch(`${cfg.url}/api/settings`, patch ? { method: "PUT", headers, body: JSON.stringify(patch) } : { headers });
+    const r = await hubFetch(`${cfg.url}/api/settings`, patch ? { method: "PUT", headers, body: JSON.stringify(patch) } : { headers });
     if (r.status === 401) conn.set("unauthorized");
     if (!r.ok) throw new Error(L(`Couldn’t ${patch ? "save" : "load"} settings (${r.status})`, `设置${patch ? "保存" : "读取"}失败（${r.status}）`));
     return (await r.json()) as SettingsView;
@@ -370,7 +372,7 @@ function createHub(cfg: Config) {
   /** A JSON call of the hub's API: never throws (status 0 when unreachable); a 401 ends the session. */
   async function api(method: string, path: string, body?: unknown): Promise<{ ok: boolean; status: number; data: Record<string, unknown> }> {
     try {
-      const r = await fetch(`${cfg.url}${path}`, method === "GET" ? { headers } : { method, headers, body: JSON.stringify(body ?? {}) });
+      const r = await hubFetch(`${cfg.url}${path}`, method === "GET" ? { headers } : { method, headers, body: JSON.stringify(body ?? {}) });
       if (r.status === 401) conn.set("unauthorized");
       let data: Record<string, unknown> = {};
       try {
@@ -386,7 +388,7 @@ function createHub(cfg: Config) {
 
   async function logout() {
     try {
-      await fetch(`${cfg.url}/api/auth/logout`, { method: "POST", headers });
+      await hubFetch(`${cfg.url}/api/auth/logout`, { method: "POST", headers });
     } catch {
       /* forgotten locally either way */
     }
@@ -454,11 +456,21 @@ function LangChoices() {
   );
 }
 
-function toggleTheme() {
-  const next = colorScheme() === "dark" ? "light" : "dark";
-  setColorScheme(next);
-  Storage.setItem(KEYS.theme, next);
+/** The appearance the user chose: the system's (the default), or one of its own. */
+type ThemePref = "system" | "light" | "dark";
+const themePref = signal<ThemePref>("system");
+function setTheme(pref: ThemePref) {
+  themePref.set(pref);
+  setColorScheme(pref);
+  if (pref === "system") Storage.removeItem(KEYS.theme);
+  else Storage.setItem(KEYS.theme, pref);
 }
+function toggleTheme() {
+  setTheme(colorScheme() === "dark" ? "light" : "dark");
+}
+/** The three appearances, for the iOS segmented controls (Auto first, as the system's own). */
+const THEME_PREFS: ThemePref[] = ["system", "light", "dark"];
+const themeTitle = (pref: ThemePref) => pref === "system" ? L("Auto", "自动") : pref === "light" ? L("Light", "浅色") : L("Dark", "深色");
 
 // ---------------------------------------------------------------- small pieces (the gallery's idioms)
 
@@ -845,7 +857,7 @@ function clearDocCache() {
 }
 function loadDoc(src: string, body: Signal<DocBody>) {
   body.set({ text: null, error: "" });
-  void fetch(src)
+  void hubFetch(src)
     .then(async (r) => {
       if (r.ok) return body.set({ text: stripFrontMatter(await r.text()), error: "" });
       body.set({ text: null, error: r.status === 404 ? L("This file has expired.", "这个文件已过期。") : L(`Couldn’t load (${r.status})`, `读取失败（${r.status}）`) });
@@ -2374,7 +2386,7 @@ function Sidebar(props: {
 function UserMenu(props: { hub: Hub; onSettings: () => void; reads: MessageReads }) {
   /** The signed-in account: its email, shown as the local part; the server address stays out of the UI. */
   const email = signal("");
-  void Storage.getItem(KEYS.email).then((e) => email.set(e ?? ""));
+  void Storage.getItem(KEYS.email).then((e) => email.set(isDemo(props.hub.cfg.url) ? DEMO_EMAIL : e ?? ""));
   const account = () => email().split("@")[0] ?? "";
   // A pointer gets a compact popup at the trigger; a finger gets the sheet at the bottom with rows it can hit.
   const touch = platform.os === "ios" || platform.os === "android";
@@ -2434,29 +2446,72 @@ function UserMenu(props: { hub: Hub; onSettings: () => void; reads: MessageReads
     <Text testID="user-account" style={{ flex: 1, fontSize: 13, fontWeight: "600", color: colors.text, numberOfLines: 1 }}>{account() || L("Account", "账户")}</Text>
     <Icon name="chevron-up" size={12} tint={colors.faint} />
   </>;
-  if (ios && MenuButton) {
-    /** The system menu's rows, as data: the same actions, language and appearance as the drawn menu's. */
-    const items = (): MenuButtonItem[] => [
-      { id: "mark-all-read", label: L("Mark all as read", "全部已读"), icon: "checkmark.circle", disabled: !props.reads.main().length },
-      { id: "settings", label: L("Settings…", "设置…"), icon: "gearshape" },
-      { id: "", label: L("Language", "语言"), icon: "globe", items: LANGS.map((l) => ({ id: `lang:${l.id}`, label: l.label, checked: lang() === l.id })) },
-      { id: "", label: L("Appearance", "外观"), inline: true, items: [
-        { id: "theme-light", label: L("Light", "浅色"), icon: "sun.max", checked: !isDark() },
-        { id: "theme-dark", label: L("Dark", "深色"), icon: "moon", checked: isDark() },
-      ] },
-    ];
-    const select = (id: string) => {
-      if (id === "mark-all-read") props.reads.all();
-      else if (id === "settings") props.onSettings();
-      else if (id.startsWith("lang:")) pickLang(id.slice("lang:".length));
-      else if ((id === "theme-dark") !== isDark() && id.startsWith("theme-")) toggleTheme();
-    };
+  if (ios) {
+    /** iOS: the system sheet, its rows in the grouped-list style of Settings. */
+    const open = signal(false);
+    /** The sheet's rows' height, which it rests at (an estimate until they are laid out). */
+    const height = signal(360);
+    /** Closes the sheet, then does what the row is for. */
+    const then = (work: () => void) => () => { open.set(false); work(); };
+    const icon = (name: IconName) => <Icon name={name} size={20} tint={colors.muted} />;
     return (
-      <View onTouchStartCapture={() => Keyboard.dismiss()} style={{ width: "100%" }}>
-        <MenuButton testID="user-menu" accessibilityLabel={menuLabel()} title={email()} items={items()} onSelect={({ id }) => select(id)} style={triggerStyle()}>
+      <>
+        <View role="button" testID="user-menu" accessibilityLabel={menuLabel()} onPress={() => { Keyboard.dismiss(); open.set(true); }} activeStyle={hovered()} style={triggerStyle()}>
           {triggerContent()}
-        </MenuButton>
-      </View>
+        </View>
+        {/* The system's own sheet (UIKit): as tall as its rows, with the grabber, and on iOS 26 its floating glass. */}
+        <Dialog
+          open={open()}
+          onOpenChange={({ open: o }) => open.set(o)}
+          presentation="pageSheet"
+          sheetHeight={height()}
+          sheetGrabber
+          accessibilityLabel={menuLabel()}
+        >
+          <View onLayout={({ bounds }) => height.set(Math.ceil(bounds.size.height))} style={{ gap: 22, paddingTop: 28, paddingBottom: 4 }}>
+            <View testID="user-sheet" style={{ flexDirection: "row", alignItems: "center", gap: 12, paddingHorizontal: 20, paddingTop: 4 }}>
+              {avatar(48, "user-menu-avatar")}
+              <View style={{ flex: 1, minWidth: 0, gap: 2 }}>
+                <Text style={{ fontSize: 20, fontWeight: "600", color: colors.text, numberOfLines: 1 }}>{account() || L("Account", "账户")}</Text>
+                <If when={email()}>
+                  <Text style={{ fontSize: 14, color: colors.muted, numberOfLines: 1 }}>{email()}</Text>
+                </If>
+              </View>
+            </View>
+            <Section title={L("Appearance", "外观")} glass>
+              {SegmentedControl
+                ? <View style={{ paddingHorizontal: 16, paddingVertical: 12 }}>
+                    <SegmentedControl testID="menu-appearance"
+                      items={THEME_PREFS.map((t) => ({ title: themeTitle(t) }))}
+                      selectedIndex={THEME_PREFS.indexOf(themePref())}
+                      onChange={({ index }) => setTheme(THEME_PREFS[index] ?? "system")} />
+                  </View>
+                // A runtime without the native control: the same choice as rows.
+                : <Choices label={L("Appearance", "外观")}
+                    choices={THEME_PREFS.map((t) => ({ id: t, label: themeTitle(t), testID: `theme-${t}` }))}
+                    selected={themePref()}
+                    onPick={(id) => setTheme(id as ThemePref)} />}
+            </Section>
+            <Section title={L("Language", "语言")} glass>
+              {SegmentedControl
+                ? <View style={{ paddingHorizontal: 16, paddingVertical: 12 }}>
+                    <SegmentedControl testID="menu-language"
+                      items={LANGS.map((l) => ({ title: l.label }))}
+                      selectedIndex={Math.max(0, LANGS.findIndex((l) => l.id === lang()))}
+                      onChange={({ index }) => { const l = LANGS[index]; if (l && l.id !== lang()) pickLang(l.id); }} />
+                  </View>
+                : <Choices label={L("Language", "语言")}
+                    choices={LANGS.map((l) => ({ id: l.id, label: l.label, testID: `menu-lang-${l.id}` }))}
+                    selected={lang()}
+                    onPick={(id) => pickLang(id)} />}
+            </Section>
+            <Section glass>
+              <SetRow first label={L("Settings", "设置")} leading={icon("settings")} inset={48} chevron onPress={then(props.onSettings)} testID="settings" />
+              <SetRow label={L("Mark all as read", "全部已读")} leading={icon("check")} inset={48} disabled={!props.reads.main().length} onPress={then(props.reads.all)} testID="mark-all-read" />
+            </Section>
+          </View>
+        </Dialog>
+      </>
     );
   }
   return (
@@ -3178,13 +3233,15 @@ function notifyModel(push: Push, view: () => SettingsView | null, save: (patch: 
 }
 
 /** A grouped, inset section: a muted title above, rows on one rounded surface, a hint below. */
-function Section(props: { title?: string; hint?: string; testID?: string; children: JSX.Element }) {
+/** `glass`: on a glass sheet, a card that keeps the material's tint and its rows readable over what is behind. */
+function Section(props: { title?: string; hint?: string; testID?: string; glass?: boolean; children: JSX.Element }) {
   return (
     <View testID={props.testID} style={{ gap: 7 }}>
       <If when={props.title}>
         <Text style={{ paddingHorizontal: 32, fontSize: 13, color: colors.muted }}>{props.title}</Text>
       </If>
-      <View style={{ marginHorizontal: 16, borderRadius: radius.card, borderCurve: "continuous", borderWidth: 1, borderColor: surfaceEdge(), overflow: "hidden", backgroundColor: colors.surface }}>{props.children}</View>
+      <View style={{ marginHorizontal: 16, borderRadius: radius.card, borderCurve: "continuous", overflow: "hidden",
+        ...(props.glass ? { backgroundColor: alpha(colors.surface, 0.75) } : { borderWidth: 1, borderColor: surfaceEdge(), backgroundColor: colors.surface }) }}>{props.children}</View>
       <If when={props.hint}>
         <Text style={{ paddingHorizontal: 32, fontSize: 13, lineHeight: 18, color: colors.faint }}>{props.hint}</Text>
       </If>
@@ -3550,15 +3607,15 @@ function PhoneSettings(props: { hub: Hub; push: Push; settings: Settings; onOpen
           {SegmentedControl
             ? <View style={{ paddingHorizontal: 16, paddingVertical: 12 }}>
                 <SegmentedControl testID="settings-appearance"
-                  items={[{ title: L("Light", "浅色") }, { title: L("Dark", "深色") }]}
-                  selectedIndex={isDark() ? 1 : 0}
-                  onChange={({ index }) => { if ((index === 1) !== isDark()) toggleTheme(); }} />
+                  items={THEME_PREFS.map((t) => ({ title: themeTitle(t) }))}
+                  selectedIndex={THEME_PREFS.indexOf(themePref())}
+                  onChange={({ index }) => setTheme(THEME_PREFS[index] ?? "system")} />
               </View>
             // A runtime without the native control: the same choice as rows, like the language above.
             : <Choices label={L("Appearance", "外观")}
-                choices={[{ id: "light", label: L("Light", "浅色"), testID: "settings-appearance-light" }, { id: "dark", label: L("Dark", "深色"), testID: "settings-appearance-dark" }]}
-                selected={isDark() ? "dark" : "light"}
-                onPick={(id) => { if ((id === "dark") !== isDark()) toggleTheme(); }} />}
+                choices={THEME_PREFS.map((t) => ({ id: t, label: themeTitle(t), testID: `settings-appearance-${t}` }))}
+                selected={themePref()}
+                onPick={(id) => setTheme(id as ThemePref)} />}
         </Section>
       </If>
       <Section title={L("Memory", "记忆")} hint={L("The rules the team works by, your preferences, member profiles and past decisions. Read-only.", "团队做事依据的规则、你的偏好、成员档案和决策先例。只读。")}>
@@ -5448,9 +5505,9 @@ function Field(props: {
 const RESEND = 60;
 
 async function postJson(url: string, body: unknown): Promise<{ status: number; data: Record<string, unknown> }> {
-  let r: Response;
+  let r: Awaited<ReturnType<typeof hubFetch>>;
   try {
-    r = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+    r = await hubFetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
   } catch {
     throw new Error("unreachable");
   }
@@ -5480,8 +5537,11 @@ function Login(props: { url: string; served: boolean; email: string; notice?: st
   const unreachable = () => L(`Can’t reach ${server()}. Check the address and your network.`, `连不上服务器 ${server()}，请检查地址和网络`);
 
   const viaCli = signal(false); // email not set up yet: the code is shown by `noop login` on the owner's machine
+  const viaDemo = signal(false); // the demo server (address "demo"): any code works
   async function sendCode() {
     const e = email().trim();
+    // The test account (App Review): straight into the on-device demo, whatever the server.
+    if (!props.served && e.toLowerCase() === DEMO_EMAIL) return enterDemo();
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e)) return error.set(L("Enter a valid email address", "请填写有效的邮箱地址"));
     if (!server()) return error.set(L("Enter the server address", "请填写服务器地址"));
     busy.set(true);
@@ -5497,6 +5557,7 @@ function Login(props: { url: string; served: boolean; email: string; notice?: st
       if (r.status >= 400) throw new Error(L(`The server returned ${r.status}. This address may not be a noop server.`, `服务器返回 ${r.status}，这个地址可能不是 noop`));
       await Storage.setItem(KEYS.email, e);
       viaCli.set(r.data.delivery === "cli");
+      viaDemo.set(r.data.delivery === "demo");
       code.set("");
       step.set("code");
       wait.set(RESEND);
@@ -5533,6 +5594,13 @@ function Login(props: { url: string; served: boolean; email: string; notice?: st
       busy.set(false);
     }
   }
+  /** The in-app demo server: a simulated team, nothing leaves the device (app/demo.ts). */
+  async function enterDemo() {
+    await Storage.setItem(KEYS.email, DEMO_EMAIL);
+    await Storage.setItem(KEYS.url, DEMO_URL);
+    await Storage.setItem(KEYS.token, DEMO_TOKEN);
+    props.onLogin({ url: DEMO_URL, token: DEMO_TOKEN });
+  }
   const onCode = (v: string) => {
     const c = v.toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, CODE_LEN);
     code.set(c);
@@ -5552,7 +5620,7 @@ function Login(props: { url: string; served: boolean; email: string; notice?: st
             <Mark size={48} />
             <Text style={{ fontSize: 28, fontWeight: "600", color: colors.text, letterSpacing: -0.3 }}>{L("Sign in to Noop", "登录 Noop")}</Text>
             <Text style={{ fontSize: 15.5, lineHeight: 23, color: colors.muted, textAlign: "center" }}>
-              {step() === "email" ? L("Sign in with email. We’ll send you an 8-character code.", "用邮箱登录：我们会发一个 8 位验证码给你（字母和数字）。") : viaCli() ? L("Email isn’t set up yet. Run noop login in your host’s terminal to see the code.", "还没配置发信邮箱：在你的主机终端运行 noop login 查看验证码。") : L(`We sent a code to ${email().trim()}. Check your email.`, `验证码已发到 ${email().trim()}，请查收邮件。`)}
+              {step() === "email" ? L("Sign in with email. We’ll send you an 8-character code.", "用邮箱登录：我们会发一个 8 位验证码给你（字母和数字）。") : viaDemo() ? L(`Demo server: enter ${DEMO_CODE} and ${DEMO_TOTP}.`, `演示服务器：验证码填 ${DEMO_CODE}，两步验证码填 ${DEMO_TOTP}。`) : viaCli() ? L("Email isn’t set up yet. Run noop login in your host’s terminal to see the code.", "还没配置发信邮箱：在你的主机终端运行 noop login 查看验证码。") : L(`We sent a code to ${email().trim()}. Check your email.`, `验证码已发到 ${email().trim()}，请查收邮件。`)}
             </Text>
           </View>
           <View style={{ gap: 18, padding: 22, borderRadius: 16, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface }}>
