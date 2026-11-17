@@ -1,4 +1,4 @@
-ebe92e4d7f8bb9870207d7e977b506004b7f58f4ac368d69d43321d53636baae  ./README.md
+2bafb057f7440b0d02c14db9d9b13aa895dc9fcbb1f9fb3eb0401aff1d567c48  ./README.md
 bfc809d8faf0dc3ad4a80aeff0d04fedaabef07dd9b8928eec064a6a70f3172b  ./before/report.json
 5d37f1aa4e896535c43443536507cfc8d9e1917f79b65d0b2daf834c93e79ea5  ./bun-test.log.gz
 3523648bf828616eba25383724badbbfd113271d36c6cefac6b36c1bfde47979  ./cloud-budget.log.gz
@@ -9,6 +9,14 @@ bfc809d8faf0dc3ad4a80aeff0d04fedaabef07dd9b8928eec064a6a70f3172b  ./before/repor
 40a0aa7bb518c82cf988643efbb09681faa96e80766bdc78edda9c3df8bf6d4b  ./demo-ablation/demo-network.json
 c5e4f1ab7507532a7176a5392af79962875b8f99d2d05a03303ba0e796575077  ./demo-ablation/report.json
 86c643b6872da91e937cbf102212c951233af476785b52bcb6aa26cd9077ee7f  ./demo-ablation/web-demo.png
+775fc97c61c3d782c94a8ae2a0fe3523d243d2d202e3cb1f2ec2501699a7f4c2  ./desktop-x86_64/coordinator.log.gz
+09edaf16796ab5e211f5e6629ee08488bd81bf070c5a65de7bebbac2c12947c8  ./desktop-x86_64/desktop-composer.png
+63d6cddff465f8acb5848967777f2a48f45b49018be7ab604a4cc71a7416f0af  ./desktop-x86_64/desktop-message.png
+29ec8a5c8b396292ae7e0af8f8f69930d05506ec64ec7fc63fcc25e410b7b1f6  ./desktop-x86_64/desktop-snapshot.png
+f4d5bf019f48aee33701ab76a6c64523e5fc8eea8d77203988d0b0b7b301b944  ./desktop-x86_64/desktop.log.gz
+18cf9ece71960893261da12ebec03ff6bea15517d913e7ae0dbf35a44643a422  ./desktop-x86_64/report.json
+80ea3eeabc79979e549e0cbb2ef609b7de25c5bfa01cbabd216e93f2b271dc3f  ./desktop-x86_64/requests.log.gz
+df2d850f37288774c226346e4b8404d0102f5304a8916673d4ed9b33ede1290c  ./desktop-x86_64/xvfb.log.gz
 72d5169e5bfb2635beca6934fa7711495d1d657522a7ac4964e6b1adcc1141a3  ./final-routing.log.gz
 6744409c5de4ec778f45010822cb1dde951498bd6d11e6647a20c2bb7b1ef98f  ./guard-ablation.log.gz
 5ab2c67cd2e0a019c80dccbc8978206dc9e64e2f85e4876433e9c51744aea6ea  ./guard-ablation.patch.gz

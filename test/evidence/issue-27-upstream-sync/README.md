@@ -19,6 +19,7 @@ The merge keeps all three behaviors:
 | --- | --- |
 | `before` and `red.log.gz` | Before the merge, the old primary deployed despite another configured deployment host. The test used a synthetic `bunx` command. |
 | `linux-x64` and `final-routing.log.gz` | The integrated candidate passed direct and owner-requested update routing, Web login, local sync and a demo status check. |
+| `desktop-x86_64` | The Linux client package from the [six-platform CI run](https://github.com/laojianzi/noop/actions/runs/44083251363) passed native login, messages, WebSocket and status rendering in Xvfb. It uses source `6acde27`, with the same product code as `31a8d5`. |
 | `guard-ablation` | Removing the local-mode guard from `src/setup.ts` made the local-update check fail. `guard-ablation.patch.gz` records the change. |
 | `demo-ablation` | Replacing `hubFetch` with `fetch` in status loading made the browser request `http://demo/api/status`. `demo-ablation.patch.gz` records the change. |
 | `network-kvm` | A coordinator in a KVM guest and container hosts retained the push key and synchronized work after a forced guest stop and restart. |
