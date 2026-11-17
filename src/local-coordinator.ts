@@ -141,7 +141,7 @@ const config :Workerd.Config = (
   ],
   sockets = [(name = "http", address = ${q(listen)}, http = (), service = "main"),
     ${localUrl ? `(name = "local", address = ${q(localUrl.slice("http://".length))}, http = (), service = (name = "main", props = (json = ${q(JSON.stringify({ noopIngress: "local" }))}))),` : ""}
-    (name = "health", address = ${q(`unix:${join(root, "health.sock")}`)}, http = (), service = "health")]
+    (name = "health", address = "unix:health.sock", http = (), service = "health")]
 );
 `;
   const configFile = join(root, "workerd.capnp");
@@ -155,7 +155,7 @@ const config :Workerd.Config = (
   const healthSocket = join(root, "health.sock");
   if (existsSync(healthSocket)) unlinkSync(healthSocket);
   // The runtime keeps the lock if this launcher is killed.
-  const child = Bun.spawn([workerd, "serve", configFile], { stdio: ["ignore", "inherit", "inherit", lock.fd], env: {
+  const child = Bun.spawn([workerd, "serve", configFile], { cwd: root, stdio: ["ignore", "inherit", "inherit", lock.fd], env: {
     ...process.env, NOOP_LOCAL_TOKEN: token, NOOP_LOCAL_OWNER_EMAIL: String(email.to ?? ""),
     NOOP_LOCAL_SMTP: smtp, NOOP_LOCAL_VAPID_PUBLIC: vapid.publicKey, NOOP_LOCAL_VAPID_PRIVATE: JSON.stringify(vapid.privateJwk),
     NOOP_LOCAL_LANG: String(cfg.owner?.language ?? ""), NOOP_LOCAL_MODE: "1",

@@ -73,14 +73,10 @@ try {
   }, "coordinator did not start with a local allow-list");
   check(true, "local coordinator starts with an IP allow-list");
   const healthPath = join(home, "coordinator", "health.sock");
-  const previousDirectory = process.cwd();
-  process.chdir(join(home, "coordinator"));
-  try {
-    check((await request({ socketPath: "health.sock" })).status === 200 &&
-      (await request({ socketPath: "health.sock", headers: { Authorization: "Bearer invalid" } })).status === 401,
-      "private health access still requires the machine credential");
-    check((await request({ socketPath: "health.sock", path: "/api/feed" })).status === 404, "private health access exposes no other API");
-  } finally { process.chdir(previousDirectory); }
+  check((await request({ socketPath: healthPath })).status === 200 &&
+    (await request({ socketPath: healthPath, headers: { Authorization: "Bearer invalid" } })).status === 401,
+    "private health access still requires the machine credential");
+  check((await request({ socketPath: healthPath, path: "/api/feed" })).status === 404, "private health access exposes no other API");
   check((await request({ port: listenPort, localAddress: "127.0.0.2" })).status === 200, "allowed direct source can connect");
   check((await request({ port: listenPort, localAddress: "127.0.0.2", headers: { "cf-connecting-ip": "127.0.0.4" } })).status === 200,
     "a forged header cannot block an allowed direct source");
