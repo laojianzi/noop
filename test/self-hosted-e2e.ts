@@ -319,6 +319,71 @@ try {
   check(cloudUpdate.status === 0 && cloudUpdate.output.includes("self-updated") && readFileSync(cloudMarker, "utf8").includes("wrangler whoami"),
     "a cloud primary update still enters the existing cloud deployment path");
 
+  const localDeployer = join(artifacts, "local-deploy-host");
+  mkdirSync(join(localDeployer, "data"), { recursive: true });
+  writeFileSync(join(localDeployer, "noop.toml"), `[cloud]\nmode = "local"\nurl = "${base}"\n[server]\ntoken = "${token}"\n`);
+  writeFileSync(join(localDeployer, "data", "config.toml"), '[fleet]\nprimary = "other-host"\n[cloud]\ndeploy_host = "deploy-host"\n');
+  writeFileSync(cloudMarker, "");
+  const localHostUpdate = cli(["update"], { ...env, NOOP_HOME: localDeployer, HUB_HOST: "deploy-host", NOOP_FAKE_CLOUD_MARKER: cloudMarker, PATH: `${updateBin}:${env.PATH}` });
+  check(localHostUpdate.status === 0 && localHostUpdate.output.includes("self-updated") && !readFileSync(cloudMarker, "utf8"),
+    "a designated host does not deploy Cloudflare in local mode");
+
+  writeFileSync(join(cloudHome, "data", "config.toml"), '[fleet]\nprimary = "synthetic-primary"\n[cloud]\ndeploy_host = "deploy-host"\n');
+  writeFileSync(cloudMarker, "");
+  const otherHostUpdate = cli(["update"], { ...env, NOOP_HOME: cloudHome, HUB_HOST: "synthetic-primary", NOOP_FAKE_CLOUD_MARKER: cloudMarker, PATH: `${updateBin}:${env.PATH}` });
+  check(otherHostUpdate.status === 0 && otherHostUpdate.output.includes("self-updated") && !readFileSync(cloudMarker, "utf8"),
+    "a cloud primary does not deploy when another host is designated");
+  const designatedUpdate = cli(["update"], { ...env, NOOP_HOME: cloudHome, HUB_HOST: "deploy-host", NOOP_FAKE_CLOUD_MARKER: cloudMarker, PATH: `${updateBin}:${env.PATH}` });
+  check(designatedUpdate.status === 0 && designatedUpdate.output.includes("self-updated") && readFileSync(cloudMarker, "utf8").includes("wrangler whoami"),
+    "the designated non-primary host enters the cloud deployment path");
+
+  writeFileSync(join(updateBin, "git"), '#!/bin/sh\ncase "$*" in *rev-parse*) printf "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\\n" ;; esac\nexit 0\n', { mode: 0o755 });
+  for (const fixture of [
+    { name: "local", mode: "local", host: "deploy-host", primary: "other-host", deploy: false },
+    { name: "cloud-primary", mode: "cloud", host: "synthetic-primary", primary: "synthetic-primary", deploy: false },
+    { name: "cloud-designated", mode: "cloud", host: "deploy-host", primary: "synthetic-primary", deploy: true },
+  ]) {
+    const home = join(artifacts, `daemon-${fixture.name}`), data = join(home, "data"), marker = join(home, "cloud.log"), log = join(artifacts, `daemon-${fixture.name}.log`);
+    mkdirSync(join(data, "fleet"), { recursive: true });
+    writeFileSync(join(home, "noop.toml"), `[cloud]\n${fixture.mode === "local" ? 'mode = "local"\n' : ""}url = "http://127.0.0.1:9"\n[server]\ntoken = "synthetic-daemon-token-000000"\n`);
+    writeFileSync(join(data, "config.toml"), `[fleet]\nprimary = "${fixture.primary}"\n[cloud]\ndeploy_host = "deploy-host"\n[host]\ntick_seconds = 1\n[router]\ncli = "not-installed"\n[server]\nenabled = false\n[idle]\nenabled = false\n[supervisor]\nenabled = false\n[medic]\nenabled = false\n[tunnel]\nmode = "off"\n`);
+    writeFileSync(join(data, "fleet", "update.json"), JSON.stringify({ at: new Date().toISOString(), by: "owner" }));
+    const fd = openSync(log, "w");
+    const child = spawn(process.execPath, [join(repo, "src", "cli.ts"), "daemon"], { cwd: repo, detached: true, stdio: ["ignore", fd, fd],
+      env: { ...env, NOOP_HOME: home, HUB_SYNC: "local", HUB_HOST: fixture.host, NOOP_FAKE_CLOUD_MARKER: marker, PATH: `${updateBin}:${env.PATH}` } });
+    closeSync(fd);
+    try {
+      let state = "";
+      for (let i = 0; i < 150; i++) {
+        if (child.exitCode !== null) throw new Error(`daemon ${fixture.name} exited; see ${log}`);
+        try { state = JSON.parse(readFileSync(join(home, "update-state.json"), "utf8")).state; } catch {}
+        if (state === "current" || state === "failed") break;
+        await Bun.sleep(100);
+      }
+      check((fixture.deploy ? state === "failed" : state === "current") && existsSync(marker) === fixture.deploy,
+        `owner update ${fixture.name} ${fixture.deploy ? "uses" : "does not use"} Cloudflare deployment`);
+    } finally {
+      if (child.pid) try { process.kill(-child.pid, "SIGINT"); } catch {}
+      await Promise.race([new Promise<void>((done) => child.once("exit", () => done())), Bun.sleep(3000)]);
+      if (child.exitCode === null && child.signalCode === null && child.pid) try { process.kill(-child.pid, "SIGKILL"); } catch {}
+    }
+  }
+
+  const demoContext = await browser.newContext({ viewport: { width: 1280, height: 900 }, locale: "en-US" });
+  const demoRequests: string[] = [];
+  await demoContext.route("**/*", (route: any) => new URL(route.request().url()).origin === base ? route.continue() : route.abort());
+  const demoPage = await demoContext.newPage();
+  demoPage.on("request", (request: any) => { if (new URL(request.url()).hostname === "demo") demoRequests.push(request.url()); });
+  await demoPage.goto(base, { waitUntil: "domcontentloaded" });
+  await demoPage.getByPlaceholder("you@example.com").fill("demo@noop.dev", { timeout: 30_000 });
+  await demoPage.getByText(/^(Send code|发送验证码)$/).click();
+  await demoPage.getByPlaceholder(/Tell the team what to do|给团队下指令/).waitFor({ timeout: 30_000 });
+  await demoPage.getByText(/Merge PR #42/).first().waitFor({ timeout: 30_000 });
+  await demoPage.waitForLoadState("networkidle");
+  check(demoRequests.length === 0, "the demo signs in and loads status without network requests to the demo host");
+  await demoPage.screenshot({ path: join(artifacts, "web-demo.png") });
+  await demoContext.close();
+
   await stop(base);
   await start(env, address, base);
   const after = cli(["2fa", "status"], env);
