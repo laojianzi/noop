@@ -32,6 +32,11 @@ access to the backend accordingly. The local startup check uses a private Unix
 socket in the coordinator data directory. That socket accepts only an
 authenticated `GET /api/status` request.
 
+With Tailscale Serve proxying from `127.0.0.1`, trusting that address and
+enabling `allow_ips` currently blocks local CLI requests, even if the allow-list
+includes loopback. The local CLI does not send a forwarding header, so the
+coordinator cannot identify its source. Track the fix in issue #29.
+
 The proxy must replace client-supplied `X-Forwarded-Proto` and
 `X-Forwarded-Host` with the external protocol and host. For MCP and OAuth,
 Noop uses those values only when the connection comes from a trusted proxy.

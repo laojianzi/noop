@@ -34,7 +34,8 @@ try {
   mkdirSync(bin, { recursive: true }); symlinkSync(resolve(workerd), join(bin, "workerd"));
   const env: NodeJS.ProcessEnv = { ...process.env, NOOP_HOME: home, XDG_CONFIG_HOME: join(out, "xdg"), HUB_NO_MEDIC: "1", PATH: `${bin}:${process.env.PATH || ""}` };
   for (const key of ["HUB_CONF", "HUB_DATA", "HUB_SYNC", "HUB_SYNC_FAKE", "CLOUDFLARE_API_TOKEN", "CLOUDFLARE_ACCOUNT_ID", "NOOP_CLIENT_BASE_URL"]) delete env[key];
-  const listenPort = await port(), base = `http://127.0.0.1:${listenPort}`;
+  const listenPort = process.env.NOOP_E2E_LISTEN_PORT ? Number(process.env.NOOP_E2E_LISTEN_PORT) : await port();
+  const localBase = `http://127.0.0.1:${listenPort}`, base = process.env.NOOP_E2E_CLIENT_ORIGIN || localBase;
   const cli = (args: string[]) => {
     const r = spawnSync(process.execPath, [join(repo, "src", "cli.ts"), ...args], { cwd: repo, env, encoding: "utf8", timeout: 20_000 });
     return { status: r.status, out: `${r.stdout || ""}${r.stderr || ""}` };
@@ -45,7 +46,7 @@ try {
       { cwd: repo, env, detached: true, stdio: ["ignore", fd, fd] }); closeSync(fd);
     for (let i = 0; i < 150; i++) {
       if (service.exitCode !== null) throw new Error(`coordinator exited: ${readFileSync(log, "utf8").slice(-1500)}`);
-      try { const ok = (await fetch(base)).ok; const config = Bun.TOML.parse(readFileSync(join(home, "noop.toml"), "utf8")) as any; if (ok && config.cloud?.mode === "local" && config.cloud.url === base) return; } catch {} await Bun.sleep(200);
+      try { const ok = (await fetch(localBase)).ok; const config = Bun.TOML.parse(readFileSync(join(home, "noop.toml"), "utf8")) as any; if (ok && config.cloud?.mode === "local" && config.cloud.url === localBase) return; } catch {} await Bun.sleep(200);
     }
     throw new Error("coordinator did not start");
   };
@@ -53,7 +54,7 @@ try {
     const child = service!; child.kill("SIGTERM");
     for (let i = 0; i < 100 && child.exitCode === null && child.signalCode === null; i++) await Bun.sleep(100);
     if (child.exitCode === null && child.signalCode === null) throw new Error("coordinator did not stop");
-    for (let i = 0; i < 50; i++) { try { await fetch(base); } catch { return; } await Bun.sleep(100); }
+    for (let i = 0; i < 50; i++) { try { await fetch(localBase); } catch { return; } await Bun.sleep(100); }
     throw new Error("coordinator port remained open");
   };
   await start(); check(true, "local coordinator starts");

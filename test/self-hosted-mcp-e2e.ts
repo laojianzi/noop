@@ -49,10 +49,14 @@ try {
   for (const name of ["package.json", "bunfig.toml", "tsconfig.json"]) cpSync(join(source, name), join(repo, name));
   mkdirSync(join(repo, "app", "dist", "web"), { recursive: true }); cpSync(assets, join(repo, "app", "dist", "web", "noop"), { recursive: true });
   mkdirSync(bin, { recursive: true }); symlinkSync(resolve(workerd), join(bin, "workerd")); mkdirSync(home, { recursive: true });
-  writeFileSync(join(home, "noop.toml"), `[cloud]\nallow_ips = "127.0.0.1,127.0.0.4"\ntrusted_proxies = "127.0.0.3"\n[server]\ntoken = "${token}"\n`);
+  const configuredOrigin = process.env.NOOP_E2E_CLIENT_ORIGIN || "";
+  const sourceIp = process.env.NOOP_E2E_ALLOWED_IP || "";
+  const allowed = configuredOrigin ? (sourceIp ? `127.0.0.1,127.0.0.4,${sourceIp}` : "") : "127.0.0.1,127.0.0.4";
+  const trusted = configuredOrigin ? "127.0.0.1" : "127.0.0.3";
+  writeFileSync(join(home, "noop.toml"), `[cloud]\nallow_ips = "${allowed}"\ntrusted_proxies = "${trusted}"\n[server]\ntoken = "${token}"\n`);
   const env: NodeJS.ProcessEnv = { ...process.env, NOOP_HOME: home, HUB_NO_MEDIC: "1", PATH: `${bin}:${process.env.PATH || ""}` };
   for (const key of ["HUB_CONF", "HUB_DATA", "HUB_SYNC", "HUB_SYNC_FAKE", "CLOUDFLARE_API_TOKEN", "CLOUDFLARE_ACCOUNT_ID"]) delete env[key];
-  const listenPort = await port(), fd = openSync(log, "a");
+  const listenPort = process.env.NOOP_E2E_LISTEN_PORT ? Number(process.env.NOOP_E2E_LISTEN_PORT) : await port(), fd = openSync(log, "a");
   service = spawn(process.execPath, [join(repo, "src", "cli.ts"), "cloud", "deploy", "--local", "--listen", `127.0.0.1:${listenPort}`],
     { cwd: repo, env, detached: true, stdio: ["ignore", fd, fd] }); closeSync(fd);
   const deadline = Date.now() + 15_000;
@@ -67,6 +71,7 @@ try {
     return { status: r.status, out: `${r.stdout || ""}${r.stderr || ""}` };
   };
   const setup = cli(["2fa", "setup"]), secret = setup.out.match(/(?:key by hand:|手动输入密钥：)\s*([A-Z2-7 ]+)/i)?.[1]?.replace(/\s/g, "") || "";
+  if (setup.status !== 0) throw new Error(`TOTP setup failed: ${setup.out.trim()}`);
   check(setup.status === 0 && secret.length === 32 && cli(["2fa", "confirm", totp(secret, Math.floor(Date.now() / 30_000))]).status === 0, "owner binds TOTP with the real CLI");
 
   const direct = await new Promise<{ status: number; body: string }>((ok, fail) => {
@@ -77,15 +82,15 @@ try {
   });
   check(direct.status === 200 && JSON.parse(direct.body).resource === `http://direct.example.test:${listenPort}/mcp`, "untrusted forwarding headers cannot change the OAuth origin");
 
-  proxy = await startHttpsProxy(out, listenPort);
-  const external = `https://noop.example.test:${proxy.port}`;
+  if (!configuredOrigin) proxy = await startHttpsProxy(out, listenPort);
+  const external = configuredOrigin || `https://noop.example.test:${proxy!.port}`;
   const open = (target: string, opts: { method?: string; headers?: Record<string, string>; body?: string } = {}) => {
     const u = new URL(target, external);
     if (u.origin !== external) throw new Error(`unexpected external origin: ${u.origin}`);
     const headers: Record<string, string | number> = { host: u.host, ...opts.headers };
     if (opts.body !== undefined) headers["content-length"] = Buffer.byteLength(opts.body);
-    const req = httpsRequest({ hostname: "127.0.0.1", port: proxy!.port, servername: u.hostname, path: u.pathname + u.search,
-      method: opts.method || "GET", headers, rejectUnauthorized: false });
+    const req = httpsRequest({ hostname: proxy ? "127.0.0.1" : u.hostname, port: proxy?.port || Number(u.port || 443), servername: u.hostname, path: u.pathname + u.search,
+      method: opts.method || "GET", headers, rejectUnauthorized: !proxy });
     if (opts.body !== undefined) req.write(opts.body); req.end(); return req;
   };
   const call = (target: string, opts: { method?: string; headers?: Record<string, string>; body?: string } = {}) => new Promise<{ status: number; headers: IncomingMessage["headers"]; body: string }>((ok, fail) => {
@@ -98,10 +103,15 @@ try {
     "OAuth discovery advertises the actual external HTTPS origin");
   const forged = await call("/.well-known/oauth-protected-resource", { headers: { "x-forwarded-host": "attacker.example", "x-forwarded-proto": "http" } });
   check(JSON.parse(forged.body).resource === `${external}/mcp`, "the proxy replaces client-supplied external-origin headers");
-  check((await call("/.well-known/oauth-protected-resource", { headers: { "x-test-forwarded-host": "attacker.example/path" } })).status === 400,
-    "a malformed trusted forwarded host is rejected");
-  check((await call("/.well-known/oauth-protected-resource", { headers: { "x-test-forwarded-proto": "javascript" } })).status === 400,
-    "an unsupported trusted forwarded protocol is rejected");
+  if (proxy) {
+    check((await call("/.well-known/oauth-protected-resource", { headers: { "x-test-forwarded-host": "attacker.example/path" } })).status === 400,
+      "a malformed trusted forwarded host is rejected");
+    check((await call("/.well-known/oauth-protected-resource", { headers: { "x-test-forwarded-proto": "javascript" } })).status === 400,
+      "an unsupported trusted forwarded protocol is rejected");
+  } else if (sourceIp) {
+    check((await call("/.well-known/oauth-protected-resource", { headers: { "x-forwarded-for": "203.0.113.77" } })).status === 200,
+      "the real proxy replaces a forged source and forwards the allowed client address");
+  }
   const unauthorized = await call("/mcp", { method: "POST", headers: { "content-type": "application/json" }, body: "{}" });
   check(unauthorized.status === 401 && String(unauthorized.headers["www-authenticate"]).includes(`${external}/.well-known/oauth-protected-resource`),
     "unauthorized MCP discovery points to the external HTTPS origin");

@@ -84,13 +84,16 @@ runtime version, commands, logs, result and checksums with each run.
 22. Given the cloud deployment mode, existing initialization, deployment, email,
     client and update behavior stays compatible. The existing fleet-day budget
     test passes without increasing its target or weakening its simulation.
-23. Given Linux x86_64, Linux ARM64, macOS x86_64 and macOS ARM64, run the
-    applicable end-to-end scenarios on each native architecture using CI, a VM
-    or a physical machine. Record real mobile, SMTP, push and Cloudflare evidence
-    separately from test substitutes. Unavailable evidence remains pending.
-24. Only select the candidate runtime for production after all platform,
-    persistence, backup, upgrade, rollback, functionality and cloud gates pass.
-    If a gate fails, retain the evidence and reassess the runtime choice.
+23. For this release, run the applicable Linux x86_64 and ARM64 scenarios on
+    the corresponding architecture using CI, a VM or a physical machine. Test
+    the available local Tailscale Serve ingress. Keep macOS, VPS, mobile and
+    deployed Cloudflare acceptance as follow-up work. Preserve compatibility and
+    record real services and devices separately from test substitutes.
+24. Select the candidate runtime only after the Linux functionality, offline,
+    persistence, backup, upgrade, rollback and required compatibility checks
+    pass. Keep the existing Cloudflare budget test and local regression checks
+    in the gate. If a required gate fails, retain the evidence and reassess the
+    runtime choice. The workerd local storage remains experimental.
 
 ## Run the local candidate scenario
 
@@ -114,6 +117,34 @@ runtime, Web bundle and checks. `SHA256SUMS` covers the generated report, logs
 and screenshot. `NOOP_E2E_OUT` can select an existing parent directory for the
 evidence. The test copies the project and never changes an existing Noop home.
 Set `NOOP_E2E_WEB_VERSION` to record the Web bundle's release or build identity.
+
+## Run the existing Tailscale Serve scenario
+
+With an existing HTTPS Serve route to a free loopback port, use the same Web,
+workerd and Playwright prerequisites. Confirm the route with
+`tailscale serve status` and stop any service using its target port. For a route
+to `127.0.0.1:8787`, run:
+
+```sh
+NOOP_E2E_LISTEN_PORT=8787 NOOP_E2E_CLIENT_ORIGIN='https://<tailnet-hostname>' \
+  bun test/self-hosted-messages-e2e.ts
+```
+
+The test uses an isolated Noop home and synthetic credentials. Its two real
+Web sessions exercise HTTPS, login, messages, attachments, WebSocket delivery
+and reconnection. It does not change the Serve configuration. A run from the
+coordinator host verifies that host's ingress path, not a second physical host.
+
+Run the MCP test through the same route:
+
+```sh
+NOOP_E2E_LISTEN_PORT=8787 NOOP_E2E_CLIENT_ORIGIN='https://<tailnet-hostname>' \
+  bun test/self-hosted-mcp-e2e.ts
+```
+
+Add `NOOP_E2E_ALLOWED_IP="$(tailscale ip -4)"` to enable the local IP
+allow-list. That combination currently reproduces issue #29: the local CLI is
+rejected before it can bind TOTP. Without it, the test uses unrestricted ingress.
 
 ## Run the independent-host scenario
 

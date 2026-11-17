@@ -1,0 +1,4 @@
+PASS protocol is HTTPS
+PASS host is the external Serve host
+PASS source is the local Tailscale IP
+PASS forged source is absent

@@ -12,16 +12,16 @@ an unreachable-server message. The proxy recorded no request. `report.json`,
 `requests.log` and `http-failed.png` retain that failure and the package and
 fixture hashes. The app source was not modified for this run.
 
-The cause is not yet established. The Android release manifest does not opt in
-to cleartext HTTP, and its network stack uses Android's HTTP implementation.
-Android's [network security configuration](https://developer.android.com/privacy-and-security/security-config)
-can reject cleartext requests. The failed run did not separately test the
-`adb reverse` route, so it does not distinguish those causes. It does not test
-HTTPS, a real mobile device or a production push service.
+The subsequent [policy comparison](https://github.com/laojianzi/noop/actions/runs/43897160269)
+repeated the test with two packages. The unchanged package failed, and its
+diagnostic reported that Android did not permit cleartext HTTP. A test package
+with `usesCleartextTraffic` enabled completed sign-in and two-way WebSocket
+messaging through the same `adb reverse` route. The two reports and diagnostic
+are retained here. This does not test HTTPS, a real mobile device or a
+production push service, and the test package is not a production change.
 
 An earlier attempt was blocked by a Pixel Launcher not-responding dialog, shown
 in `launcher-dialog.png`. The later run handled that emulator dialog and reached
 the HTTP request. The disposable-emulator test and workflow for the failed run
 are [here](https://github.com/laojianzi/noop/blob/5498475/test/self-hosted-android-e2e.ts)
 and [here](https://github.com/laojianzi/noop/blob/5498475/.github/workflows/release.yml).
-The HTTP policy comparison remains queued; it is not acceptance evidence yet.

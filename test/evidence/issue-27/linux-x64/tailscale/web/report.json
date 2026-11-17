@@ -1,0 +1,40 @@
+{
+  "status": "passed",
+  "source": "/home/jeff/.codex/worktrees/noop-local-coordinator",
+  "revision": "af21ebcb17b9849f23dfbb78662e188ebdd1a181",
+  "changes": "M test/self-hosted-messages-e2e.ts",
+  "platform": "linux-x64",
+  "timestamp": "2026-11-17T03:31:58.038Z",
+  "bun": "1.4.4",
+  "webVersion": "v0.3.18",
+  "webIndexSha256": "bd9ed72ccec6e59169751686b2383b27699b7b967b8fca5e85e55d33e3a16dfc",
+  "workerd": {
+    "version": "workerd 2026-11-10",
+    "sha256": "620d9f7e5eb461067e08af17316aaa087445b4232e0e98e3dd146763bd9ab394"
+  },
+  "chromium": "Chromium 155.0.8059.84 Arch Linux",
+  "playwright": "1.63.0",
+  "checks": [
+    "Web assets, workerd and Chromium are supplied",
+    "local coordinator starts",
+    "owner starts authenticator setup",
+    "owner binds the authenticator",
+    "first@example.com gets a login code from the CLI",
+    "first@example.com signs in through the real Web client",
+    "second@example.com gets a login code from the CLI",
+    "second@example.com signs in through the real Web client",
+    "two separately authenticated clients have different sessions",
+    "owner uploads an image and sends a message from the Web UI",
+    "second Web client receives the message over its live WebSocket",
+    "media rejects anonymous access and returns exact bytes to the second owner",
+    "second Web client renders the attached image",
+    "non-image upload is rejected",
+    "uploads larger than 10 MiB are rejected",
+    "a message is created while the second Web client is offline",
+    "the second client automatically reconnects and synchronizes its missed message",
+    "the exact attachment survives coordinator restart",
+    "reconnected Web client receives new messages over WebSocket",
+    "a fresh page reads the original message after restart"
+  ],
+  "error": ""
+}

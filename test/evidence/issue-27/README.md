@@ -24,9 +24,10 @@ The Linux x86_64 native desktop acceptance is in `linux-x64/desktop`. It uses a
 packaged application in an isolated Xvfb display and tests sign-in, messages,
 WebSocket delivery and the first primary status snapshot.
 
-`android-simulator` records a native Android app launch and an incomplete
-login attempt. The emulator's HTTP request did not reach the local service;
-the cause is still under investigation.
+`android-simulator` records a native Android app launch and an HTTP policy
+comparison. The unchanged app rejected cleartext HTTP. A separately built test
+package that allowed cleartext completed sign-in and WebSocket messaging. This
+does not establish HTTPS or physical-device acceptance.
 
 The separate service, unattended Linux reboot, backup, protected update and
 network-topology evidence is in `test/evidence/issue-15` through `issue-26`.
@@ -44,12 +45,20 @@ The Linux and macOS Intel feature jobs passed. Their workflow was later
 cancelled while its Apple Silicon job was queued; the separate Apple Silicon
 run passed.
 
-The release gate is still open. A real macOS logout followed by login, native
-desktop use on other platforms, mobile client use, actual device push delivery,
-and isolated Cloudflare deployment and mail binding have not been validated.
-The SMTP test uses a local Mailpit server, and the cloud checks use a local
-Wrangler emulator and deployment stubs. No real VPS or Tailscale connection was
-used. These results do not establish those external environments.
+The release gate now targets Linux local deployments. Linux data recovery,
+updates, offline operation, functionality and the unchanged Cloudflare budget
+and local regression checks remain required. A real macOS logout and login,
+other native desktops, mobile HTTPS and device push, VPS, and deployed
+Cloudflare and mail binding remain follow-up acceptance work.
+
+`linux-x64/tailscale` records two authenticated Web sessions through the
+existing local Tailscale Serve HTTPS route. The test covered WebSocket delivery,
+attachments and restart recovery. OAuth and MCP passed with the IP allow-list
+disabled. With a trusted loopback proxy and an enabled allow-list, local CLI
+authentication failed with HTTP 403; issue #29 blocks release. The client and
+coordinator ran on the same host; this is not a cross-device Tailscale test. The SMTP test uses a local
+Mailpit server, and cloud checks use a local Wrangler emulator and deployment
+stubs. These results do not establish the deferred external environments.
 
 The Web bundle is the checksum-verified upstream `v0.3.18` release, not a build
 of this source revision. The original workerd's local Durable Object storage is
