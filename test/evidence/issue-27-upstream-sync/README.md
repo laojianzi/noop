@@ -55,3 +55,25 @@ own `SHA256SUMS` before selection. Logs here are losslessly compressed.
 cd test/evidence/issue-27-upstream-sync
 sha256sum -c SHA256SUMS
 ```
+
+## Dual-architecture acceptance after the merge
+
+The additional tests below use source `e41ff81cf9ff709fba1b5b06dea2941ee4e70a62`.
+That commit adds evidence only after `31a8d5`; the product code is identical.
+The Linux x86_64 and ARM64 packages contain the matching source commit and Web
+bundle. Their GitHub artifacts are from [the coordinator build](https://github.com/laojianzi/noop/actions/runs/44080506143).
+
+| Evidence | Result |
+| --- | --- |
+| `linux-arm64` | Core Web login and sync, deployment routing, messages, controlled SMTP and push, guest access, MCP, ingress, backup and local history retention passed on a native ARM64 runner. |
+| `update-x86_64`, `update-arm64` | Candidate update, rollback, failed updates and an insufficient-space case passed on native runners for both architectures. |
+| `reboot-x86_64`, `reboot-arm64` | Offline installation, owner login, unattended reboot and synchronization passed in a Debian VM. The x86_64 guest used KVM; the ARM64 guest used QEMU TCG. |
+| `long-path` | On x86_64, a 109-byte health socket path failed in the backup and ingress tests. The same tests passed with shorter paths. [Issue #32](https://github.com/laojianzi/noop/issues/32) tracks the limit. |
+
+The [main acceptance run](https://github.com/laojianzi/noop/actions/runs/44081361952)
+contains the architecture matrix. The [additional ARM64 run](https://github.com/laojianzi/noop/actions/runs/44081362145)
+contains the backup, history, guest, ingress and MCP cases. The original report
+and log checksums passed before selection. The compressed probe workflows record
+the exact commands and source revision used by those runs. They are evidence,
+not permanent CI workflows. The serial and update logs are losslessly compressed.
+All test credentials and data are synthetic.
