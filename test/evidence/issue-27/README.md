@@ -51,7 +51,8 @@ and local regression checks remain required. A real macOS logout and login,
 other native desktops, mobile HTTPS and device push, VPS, and deployed
 Cloudflare and mail binding remain follow-up acceptance work.
 The current tag release workflow still waits for all platform packages. Its
-independent Linux delivery path is tracked in issue #30.
+independent Linux delivery path was completed in issue #30; see
+[`issue-30-ci`](../issue-30-ci/README.md).
 
 `linux-x64/tailscale` records two authenticated Web sessions through the
 existing local Tailscale Serve HTTPS route. The test covered WebSocket delivery,
@@ -65,4 +66,6 @@ stubs. These results do not establish the deferred external environments.
 
 The Web bundle is the checksum-verified upstream `v0.3.18` release, not a build
 of this source revision. The original workerd's local Durable Object storage is
-experimental; the project has not formally selected it for production.
+experimental. At the time of this report, the project had not selected it for
+production. The later Linux decision and evidence are in
+[`issue-27-linux-final`](../issue-27-linux-final/README.md).
