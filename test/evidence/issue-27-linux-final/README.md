@@ -1,5 +1,8 @@
 # Linux release acceptance
 
+This report records the pre-sync baseline. The later upstream integration and
+its validation are in [`issue-27-upstream-sync`](../issue-27-upstream-sync/README.md).
+
 The candidate implementation is commit
 `65eab6b0907b3f7beefd0a2d1fc0ced3bea604a3`. Tests use isolated homes,
 synthetic credentials and a pinned native workerd `2026-11-10`. The x86_64

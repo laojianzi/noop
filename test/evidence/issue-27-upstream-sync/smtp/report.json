@@ -1,0 +1,38 @@
+{
+  "status": "passed",
+  "source": "/src",
+  "revision": "397cb2a9552b25bd1d8030c043c9d776fd060947",
+  "changes": "",
+  "platform": "linux-x64",
+  "timestamp": "2026-11-17T12:03:47.069Z",
+  "bun": "1.4.4",
+  "webVersion": "a74449a3604b",
+  "webIndexSha256": "c77717bcb0c38a769ffe4bbda46ce4b4794eb1e0e319c4fb151c485f757942a2",
+  "workerd": {
+    "version": "workerd 2026-11-10",
+    "sha256": "620d9f7e5eb461067e08af17316aaa087445b4232e0e98e3dd146763bd9ab394"
+  },
+  "mailpit": {
+    "version": "/usr/local/bin/mailpit v1.33.1 compiled with go1.27.3 on linux/amd64\nError checking for latest release: failed to fetch releases: Get \"https://api.github.com/repos/axllent/mailpit/releases\": dial tcp: lookup api.github.com on 172.17.0.1:53: dial udp 172.17.0.1:53: connect: network is unreachable",
+    "sha256": "73e09a3c62759fca5a4be61bf6c708bc2df9c0dc11c31b116faa6700d84b4456"
+  },
+  "checks": [
+    "Web assets, workerd and a real Mailpit SMTP server are supplied",
+    "a temporary CA and SMTP TLS certificate are created",
+    "Mailpit starts a real SMTP server requiring STARTTLS and authentication",
+    "authenticator is bound in isolated home",
+    "SMTP login code is sent successfully (HTTP 200)",
+    "real SMTP server receives the owner login code",
+    "SMTP code and TOTP create an owner session",
+    "security alert reports the actual peer and ignores a forged source header (observed IP: 127.0.0.1)",
+    "second owner receives an SMTP login code",
+    "owner can sign in through the trusted HTTPS proxy",
+    "security alert uses the verified proxy chain instead of forged source headers (observed IP: 127.0.0.2)",
+    "SMTP rejects a certificate from an untrusted CA",
+    "SMTP connection failure is reported to the user",
+    "authenticator is bound in isolated home",
+    "without SMTP the login code is delivered to the CLI",
+    "CLI code and TOTP log in without SMTP"
+  ],
+  "error": ""
+}
