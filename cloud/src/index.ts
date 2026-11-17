@@ -83,13 +83,13 @@ const alertTime = () => L(`Time: ${new Date().toISOString()}`, `时间：${new D
 const validEmail = (e: string) => e.length <= 254 && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e);
 
 export default {
-  async fetch(req: Request, env: Env): Promise<Response> {
+  async fetch(req: Request, env: Env, ctx?: { props?: { noopIngress?: string } }): Promise<Response> {
     setLang(env.HUB_LANG);
     const url = new URL(req.url);
     const endpoint = env.HUB_LOCAL_MODE ? String((req as Request & { cf?: { clientIp?: string } }).cf?.clientIp ?? "") : "";
     const peer = endpoint.match(/^\[([^\]]+)\]:\d+$/)?.[1] ?? endpoint.match(/^([^:]+):\d+$/)?.[1] ?? "";
     const proxies = env.HUB_LOCAL_MODE ? parseAllowList(env.HUB_TRUSTED_PROXIES).nets : [];
-    const trustedProxy = env.HUB_LOCAL_MODE && ipAllowed(peer, proxies);
+    const trustedProxy = env.HUB_LOCAL_MODE && ctx?.props?.noopIngress !== "local" && ipAllowed(peer, proxies);
     let ip = env.HUB_LOCAL_MODE ? peer : req.headers.get("cf-connecting-ip") ?? "";
     if (trustedProxy) {
       ip = "";

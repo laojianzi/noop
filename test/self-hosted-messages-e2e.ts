@@ -32,6 +32,10 @@ try {
   for (const name of ["package.json", "bunfig.toml", "tsconfig.json"]) cpSync(join(source, name), join(repo, name));
   mkdirSync(join(repo, "app", "dist", "web"), { recursive: true }); cpSync(assets, join(repo, "app", "dist", "web", "noop"), { recursive: true });
   mkdirSync(bin, { recursive: true }); symlinkSync(resolve(workerd), join(bin, "workerd"));
+  if (process.env.NOOP_E2E_ALLOWED_IP) {
+    mkdirSync(home, { recursive: true });
+    writeFileSync(join(home, "noop.toml"), `[cloud]\nallow_ips = "127.0.0.1,${process.env.NOOP_E2E_ALLOWED_IP}"\ntrusted_proxies = "127.0.0.1"\n`);
+  }
   const env: NodeJS.ProcessEnv = { ...process.env, NOOP_HOME: home, XDG_CONFIG_HOME: join(out, "xdg"), HUB_NO_MEDIC: "1", PATH: `${bin}:${process.env.PATH || ""}` };
   for (const key of ["HUB_CONF", "HUB_DATA", "HUB_SYNC", "HUB_SYNC_FAKE", "CLOUDFLARE_API_TOKEN", "CLOUDFLARE_ACCOUNT_ID", "NOOP_CLIENT_BASE_URL"]) delete env[key];
   const listenPort = process.env.NOOP_E2E_LISTEN_PORT ? Number(process.env.NOOP_E2E_LISTEN_PORT) : await port();
@@ -46,7 +50,7 @@ try {
       { cwd: repo, env, detached: true, stdio: ["ignore", fd, fd] }); closeSync(fd);
     for (let i = 0; i < 150; i++) {
       if (service.exitCode !== null) throw new Error(`coordinator exited: ${readFileSync(log, "utf8").slice(-1500)}`);
-      try { const ok = (await fetch(localBase)).ok; const config = Bun.TOML.parse(readFileSync(join(home, "noop.toml"), "utf8")) as any; if (ok && config.cloud?.mode === "local" && config.cloud.url === localBase) return; } catch {} await Bun.sleep(200);
+      try { const config = Bun.TOML.parse(readFileSync(join(home, "noop.toml"), "utf8")) as any; const ok = (await fetch(config.cloud?.local_url || localBase)).ok; if (ok && config.cloud?.mode === "local" && config.cloud.url === localBase) return; } catch {} await Bun.sleep(200);
     }
     throw new Error("coordinator did not start");
   };

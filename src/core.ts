@@ -55,7 +55,7 @@ export function loadConfig(): Cfg {
   cfg.notify ??= {};
   // the owner's own Cloudflare hub (hub cloud deploy) is the fixed address for clients and workers
   if (cfg.cloud?.url) { cfg.server ??= {}; cfg.server.url ??= cfg.cloud.url; cfg.server.public_url ??= cfg.cloud.url; }
-  if (bootstrap.cloud?.mode === "local" && bootstrap.cloud.url) { cfg.server ??= {}; cfg.server.url = bootstrap.cloud.url; }
+  if (bootstrap.cloud?.mode === "local" && bootstrap.cloud.url) { cfg.server ??= {}; cfg.server.url = bootstrap.cloud.local_url || bootstrap.cloud.url; }
   // public hub URL published by the primary's tunnel (fleet/hub.json) → workers and push links use it unless pinned locally
   if (existsSync(P("fleet", "hub.json"))) try {
     const { url } = JSON.parse(readFileSync(P("fleet", "hub.json"), "utf8"));

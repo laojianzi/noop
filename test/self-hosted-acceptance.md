@@ -98,9 +98,9 @@ runtime version, commands, logs, result and checksums with each run.
 CI retains all existing workflows, platform matrices, triggers and failure
 reporting. The `ci` workflow runs Linux and macOS checks on pushes and pull
 requests. The release workflow retains all platform packaging jobs.
-The separate tag release workflow still waits for all platform packages.
-Issue #30 tracks an independent Linux delivery path that preserves existing
-client updates.
+The client tag release workflow still waits for all platform packages. The
+independent `coordinator-linux` workflow builds Linux coordinator archives
+without changing that client release or its update manifest.
 
 ## Run the local candidate scenario
 
@@ -150,8 +150,9 @@ NOOP_E2E_LISTEN_PORT=8787 NOOP_E2E_CLIENT_ORIGIN='https://<tailnet-hostname>' \
 ```
 
 Add `NOOP_E2E_ALLOWED_IP="$(tailscale ip -4)"` to enable the local IP
-allow-list. That combination currently reproduces issue #29: the local CLI is
-rejected before it can bind TOTP. Without it, the test uses unrestricted ingress.
+allow-list. The test checks local CLI access and the actual Tailscale entry.
+Without it, the test uses unrestricted ingress. To test overlapping loopback
+proxy and client addresses without Tailscale, set `NOOP_E2E_OVERLAP=1`.
 
 ## Run the independent-host scenario
 

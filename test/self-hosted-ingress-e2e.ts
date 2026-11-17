@@ -150,6 +150,39 @@ try {
   check(true, "allowed IPv6 loopback source can connect");
   service.kill("SIGTERM"); await new Promise<void>((ok) => service!.once("exit", () => ok())); service = undefined;
 
+  const v6ProxyHome = join(out, "ipv6-proxy"), v6ProxyPort = await port(); mkdirSync(v6ProxyHome, { recursive: true });
+  writeFileSync(join(v6ProxyHome, "noop.toml"), `[cloud]\nallow_ips = "::1"\ntrusted_proxies = "127.0.0.1,::1"\n[server]\ntoken = "${token}"\n`);
+  const startV6 = () => {
+    const fd = openSync(join(out, "ipv6-proxy.log"), "a");
+    const child = spawn(process.execPath, [join(repo, "src", "cli.ts"), "cloud", "deploy", "--local", "--listen", `[::1]:${v6ProxyPort}`],
+      { cwd: repo, env: { ...env, NOOP_HOME: v6ProxyHome }, detached: true, stdio: ["ignore", fd, fd] }); closeSync(fd); return child;
+  };
+  service = startV6();
+  let v6Local = "";
+  await waitFor(async () => {
+    if (service?.exitCode !== null && service?.exitCode !== undefined) throw new Error(`IPv6 proxy coordinator exited: ${readFileSync(join(out, "ipv6-proxy.log"), "utf8")}`);
+    try {
+      v6Local = (Bun.TOML.parse(readFileSync(join(v6ProxyHome, "noop.toml"), "utf8")) as any).cloud?.local_url || "";
+      return !!v6Local && (await request({ hostname: "::1", port: Number(new URL(v6Local).port) })).status === 200;
+    } catch { return false; }
+  }, "IPv6 direct entry did not start");
+  check((await request({ hostname: "::1", port: v6ProxyPort })).status === 403, "IPv6 proxy entry rejects a missing forwarded source");
+  check(new URL(v6Local).hostname === "[::1]", "IPv6 local entry uses loopback and accepts its allowed source");
+  service.kill("SIGTERM"); await new Promise<void>((ok) => service!.once("exit", () => ok())); service = undefined;
+  service = startV6();
+  await waitFor(async () => {
+    try { return (await request({ hostname: "::1", port: Number(new URL(v6Local).port) })).status === 200; } catch { return false; }
+  }, "IPv6 local entry did not return after restart");
+  check((Bun.TOML.parse(readFileSync(join(v6ProxyHome, "noop.toml"), "utf8")) as any).cloud.local_url === v6Local,
+    "the local dial address remains stable across coordinator restart");
+  service.kill("SIGTERM"); await new Promise<void>((ok) => service!.once("exit", () => ok())); service = undefined;
+  const occupied = createServer(); await new Promise<void>((ok, fail) => occupied.once("error", fail).listen(Number(new URL(v6Local).port), "::1", ok));
+  const conflict = startV6();
+  await new Promise<void>((ok) => conflict.once("exit", () => ok()));
+  await new Promise<void>((ok) => occupied.close(() => ok()));
+  check(conflict.exitCode !== 0 && (Bun.TOML.parse(readFileSync(join(v6ProxyHome, "noop.toml"), "utf8")) as any).cloud.local_url === v6Local,
+    "an occupied local port fails startup without changing the saved address");
+
   for (const [name, entry, message] of [["invalid-allow", 'allow_ips = "not-a-cidr"', "invalid IP allow-list"],
     ["invalid-cidr-suffix", 'allow_ips = "127.0.0.1/0/garbage"', "invalid IP allow-list"],
     ["invalid-proxy", 'allow_ips = "127.0.0.1"\ntrusted_proxies = "not-a-cidr"', "invalid trusted proxy"]]) {

@@ -46,7 +46,7 @@ export function writeHubToml(patch: Record<string, Record<string, string>>) {
 /** Local deployments may advertise a different URL from the one this machine uses. */
 export function hubDialUrl(url: unknown): string {
   const cloud = readHubToml().cloud;
-  return String(cloud?.mode === "local" ? cloud.url ?? url ?? "" : url ?? "").replace(/\/$/, "");
+  return String(cloud?.mode === "local" ? cloud.local_url || cloud.url || url || "" : url ?? "").replace(/\/$/, "");
 }
 
 // ------------------------------------------------------------------ transport
@@ -107,7 +107,7 @@ async function getTransport(): Promise<Transport | null> {
   if (process.env.HUB_SYNC_FAKE) return (transport = await fakeTransport(process.env.HUB_SYNC_FAKE));
   if (process.env.HUB_SYNC === "local") return (transport = null);
   const h = readHubToml();
-  const url = h.cloud?.url, token = h.server?.token;
+  const url = hubDialUrl(h.cloud?.url), token = h.server?.token;
   return (transport = url && token ? httpTransport(String(url), String(token)) : null);
 }
 /** The shared config names a different Worker (the hub moved, e.g. to another account): switch this machine to it. */

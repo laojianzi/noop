@@ -1,15 +1,15 @@
 import { closeSync, existsSync, fsyncSync, mkdirSync, openSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
-import { isIP } from "node:net";
+import { createServer, isIP } from "node:net";
 import { dirname, join } from "node:path";
 import { dlopen } from "bun:ffi";
 import { type Cfg, CODE, HOME_DIR } from "./core";
 import { allowIps, vapidKeys } from "./cloud";
-import { parseAllowList } from "../cloud/src/ipallow";
+import { ipAllowed, parseAllowList } from "../cloud/src/ipallow";
 import { hubTomlPath, writeHubToml } from "./sync";
 
 export const WORKERD_DATE = "2026-11-10";
 // SHA-256 of the binaries in the verified @cloudflare/workerd platform packages, version 1.20261110.1.
-const WORKERD_SHA256: Record<string, string> = {
+export const WORKERD_SHA256: Record<string, string> = {
   "linux-x64": "620d9f7e5eb461067e08af17316aaa087445b4232e0e98e3dd146763bd9ab394",
   "linux-arm64": "9d557f449060e57feb17541092929801dd7f8df79be9424fd8b61b772c7237c0",
   "darwin-x64": "790d752a3e30fa429950fb664111fa088b1b2c15732f9541e722fbf253ffff44",
@@ -41,7 +41,7 @@ export async function localCoordinator(cfg: Cfg, listen = "127.0.0.1:8790") {
   const allowed = allowIps(cfg) ?? "";
   const configuredProxies = cfg.cloud?.trusted_proxies;
   const proxies = (Array.isArray(configuredProxies) ? configuredProxies.map(String) : String(configuredProxies ?? "").split(/[\s,]+/)).filter(Boolean).join(",");
-  const badAllowed = parseAllowList(allowed).bad, badProxies = parseAllowList(proxies).bad;
+  const { nets: allowedNets, bad: badAllowed } = parseAllowList(allowed), { nets: proxyNets, bad: badProxies } = parseAllowList(proxies);
   if (badAllowed.length) throw new Error(`invalid IP allow-list: ${badAllowed.join(", ")}`);
   if (badProxies.length) throw new Error(`invalid trusted proxy: ${badProxies.join(", ")}`);
   let prior: Record<string, any>;
@@ -49,6 +49,27 @@ export async function localCoordinator(cfg: Cfg, listen = "127.0.0.1:8790") {
   catch { throw new Error("The local bootstrap configuration is invalid or unreadable; restore it from backup"); }
   if (prior.cloud?.url && prior.cloud?.mode !== "local")
     throw new Error("This Noop home already uses another coordination service; use a separate Noop home");
+  const proxyOnLoopback = ipAllowed("127.0.0.1", proxyNets) || ipAllowed("::1", proxyNets);
+  const allowV4 = !allowed || ipAllowed("127.0.0.1", allowedNets), allowV6 = !allowed || ipAllowed("::1", allowedNets);
+  const localHost = proxyOnLoopback ? (allowV4 || !allowV6 ? "127.0.0.1" : "::1") : "";
+  let localUrl = "";
+  if (localHost) {
+    const saved = String(prior.cloud?.local_url || "");
+    if (saved) {
+      const address = new URL(saved);
+      const savedHost = address.hostname.replace(/^\[|\]$/g, "");
+      if (address.protocol !== "http:" || !["127.0.0.1", "::1"].includes(savedHost) || !address.port || address.pathname !== "/" || address.search || address.hash || address.username || address.password)
+        throw new Error("The local coordinator dial address is invalid; correct [cloud] local_url in noop.toml");
+      if ((savedHost === "127.0.0.1" ? allowV4 : allowV6) || (!allowV4 && !allowV6)) localUrl = address.origin;
+    }
+    if (!localUrl) {
+      const socket = createServer();
+      await new Promise<void>((ok, fail) => socket.once("error", fail).listen(0, localHost, ok));
+      const port = (socket.address() as { port: number }).port;
+      await new Promise<void>((ok, fail) => socket.close((error) => error ? fail(error) : ok()));
+      localUrl = `http://${localHost === "::1" ? "[::1]" : localHost}:${port}`;
+    }
+  }
   const workerd = Bun.which("workerd");
   if (!workerd) throw new Error(`Install workerd ${WORKERD_DATE} and put it on PATH`);
   const expected = WORKERD_SHA256[`${process.platform}-${process.arch}`];
@@ -119,6 +140,7 @@ const config :Workerd.Config = (
     (name = "web", disk = (path = ${q(assets)}))
   ],
   sockets = [(name = "http", address = ${q(listen)}, http = (), service = "main"),
+    ${localUrl ? `(name = "local", address = ${q(localUrl.slice("http://".length))}, http = (), service = (name = "main", props = (json = ${q(JSON.stringify({ noopIngress: "local" }))}))),` : ""}
     (name = "health", address = ${q(`unix:${join(root, "health.sock")}`)}, http = (), service = "health")]
 );
 `;
@@ -154,13 +176,17 @@ const config :Workerd.Config = (
       } catch {}
       await Bun.sleep(100);
     }
-    if (!ready) throw new Error("The local coordinator did not start");
-    writeHubToml({ cloud: { url, mode: "local" }, server: { token } });
+    if (!ready) throw new Error("The local coordinator did not start; check its listener addresses and logs");
+    writeHubToml({ cloud: { url, mode: "local", ...(localUrl || prior.cloud?.local_url ? { local_url: localUrl } : {}) }, server: { token } });
     persist(hubTomlPath());
     const versionFile = join(root, "runtime-version");
     writeFileSync(versionFile, `${WORKERD_DATE}\n`, { mode: 0o600 });
     persist(versionFile);
     console.log(`Local coordinator candidate: ${url}`);
+    if (localUrl) {
+      console.log(`Local coordinator dial address: ${localUrl}`);
+      if (prior.cloud?.url && prior.cloud?.local_url !== localUrl) console.log("Restart the Noop primary to use the new local dial address");
+    }
     const result = await child.exited;
     if (result !== 0 && result !== 130 && result !== 143) process.exitCode = result;
   } finally {

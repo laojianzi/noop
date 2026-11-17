@@ -1040,7 +1040,7 @@ async function status(cfg: Cfg, brief = false) {
   const bootstrap = readHubToml().cloud, hub = String(bootstrap?.url ?? "").replace(/\/$/, ""), shared = String(cfg.cloud?.url ?? "").replace(/\/$/, "");
   console.log(`server: ${hub || "local (not connected to a hub)"}${shared && hub && shared !== hub ? `   (shared config says ${shared}${bootstrap?.mode === "local" ? "" : ": switching on the next tick"})` : ""}`);
   if (hub) { // today's Cloudflare usage against the free plan (cloud/src/budget.ts)
-    const u = await fetch(`${hub}/api/usage`, { headers: { Authorization: `Bearer ${cfg.server?.token}` }, signal: AbortSignal.timeout(5000) })
+    const u = await fetch(`${hubDialUrl(hub)}/api/usage`, { headers: { Authorization: `Bearer ${cfg.server?.token}` }, signal: AbortSignal.timeout(5000) })
       .then((r) => (r.ok ? r.json() : null)).catch(() => null) as any;
     const pct = (k: string) => `${Math.round((100 * u[k]) / u.free[k])}%`;
     if (u?.free) console.log(`cloudflare today (UTC): ${u.requests} requests ${pct("requests")} · ${u.rowsRead} rows read ${pct("rowsRead")} · ${u.rowsWritten} rows written ${pct("rowsWritten")} of the free plan · db ${(u.dbBytes / 1e6).toFixed(0)} MB · ${u.level}`);

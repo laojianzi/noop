@@ -32,10 +32,17 @@ access to the backend accordingly. The local startup check uses a private Unix
 socket in the coordinator data directory. That socket accepts only an
 authenticated `GET /api/status` request.
 
-With Tailscale Serve proxying from `127.0.0.1`, trusting that address and
-enabling `allow_ips` currently blocks local CLI requests, even if the allow-list
-includes loopback. The local CLI does not send a forwarding header, so the
-coordinator cannot identify its source. Track the fix in issue #29.
+When the trusted proxy list includes loopback, the coordinator adds a separate
+loopback listener for local clients. The original `--listen` address remains
+the proxy entry. Both listeners use the same Hub data. The local listener uses
+the actual source address and ignores forwarding headers. Include that source
+in `allow_ips` when the allow-list is enabled.
+
+The local listener address is saved as `[cloud] local_url` in the coordinator
+machine's `noop.toml`. It stays the same after restart. If another process uses
+that port, select an unused loopback port in `local_url` and restart the
+coordinator. Restart an already running Noop primary when the address changes.
+Remote clients continue to use their configured HTTPS or network address.
 
 The proxy must replace client-supplied `X-Forwarded-Proto` and
 `X-Forwarded-Host` with the external protocol and host. For MCP and OAuth,
@@ -80,6 +87,49 @@ an artifact source of your choice. For example:
 The upstream workerd project marks its local Durable Object storage as
 experimental. This deployment remains a candidate until the release gates in
 issue #13 are complete.
+
+### Linux coordinator archive
+
+The `coordinator-linux` workflow builds separate Linux x86_64 and ARM64
+archives. Download the matching workflow artifact and keep it in a storage
+location of your choice. Workflow artifacts have a retention period. The
+archive is independent of the full client release and does not change the
+client update manifest.
+
+Put the chosen archive and checksum in one directory. Verify the archive and
+install from it with Bun already available:
+
+```sh
+sha256sum -c ./*.tar.gz.sha256
+mkdir coordinator-release
+tar -xzf ./*.tar.gz -C coordinator-release
+PATH="$PWD/coordinator-release/bin:$PATH" bun coordinator-release/repo/src/cli.ts cloud service install
+```
+
+The manifest records the source commit, the Web build commit, the workerd
+checksum and the Bun version used to build the archive. For a local build,
+check out the desired commit, build its Web client with `app/build-web.sh`,
+then run the packaging script on the target architecture:
+
+```sh
+bun scripts/package-local-coordinator.ts --workerd /path/to/workerd \
+  --output /path/to/output --web-commit "$(git rev-parse HEAD)"
+```
+
+`--web-commit` identifies the checkout used to build the Web client. The
+packager checks this value against the coordinator checkout. The caller must
+build the Web client from that checkout. The CI workflow builds and records
+both from the same commit. The checksum detects changes to an archive; obtain
+the checksum from a trusted source.
+
+To update from an extracted archive, use the existing service update path:
+
+```sh
+noop cloud service update --source /path/to/coordinator-release/repo \
+  --workerd /path/to/coordinator-release/bin/workerd
+```
+
+### Install from source
 
 ```sh
 cd /path/to/noop

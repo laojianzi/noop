@@ -51,8 +51,9 @@ try {
   mkdirSync(bin, { recursive: true }); symlinkSync(resolve(workerd), join(bin, "workerd")); mkdirSync(home, { recursive: true });
   const configuredOrigin = process.env.NOOP_E2E_CLIENT_ORIGIN || "";
   const sourceIp = process.env.NOOP_E2E_ALLOWED_IP || "";
+  const overlappingProxy = !!configuredOrigin || process.env.NOOP_E2E_OVERLAP === "1";
   const allowed = configuredOrigin ? (sourceIp ? `127.0.0.1,127.0.0.4,${sourceIp}` : "") : "127.0.0.1,127.0.0.4";
-  const trusted = configuredOrigin ? "127.0.0.1" : "127.0.0.3";
+  const trusted = overlappingProxy ? "127.0.0.1" : "127.0.0.3";
   writeFileSync(join(home, "noop.toml"), `[cloud]\nallow_ips = "${allowed}"\ntrusted_proxies = "${trusted}"\n[server]\ntoken = "${token}"\n`);
   const env: NodeJS.ProcessEnv = { ...process.env, NOOP_HOME: home, HUB_NO_MEDIC: "1", PATH: `${bin}:${process.env.PATH || ""}` };
   for (const key of ["HUB_CONF", "HUB_DATA", "HUB_SYNC", "HUB_SYNC_FAKE", "CLOUDFLARE_API_TOKEN", "CLOUDFLARE_ACCOUNT_ID"]) delete env[key];
@@ -66,6 +67,21 @@ try {
     await Bun.sleep(100);
   }
   check((Bun.TOML.parse(readFileSync(join(home, "noop.toml"), "utf8")) as any).cloud?.mode === "local", "local coordinator starts");
+  if (overlappingProxy) {
+    const cloud = (Bun.TOML.parse(readFileSync(join(home, "noop.toml"), "utf8")) as any).cloud;
+    const local = new URL(cloud.local_url || "http://invalid");
+    check(local.hostname === "127.0.0.1" && local.port !== String(listenPort), "coordinator records a separate loopback dial address");
+    const status = (port: number, localAddress: string, headers: Record<string, string> = {}) => new Promise<number>((ok, fail) => {
+      const req = httpRequest({ hostname: "127.0.0.1", port, localAddress, path: "/api/status", headers: { Authorization: `Bearer ${token}`, ...headers } }, (res) => {
+        res.resume(); res.on("end", () => ok(res.statusCode || 0));
+      }); req.on("error", fail); req.end();
+    });
+    check(await status(Number(local.port), "127.0.0.1") === 200, "allowed local CLI source reaches the direct entry");
+    if (allowed) {
+      check(await status(Number(local.port), "127.0.0.2", { "x-forwarded-for": "127.0.0.1" }) === 403, "forged forwarding headers cannot bypass the direct allow-list");
+      check(await status(listenPort, "127.0.0.1") === 403, "proxy entry rejects an unverifiable source");
+    }
+  }
   const cli = (args: string[]) => {
     const r = spawnSync(process.execPath, [join(repo, "src", "cli.ts"), ...args], { cwd: repo, env, encoding: "utf8", timeout: 20_000 });
     return { status: r.status, out: `${r.stdout || ""}${r.stderr || ""}` };
@@ -73,6 +89,19 @@ try {
   const setup = cli(["2fa", "setup"]), secret = setup.out.match(/(?:key by hand:|手动输入密钥：)\s*([A-Z2-7 ]+)/i)?.[1]?.replace(/\s/g, "") || "";
   if (setup.status !== 0) throw new Error(`TOTP setup failed: ${setup.out.trim()}`);
   check(setup.status === 0 && secret.length === 32 && cli(["2fa", "confirm", totp(secret, Math.floor(Date.now() / 30_000))]).status === 0, "owner binds TOTP with the real CLI");
+  if (overlappingProxy) {
+    const init = cli(["init", "--primary", "--local"]);
+    check(init.status === 0 && !init.out.includes("could not") && existsSync(join(home, "data", "config.toml")), "primary initializes and synchronizes through the local dial address");
+    const local = (Bun.TOML.parse(readFileSync(join(home, "noop.toml"), "utf8")) as any).cloud.local_url;
+    const ws = new WebSocket(`${local.replace(/^http/, "ws")}/api/host/stream`, { headers: { Authorization: `Bearer ${token}` } } as any);
+    await new Promise<void>((ok, fail) => {
+      const timer = setTimeout(() => fail(new Error("local WebSocket timeout")), 8000);
+      ws.onopen = () => ws.send("ping");
+      ws.onmessage = (e) => { if (e.data === "pong") { clearTimeout(timer); ok(); } };
+      ws.onerror = () => { clearTimeout(timer); fail(new Error("local WebSocket failed")); };
+    });
+    ws.close(); check(true, "local WebSocket connects through the direct entry");
+  }
 
   const direct = await new Promise<{ status: number; body: string }>((ok, fail) => {
     const req = httpRequest({ hostname: "127.0.0.1", port: listenPort, localAddress: "127.0.0.4", path: "/.well-known/oauth-protected-resource",
@@ -82,7 +111,7 @@ try {
   });
   check(direct.status === 200 && JSON.parse(direct.body).resource === `http://direct.example.test:${listenPort}/mcp`, "untrusted forwarding headers cannot change the OAuth origin");
 
-  if (!configuredOrigin) proxy = await startHttpsProxy(out, listenPort);
+  if (!configuredOrigin) proxy = await startHttpsProxy(out, listenPort, overlappingProxy ? "127.0.0.1" : "127.0.0.3");
   const external = configuredOrigin || `https://noop.example.test:${proxy!.port}`;
   const open = (target: string, opts: { method?: string; headers?: Record<string, string>; body?: string } = {}) => {
     const u = new URL(target, external);
@@ -90,6 +119,7 @@ try {
     const headers: Record<string, string | number> = { host: u.host, ...opts.headers };
     if (opts.body !== undefined) headers["content-length"] = Buffer.byteLength(opts.body);
     const req = httpsRequest({ hostname: proxy ? "127.0.0.1" : u.hostname, port: proxy?.port || Number(u.port || 443), servername: u.hostname, path: u.pathname + u.search,
+      ...(proxy && overlappingProxy ? { localAddress: "127.0.0.4" } : {}),
       method: opts.method || "GET", headers, rejectUnauthorized: !proxy });
     if (opts.body !== undefined) req.write(opts.body); req.end(); return req;
   };
@@ -156,6 +186,11 @@ try {
     body: JSON.stringify({ from: "mcp-e2e", kind: "notice", text }) });
   const first = await stream(), firstFrame = frames(first.res, "mcp-event-before-reconnect");
   check((await emit("mcp-event-before-reconnect")).status === 200, "an event is sent while MCP is connected");
+  if (overlappingProxy) {
+    const local = (Bun.TOML.parse(readFileSync(join(home, "noop.toml"), "utf8")) as any).cloud.local_url;
+    const feed = await fetch(`${local}/api/feed`, { headers: { Authorization: `Bearer ${token}` } });
+    check(feed.ok && (await feed.text()).includes("mcp-event-before-reconnect"), "proxy and direct entries share the same Hub data");
+  }
   const seen = await firstFrame; check(!!seen.id, "MCP receives a resumable streamed notification");
   first.res.destroy(); first.req.destroy();
   check((await emit("mcp-event-after-disconnect")).status === 200, "an event is sent while MCP is disconnected");

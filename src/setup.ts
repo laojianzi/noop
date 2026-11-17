@@ -49,7 +49,7 @@ async function joinViaLogin(url: string, host: string): Promise<string | null> {
  *  A host already set up as the primary (or already joined) keeps its role when init runs again. */
 export async function init(opts: { worker?: string; token?: string; primary?: boolean; local?: boolean } = {}) {
   const { commitPush, pull, loadConfig, hostName } = await import("./core");
-  const { readHubToml, syncMode, writeHubToml } = await import("./sync");
+  const { hubDialUrl, readHubToml, syncMode, writeHubToml } = await import("./sync");
   mkdirSync(DATA, { recursive: true });
   const me = hostname().split(".")[0];
   const joined = readHubToml().cloud?.url;
@@ -57,9 +57,9 @@ export async function init(opts: { worker?: string; token?: string; primary?: bo
     const url = String(opts.worker || joined || "").trim().replace(/\/$/, "");
     const token = opts.token ?? (url === joined ? readHubToml().server?.token : undefined);
     if (!url || !token) { console.error("local primary requires a coordinator URL and machine token"); process.exitCode = 1; return; }
-    const response = await fetch(`${url}/api/status`, { headers: { Authorization: `Bearer ${token}` }, signal: AbortSignal.timeout(10_000) }).catch(() => null);
+    const response = await fetch(`${url === joined ? hubDialUrl(url) : url}/api/status`, { headers: { Authorization: `Bearer ${token}` }, signal: AbortSignal.timeout(10_000) }).catch(() => null);
     if (!response?.ok) { console.error(`could not connect to ${url} with the machine token`); process.exitCode = 1; return; }
-    writeHubToml({ cloud: { url, mode: "local" }, server: { token } });
+    writeHubToml({ cloud: { url, mode: "local", ...(url !== joined ? { local_url: "" } : {}) }, server: { token } });
   }
   const primaryHere = existsSync(P("config.toml")) && new RegExp(`^\\s*primary\\s*=\\s*"${me}"`, "m").test(readFileSync(P("config.toml"), "utf8"));
   if (!opts.primary && !primaryHere) {
@@ -68,7 +68,7 @@ export async function init(opts: { worker?: string; token?: string; primary?: bo
     const token = opts.token ?? (url === joined ? readHubToml().server?.token : undefined) ?? await joinViaLogin(url, me);
     if (!token) { process.exitCode = 1; return; }
     const mode = opts.local || (url === joined && readHubToml().cloud?.mode === "local") ? "local" : "cloud";
-    writeHubToml({ cloud: { url, mode }, server: { token } });
+    writeHubToml({ cloud: { url, mode, ...(url !== joined ? { local_url: "" } : {}) }, server: { token } });
     if (!(await pull())) { console.error(`could not sync from ${url} (check the URL / token)`); process.exitCode = 1; return; }
     writeLocalConfig(me);
     console.log(`✔ joined ${url}; data mirrored to ${DATA}\n  next: hub install   (runs the daemon as a service)`);
