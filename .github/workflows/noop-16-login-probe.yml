@@ -41,6 +41,24 @@ jobs:
               print('System Events accessibility: timed out')
           PY
           } 2>&1 | tee "$RUNNER_TEMP/login-probe/inspection.txt"
+      - name: Inspect the disposable lock screen
+        shell: bash
+        run: |
+          set -euo pipefail
+          screencapture -x "$RUNNER_TEMP/login-probe/before.png" || true
+          /usr/bin/osascript -e 'tell application "System Events" to key code 12 using {control down, command down}'
+          sleep 3
+          screencapture -x "$RUNNER_TEMP/login-probe/locked.png" || true
+          python3 - <<'PY2' | tee "$RUNNER_TEMP/login-probe/locked.txt"
+          import subprocess
+          for script in ['tell application "System Events" to get UI elements enabled', 'tell application "System Events" to tell process "loginwindow" to get name of every window']:
+              try:
+                  result = subprocess.run(['/usr/bin/osascript', '-e', script], capture_output=True, text=True, timeout=8)
+                  print('probe:', script, 'exit:', result.returncode, 'output:', result.stdout.strip(), 'error:', result.stderr.strip()[:200])
+              except subprocess.TimeoutExpired:
+                  print('probe:', script, 'timed out')
+          PY2
+          who | tee -a "$RUNNER_TEMP/login-probe/locked.txt"
       - uses: actions/upload-artifact@v4
         if: always()
         with:
