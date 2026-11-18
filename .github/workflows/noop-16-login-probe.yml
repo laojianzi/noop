@@ -65,6 +65,19 @@ jobs:
                   print('probe:', script, 'timed out')
           PY2
           who | tee -a "$RUNNER_TEMP/login-probe/locked.txt"
+          python3 - <<'PY3' | tee "$RUNNER_TEMP/login-probe/users.txt"
+          import subprocess, time
+          scripts = ['tell application "System Events" to tell process "loginwindow" to click button "show all users" of scroll area 1 of window "Login"',
+                     'tell application "System Events" to tell process "loginwindow" to get entire contents of window 1']
+          for script in scripts:
+              try:
+                  result = subprocess.run(['/usr/bin/osascript', '-e', script], capture_output=True, text=True, timeout=8)
+                  print('probe:', script, 'exit:', result.returncode, 'output:', result.stdout.strip(), 'error:', result.stderr.strip()[:200])
+              except subprocess.TimeoutExpired:
+                  print('probe:', script, 'timed out')
+              time.sleep(2)
+          PY3
+          screencapture -x "$RUNNER_TEMP/login-probe/users.png" || true
       - uses: actions/upload-artifact@v4
         if: always()
         with:
