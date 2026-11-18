@@ -120,8 +120,13 @@ PY
 install -d -o nooptest -g nooptest -m 700 /home/nooptest/bootstrap
 cp /home/nooptest/.noop-test/noop.toml /home/nooptest/bootstrap/custom.toml
 chown nooptest:nooptest /home/nooptest/bootstrap/custom.toml
-runuser -u nooptest -- env XDG_RUNTIME_DIR=/run/user/$TASK_UID DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/$TASK_UID/bus systemctl --user set-environment HUB_CONF=/home/nooptest/bootstrap/custom.toml
+runuser -u nooptest -- env XDG_RUNTIME_DIR=/run/user/$TASK_UID DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/$TASK_UID/bus systemctl --user set-environment HUB_CONF=/home/nooptest/bootstrap/custom.toml BUN_JSC_useJIT=0
 runuser -u nooptest -- env NOOP_HOME=/home/nooptest/.noop-test HUB_NO_MEDIC=1 PATH=/usr/local/bin:/usr/bin:/bin XDG_RUNTIME_DIR=/run/user/$TASK_UID DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/$TASK_UID/bus /usr/local/bin/bun /opt/noop/src/cli.ts install
+sed -i '/^Environment=HUB_DATA=/a Environment=BUN_JSC_useJIT=0' /home/nooptest/.config/systemd/user/noop.service
+chown nooptest:nooptest /home/nooptest/.config/systemd/user/noop.service
+python3 -c 'import os; fd=os.open("/home/nooptest/.config/systemd/user/noop.service", os.O_RDONLY); os.fsync(fd); os.close(fd); fd=os.open("/home/nooptest/.config/systemd/user", os.O_RDONLY); os.fsync(fd); os.close(fd)'
+runuser -u nooptest -- env XDG_RUNTIME_DIR=/run/user/$TASK_UID DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/$TASK_UID/bus systemctl --user daemon-reload
+runuser -u nooptest -- env XDG_RUNTIME_DIR=/run/user/$TASK_UID DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/$TASK_UID/bus systemctl --user restart noop.service
 systemd-run --unit=noop-vm-log /bin/sh -c "journalctl -f -o cat _UID=$TASK_UID > $TASK_TTY 2>&1"
 systemctl enable --now noop-vm-proof.service
 if timeout 3 bash -c 'echo >/dev/tcp/1.1.1.1/443' 2>/dev/null; then echo NOOP_VM_PUBLIC_NETWORK_UNEXPECTED > "$TASK_TTY"; exit 1; else echo NOOP_VM_PUBLIC_NETWORK_BLOCKED > "$TASK_TTY"; fi
@@ -149,6 +154,7 @@ echo NOOP_VM_PROVISIONED > "$TASK_TTY"
   const initialLog = readFileSync(serial, "utf8"), bootLines = () => [...readFileSync(serial, "utf8").matchAll(/NOOP_VM_BOOT ([a-f0-9-]+)/g)].map((m) => m[1]);
   check(initialLog.includes("NOOP_VM_PUBLIC_NETWORK_BLOCKED") && initialLog.includes("Linger=yes"), "coordinator installs with linger while the guest has no public network");
   check(initialLog.includes("NOOP_HOME=/home/nooptest/.noop-test"), "the primary service keeps its configured Noop home");
+  check(initialLog.includes("BUN_JSC_useJIT=0"), "the primary runs with JIT disabled for this diagnostic");
   const request = (path: string, method = "GET", body?: unknown, credential = token) => fetch(base + path, { method,
     headers: { ...(credential ? { authorization: `Bearer ${credential}` } : {}), ...(body === undefined ? {} : { "content-type": "application/json" }) },
     ...(body === undefined ? {} : { body: JSON.stringify(body) }) });
@@ -164,6 +170,15 @@ echo NOOP_VM_PROVISIONED > "$TASK_TTY"
   await waitFor(async () => {
     try { const r = await request("/api/status"); return r.ok && Array.isArray(((await r.json()) as any).decisions); } catch { return false; }
   }, "the primary did not publish its status", 40_000);
+  if (process.env.NOOP_E2E_PRIMARY_ONLY === "1") {
+    const deadline = Date.now() + 120_000;
+    while (Date.now() < deadline) {
+      if (readFileSync(serial, "utf8").includes("Bun has crashed")) throw new Error("primary reported a Bun crash during the observation period");
+      await Bun.sleep(1000);
+    }
+    const status = await request("/api/status");
+    check(status.ok && Array.isArray(((await status.json()) as any).decisions), "the primary remains connected without a Bun crash for two minutes");
+  } else {
   check(!((await (await request("/api/status")).json()) as any).release_marker, "the installed coordinator does not change before an explicit update");
   check((await request("/api/fleet/update", "POST", {}, ownerSession)).ok, "the owner requests an update through the real coordinator API");
   await waitFor(async () => {
@@ -192,6 +207,7 @@ echo NOOP_VM_PROVISIONED > "$TASK_TTY"
   const peer = join(out, "peer"), env = { ...process.env, NOOP_HOME: peer, HUB_NO_MEDIC: "1" };
   const joined = spawnSync(process.execPath, [join(source, "src", "cli.ts"), "init", "--local", base, "--token", token], { cwd: source, env, encoding: "utf8", timeout: 30_000 });
   check(joined.status === 0 && readFileSync(join(peer, "data", "reports", "reboot.md"), "utf8") === "survives reboot", "a fresh host synchronizes the persisted file after reboot");
+  }
 } catch (e) {
   error = e instanceof Error ? e.stack || e.message : String(e); console.error(`FAIL ${error}`); process.exitCode = 1;
 } finally {
