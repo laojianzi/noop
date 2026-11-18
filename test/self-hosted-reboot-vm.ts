@@ -10,6 +10,7 @@ const source = resolve(import.meta.dir, ".."), out = mkdtempSync(join(process.en
 const stage = join(out, "assets"), serial = join(out, "serial.log"), qmp = join(out, "qmp.sock"), disk = join(out, "disk.qcow2");
 const assets = process.env.NOOP_E2E_WEB_ASSETS || "", workerd = process.env.NOOP_E2E_WORKERD || "", image = process.env.NOOP_E2E_DEBIAN_IMAGE || "";
 const token = "synthetic-reboot-vm-machine-token-000", checks: string[] = [];
+const diagOpt = process.env.NOOP_DIAG_JS_OPT || "";
 let vm: ChildProcess | undefined, error = "";
 function check(ok: unknown, message: string): asserts ok { if (!ok) throw new Error(message); checks.push(message); console.log(`PASS ${message}`); }
 function totp(secret: string, counter: number) {
@@ -63,7 +64,7 @@ try {
   for (const name of ["package.json", "bunfig.toml", "tsconfig.json"]) cpSync(join(source, name), join(stage, "repo", name));
   mkdirSync(join(stage, "repo", "app", "dist", "web"), { recursive: true }); cpSync(assets, join(stage, "repo", "app", "dist", "web", "noop"), { recursive: true });
   mkdirSync(join(stage, "bin"), { recursive: true }); copyFileSync(process.execPath, join(stage, "bin", "bun")); copyFileSync(workerd, join(stage, "bin", "workerd"));
-  const proof = `#!/bin/bash\nTASK_TTY=/dev/ttyS0; if [ "$(uname -m)" = aarch64 ]; then TASK_TTY=/dev/ttyAMA0; fi\nfor n in $(seq 1 100); do loginctl show-user nooptest >/dev/null 2>&1 && break; sleep .2; done\nprintf 'NOOP_VM_BOOT %s\\n' "$(cat /proc/sys/kernel/random/boot_id)" > "$TASK_TTY"\nfor n in $(seq 1 120); do TASK_LOGIN_STATE=$(loginctl show-user nooptest -p Linger -p Sessions 2>&1); if printf '%s\\n' "$TASK_LOGIN_STATE" | grep -qx 'Linger=yes' && printf '%s\\n' "$TASK_LOGIN_STATE" | grep -qx 'Sessions='; then break; fi; sleep .5; done\nprintf '%s\\n' "$TASK_LOGIN_STATE" > "$TASK_TTY"\nTASK_UID=$(id -u nooptest)\nfor n in $(seq 1 100); do [ -S "/run/user/$TASK_UID/bus" ] && break; sleep .2; done\nrunuser -u nooptest -- env XDG_RUNTIME_DIR=/run/user/$TASK_UID DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/$TASK_UID/bus systemctl --user status noop-coordinator.service --no-pager > "$TASK_TTY" 2>&1 || true\nrunuser -u nooptest -- env XDG_RUNTIME_DIR=/run/user/$TASK_UID DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/$TASK_UID/bus systemctl --user show noop.service -p Environment --value > "$TASK_TTY" 2>&1 || true\nrunuser -u nooptest -- env XDG_RUNTIME_DIR=/run/user/$TASK_UID DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/$TASK_UID/bus systemctl --user show-environment > "$TASK_TTY" 2>&1 || true\nfor n in $(seq 1 100); do runuser -u nooptest -- env XDG_RUNTIME_DIR=/run/user/$TASK_UID DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/$TASK_UID/bus systemctl --user is-active --quiet noop.service && break; sleep .2; done\nrunuser -u nooptest -- env XDG_RUNTIME_DIR=/run/user/$TASK_UID DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/$TASK_UID/bus systemctl --user is-active --quiet noop.service && echo NOOP_VM_PRIMARY_ACTIVE > "$TASK_TTY" || true\njournalctl _UID=$TASK_UID -o cat --no-pager -n 100 > "$TASK_TTY" 2>&1 || true\nss -ltnp > "$TASK_TTY" 2>&1 || true\n`;
+  const proof = `#!/bin/bash\nTASK_TTY=/dev/ttyS0; if [ "$(uname -m)" = aarch64 ]; then TASK_TTY=/dev/ttyAMA0; fi\nfor n in $(seq 1 100); do loginctl show-user nooptest >/dev/null 2>&1 && break; sleep .2; done\nprintf 'NOOP_VM_BOOT %s\\n' "$(cat /proc/sys/kernel/random/boot_id)" > "$TASK_TTY"\nfor n in $(seq 1 120); do TASK_LOGIN_STATE=$(loginctl show-user nooptest -p Linger -p Sessions 2>&1); if printf '%s\\n' "$TASK_LOGIN_STATE" | grep -qx 'Linger=yes' && printf '%s\\n' "$TASK_LOGIN_STATE" | grep -qx 'Sessions='; then break; fi; sleep .5; done\nprintf '%s\\n' "$TASK_LOGIN_STATE" > "$TASK_TTY"\nTASK_UID=$(id -u nooptest)\nfor n in $(seq 1 100); do [ -S "/run/user/$TASK_UID/bus" ] && break; sleep .2; done\nrunuser -u nooptest -- env XDG_RUNTIME_DIR=/run/user/$TASK_UID DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/$TASK_UID/bus systemctl --user status noop-coordinator.service --no-pager > "$TASK_TTY" 2>&1 || true\nrunuser -u nooptest -- env XDG_RUNTIME_DIR=/run/user/$TASK_UID DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/$TASK_UID/bus systemctl --user show noop.service -p Environment --value > "$TASK_TTY" 2>&1 || true\nfor n in $(seq 1 100); do runuser -u nooptest -- env XDG_RUNTIME_DIR=/run/user/$TASK_UID DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/$TASK_UID/bus systemctl --user is-active --quiet noop.service && break; sleep .2; done\nrunuser -u nooptest -- env XDG_RUNTIME_DIR=/run/user/$TASK_UID DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/$TASK_UID/bus systemctl --user is-active --quiet noop.service && echo NOOP_VM_PRIMARY_ACTIVE > "$TASK_TTY" || true\njournalctl _UID=$TASK_UID -o cat --no-pager -n 100 > "$TASK_TTY" 2>&1 || true\nss -ltnp > "$TASK_TTY" 2>&1 || true\n`;
   const provision = `#!/bin/bash
 TASK_TTY=/dev/ttyS0; if [ "$(uname -m)" = aarch64 ]; then TASK_TTY=/dev/ttyAMA0; fi
 exec > /var/log/noop-provision.log 2>&1
@@ -120,9 +121,14 @@ PY
 install -d -o nooptest -g nooptest -m 700 /home/nooptest/bootstrap
 cp /home/nooptest/.noop-test/noop.toml /home/nooptest/bootstrap/custom.toml
 chown nooptest:nooptest /home/nooptest/bootstrap/custom.toml
-runuser -u nooptest -- env XDG_RUNTIME_DIR=/run/user/$TASK_UID DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/$TASK_UID/bus systemctl --user set-environment HUB_CONF=/home/nooptest/bootstrap/custom.toml NOOP_HOME=/home/nooptest/.noop-test
-runuser -u nooptest -- env NOOP_HOME=/home/nooptest/.noop-test HUB_NO_MEDIC=1 PATH=/usr/local/bin:/usr/bin:/bin XDG_RUNTIME_DIR=/run/user/$TASK_UID DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/$TASK_UID/bus /usr/local/bin/bun /opt/noop/src/cli.ts install
-systemd-run --unit=noop-vm-log /bin/sh -c "journalctl -f -o cat _UID=$TASK_UID > $TASK_TTY 2>&1"
+runuser -u nooptest -- env XDG_RUNTIME_DIR=/run/user/$TASK_UID DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/$TASK_UID/bus systemctl --user set-environment HUB_CONF=/home/nooptest/bootstrap/custom.toml
+${diagOpt ? `runuser -u nooptest -- env XDG_RUNTIME_DIR=/run/user/$TASK_UID DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/$TASK_UID/bus systemctl --user set-environment ${diagOpt}=0\n` : ""}runuser -u nooptest -- env NOOP_HOME=/home/nooptest/.noop-test HUB_NO_MEDIC=1 PATH=/usr/local/bin:/usr/bin:/bin XDG_RUNTIME_DIR=/run/user/$TASK_UID DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/$TASK_UID/bus /usr/local/bin/bun /opt/noop/src/cli.ts install
+${diagOpt ? `sed -i '/^Environment=HUB_DATA=/a Environment=${diagOpt}=0' /home/nooptest/.config/systemd/user/noop.service
+chown nooptest:nooptest /home/nooptest/.config/systemd/user/noop.service
+python3 -c 'import os; fd=os.open("/home/nooptest/.config/systemd/user/noop.service", os.O_RDONLY); os.fsync(fd); os.close(fd); fd=os.open("/home/nooptest/.config/systemd/user", os.O_RDONLY); os.fsync(fd); os.close(fd)'
+runuser -u nooptest -- env XDG_RUNTIME_DIR=/run/user/$TASK_UID DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/$TASK_UID/bus systemctl --user daemon-reload
+runuser -u nooptest -- env XDG_RUNTIME_DIR=/run/user/$TASK_UID DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/$TASK_UID/bus systemctl --user restart noop.service
+` : ""}systemd-run --unit=noop-vm-log /bin/sh -c "journalctl -f -o cat _UID=$TASK_UID > $TASK_TTY 2>&1"
 systemctl enable --now noop-vm-proof.service
 if timeout 3 bash -c 'echo >/dev/tcp/1.1.1.1/443' 2>/dev/null; then echo NOOP_VM_PUBLIC_NETWORK_UNEXPECTED > "$TASK_TTY"; exit 1; else echo NOOP_VM_PUBLIC_NETWORK_BLOCKED > "$TASK_TTY"; fi
 echo NOOP_VM_PROVISIONED > "$TASK_TTY"
@@ -149,6 +155,7 @@ echo NOOP_VM_PROVISIONED > "$TASK_TTY"
   const initialLog = readFileSync(serial, "utf8"), bootLines = () => [...readFileSync(serial, "utf8").matchAll(/NOOP_VM_BOOT ([a-f0-9-]+)/g)].map((m) => m[1]);
   check(initialLog.includes("NOOP_VM_PUBLIC_NETWORK_BLOCKED") && initialLog.includes("Linger=yes"), "coordinator installs with linger while the guest has no public network");
   check(initialLog.includes("NOOP_HOME=/home/nooptest/.noop-test"), "the primary service keeps its configured Noop home");
+  if (diagOpt) check(initialLog.includes(`${diagOpt}=0`), `the primary has ${diagOpt} disabled for this diagnostic`);
   const request = (path: string, method = "GET", body?: unknown, credential = token) => fetch(base + path, { method,
     headers: { ...(credential ? { authorization: `Bearer ${credential}` } : {}), ...(body === undefined ? {} : { "content-type": "application/json" }) },
     ...(body === undefined ? {} : { body: JSON.stringify(body) }) });
@@ -164,15 +171,6 @@ echo NOOP_VM_PROVISIONED > "$TASK_TTY"
   await waitFor(async () => {
     try { const r = await request("/api/status"); return r.ok && Array.isArray(((await r.json()) as any).decisions); } catch { return false; }
   }, "the primary did not publish its status", 40_000);
-  if (process.env.NOOP_E2E_PRIMARY_ONLY === "1") {
-    const deadline = Date.now() + 120_000;
-    while (Date.now() < deadline) {
-      if (readFileSync(serial, "utf8").includes("Bun has crashed")) throw new Error("primary reported a Bun crash during the observation period");
-      await Bun.sleep(1000);
-    }
-    const status = await request("/api/status");
-    check(status.ok && Array.isArray(((await status.json()) as any).decisions), "the primary remains connected without a Bun crash for two minutes");
-  } else {
   check(!((await (await request("/api/status")).json()) as any).release_marker, "the installed coordinator does not change before an explicit update");
   check((await request("/api/fleet/update", "POST", {}, ownerSession)).ok, "the owner requests an update through the real coordinator API");
   await waitFor(async () => {
@@ -201,7 +199,7 @@ echo NOOP_VM_PROVISIONED > "$TASK_TTY"
   const peer = join(out, "peer"), env = { ...process.env, NOOP_HOME: peer, HUB_NO_MEDIC: "1" };
   const joined = spawnSync(process.execPath, [join(source, "src", "cli.ts"), "init", "--local", base, "--token", token], { cwd: source, env, encoding: "utf8", timeout: 30_000 });
   check(joined.status === 0 && readFileSync(join(peer, "data", "reports", "reboot.md"), "utf8") === "survives reboot", "a fresh host synchronizes the persisted file after reboot");
-  }
+  check(!/Bun has crashed|noop(?:-coordinator)?\.service: Failed with result/.test(readFileSync(serial, "utf8")), "neither service crashes or fails during the scenario");
 } catch (e) {
   error = e instanceof Error ? e.stack || e.message : String(e); console.error(`FAIL ${error}`); process.exitCode = 1;
 } finally {
