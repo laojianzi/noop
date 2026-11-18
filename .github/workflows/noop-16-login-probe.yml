@@ -48,6 +48,18 @@ jobs:
           sudo sysadminctl -addUser noopprobe -fullName "Noop Probe" -password "synthetic-noop-probe-2026" -home /Users/noopprobe -shell /bin/bash > "$RUNNER_TEMP/login-probe/user-create.txt" 2>&1
           id noopprobe >> "$RUNNER_TEMP/login-probe/user-create.txt"
           sudo createhomedir -c -u noopprobe >> "$RUNNER_TEMP/login-probe/user-create.txt" 2>&1 || true
+          for key in DidSeeCloudSetup DidSeeSiriSetup DidSeePrivacy DidSeeAccessibility DidSeeAppearanceSetup DidSeeScreenTime DidSeeiCloudLoginForStorageServices; do
+            sudo -H -u noopprobe defaults write com.apple.SetupAssistant "$key" -bool true
+          done
+          for key in LastSeenCloudProductVersion LastPreLoginTasksPerformedVersion LastSeenIntelligenceProductVersion LastSeenDiagnosticsProductVersion LastSeenSiriProductVersion; do
+            sudo -H -u noopprobe defaults write com.apple.SetupAssistant "$key" -string "$(sw_vers -productVersion)"
+          done
+          for key in LastPreLoginTasksPerformedBuild LastSeenBuddyBuildVersion; do
+            sudo -H -u noopprobe defaults write com.apple.SetupAssistant "$key" -string "$(sw_vers -buildVersion)"
+          done
+          sudo -H -u noopprobe defaults write com.apple.SetupAssistant LastPrivacyBundleVersion -string 2
+          sudo -H -u noopprobe defaults write com.apple.SetupAssistant MiniBuddyLaunchReason -int 0
+          sudo -H -u noopprobe defaults read com.apple.SetupAssistant >> "$RUNNER_TEMP/login-probe/user-create.txt"
           cat > "$RUNNER_TEMP/move.swift" <<'SWIFT'
           import ApplicationServices
           import Foundation
