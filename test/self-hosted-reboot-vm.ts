@@ -10,7 +10,6 @@ const source = resolve(import.meta.dir, ".."), out = mkdtempSync(join(process.en
 const stage = join(out, "assets"), serial = join(out, "serial.log"), qmp = join(out, "qmp.sock"), disk = join(out, "disk.qcow2");
 const assets = process.env.NOOP_E2E_WEB_ASSETS || "", workerd = process.env.NOOP_E2E_WORKERD || "", image = process.env.NOOP_E2E_DEBIAN_IMAGE || "";
 const token = "synthetic-reboot-vm-machine-token-000", checks: string[] = [];
-const diagOpt = process.env.NOOP_DIAG_JS_OPT || "";
 let vm: ChildProcess | undefined, error = "";
 function check(ok: unknown, message: string): asserts ok { if (!ok) throw new Error(message); checks.push(message); console.log(`PASS ${message}`); }
 function totp(secret: string, counter: number) {
@@ -122,13 +121,8 @@ install -d -o nooptest -g nooptest -m 700 /home/nooptest/bootstrap
 cp /home/nooptest/.noop-test/noop.toml /home/nooptest/bootstrap/custom.toml
 chown nooptest:nooptest /home/nooptest/bootstrap/custom.toml
 runuser -u nooptest -- env XDG_RUNTIME_DIR=/run/user/$TASK_UID DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/$TASK_UID/bus systemctl --user set-environment HUB_CONF=/home/nooptest/bootstrap/custom.toml
-${diagOpt ? `runuser -u nooptest -- env XDG_RUNTIME_DIR=/run/user/$TASK_UID DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/$TASK_UID/bus systemctl --user set-environment ${diagOpt}=0\n` : ""}runuser -u nooptest -- env NOOP_HOME=/home/nooptest/.noop-test HUB_NO_MEDIC=1 PATH=/usr/local/bin:/usr/bin:/bin XDG_RUNTIME_DIR=/run/user/$TASK_UID DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/$TASK_UID/bus /usr/local/bin/bun /opt/noop/src/cli.ts install
-${diagOpt ? `sed -i '/^Environment=HUB_DATA=/a Environment=${diagOpt}=0' /home/nooptest/.config/systemd/user/noop.service
-chown nooptest:nooptest /home/nooptest/.config/systemd/user/noop.service
-python3 -c 'import os; fd=os.open("/home/nooptest/.config/systemd/user/noop.service", os.O_RDONLY); os.fsync(fd); os.close(fd); fd=os.open("/home/nooptest/.config/systemd/user", os.O_RDONLY); os.fsync(fd); os.close(fd)'
-runuser -u nooptest -- env XDG_RUNTIME_DIR=/run/user/$TASK_UID DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/$TASK_UID/bus systemctl --user daemon-reload
-runuser -u nooptest -- env XDG_RUNTIME_DIR=/run/user/$TASK_UID DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/$TASK_UID/bus systemctl --user restart noop.service
-` : ""}systemd-run --unit=noop-vm-log /bin/sh -c "journalctl -f -o cat _UID=$TASK_UID > $TASK_TTY 2>&1"
+runuser -u nooptest -- env NOOP_HOME=/home/nooptest/.noop-test HUB_NO_MEDIC=1 PATH=/usr/local/bin:/usr/bin:/bin XDG_RUNTIME_DIR=/run/user/$TASK_UID DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/$TASK_UID/bus /usr/local/bin/bun /opt/noop/src/cli.ts install
+systemd-run --unit=noop-vm-log /bin/sh -c "journalctl -f -o cat _UID=$TASK_UID > $TASK_TTY 2>&1"
 systemctl enable --now noop-vm-proof.service
 if timeout 3 bash -c 'echo >/dev/tcp/1.1.1.1/443' 2>/dev/null; then echo NOOP_VM_PUBLIC_NETWORK_UNEXPECTED > "$TASK_TTY"; exit 1; else echo NOOP_VM_PUBLIC_NETWORK_BLOCKED > "$TASK_TTY"; fi
 echo NOOP_VM_PROVISIONED > "$TASK_TTY"
@@ -143,7 +137,7 @@ echo NOOP_VM_PROVISIONED > "$TASK_TTY"
   run("qemu-img", ["create", "-f", "qcow2", "-F", "qcow2", "-b", resolve(image), disk, "6G"]);
   const listenPort = await port(), base = `http://127.0.0.1:${listenPort}`, arm = process.arch === "arm64";
   const qemu = arm ? "qemu-system-aarch64" : "qemu-system-x86_64";
-  const args = ["-machine", arm ? "virt,accel=tcg" : "q35,accel=kvm", "-cpu", arm ? "max" : "host", "-m", "2048", "-smp", "2",
+  const args = ["-machine", arm ? "virt,accel=tcg" : "q35,accel=kvm", "-cpu", arm ? "max,sve128=on" : "host", "-m", "2048", "-smp", "2",
     ...(arm ? ["-bios", "/usr/share/qemu-efi-aarch64/QEMU_EFI.fd"] : []), "-display", "none", "-serial", "stdio", "-monitor", "none",
     "-qmp", `unix:${qmp},server=on,wait=off`, "-drive", `file=${disk},if=virtio,format=qcow2`, "-device", "virtio-scsi-pci,id=scsi0",
     "-drive", `file=${join(out, "seed.iso")},if=none,id=seed,media=cdrom,readonly=on`, "-device", "scsi-cd,drive=seed",
@@ -155,7 +149,6 @@ echo NOOP_VM_PROVISIONED > "$TASK_TTY"
   const initialLog = readFileSync(serial, "utf8"), bootLines = () => [...readFileSync(serial, "utf8").matchAll(/NOOP_VM_BOOT ([a-f0-9-]+)/g)].map((m) => m[1]);
   check(initialLog.includes("NOOP_VM_PUBLIC_NETWORK_BLOCKED") && initialLog.includes("Linger=yes"), "coordinator installs with linger while the guest has no public network");
   check(initialLog.includes("NOOP_HOME=/home/nooptest/.noop-test"), "the primary service keeps its configured Noop home");
-  if (diagOpt) check(initialLog.includes(`${diagOpt}=0`), `the primary has ${diagOpt} disabled for this diagnostic`);
   const request = (path: string, method = "GET", body?: unknown, credential = token) => fetch(base + path, { method,
     headers: { ...(credential ? { authorization: `Bearer ${credential}` } : {}), ...(body === undefined ? {} : { "content-type": "application/json" }) },
     ...(body === undefined ? {} : { body: JSON.stringify(body) }) });

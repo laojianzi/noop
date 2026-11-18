@@ -9,10 +9,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - { mode: control, option: '' }
-          - { mode: no-dfg, option: BUN_JSC_useDFGJIT }
-          - { mode: no-concurrent, option: BUN_JSC_useConcurrentJIT }
+        repeat: [1, 2]
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 60
     steps:
@@ -51,12 +48,11 @@ jobs:
           NOOP_E2E_WEB_ASSETS: ${{ runner.temp }}/web/noop
           NOOP_E2E_WORKERD: ${{ runner.temp }}/runtime/package/bin/workerd
           NOOP_E2E_DEBIAN_IMAGE: ${{ runner.temp }}/debian.qcow2
-          NOOP_DIAG_JS_OPT: ${{ matrix.option }}
         run: bun test/self-hosted-reboot-vm.ts
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: noop-13-arm-jit-tier-${{ matrix.mode }}
+          name: noop-13-arm-sve128-${{ matrix.repeat }}
           path: |
             ${{ runner.temp }}/evidence/**/report.json
             ${{ runner.temp }}/evidence/**/SHA256SUMS
