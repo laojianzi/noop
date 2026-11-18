@@ -1,0 +1,50 @@
+name: noop-16-login-probe
+on:
+  push:
+    branches: [codex/noop-16-login-probe]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  inspect:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-15-intel, xcode-27]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Inspect disposable graphical login capabilities
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/login-probe"
+          {
+            printf 'system: '; sw_vers -productVersion
+            printf 'architecture: '; uname -m
+            printf 'user uid: '; id -u
+            printf 'console owner: '; stat -f '%Su' /dev/console
+            printf 'console sessions:\n'; who
+            if sudo -n true; then echo 'passwordless sudo: yes'; else echo 'passwordless sudo: no'; fi
+            if launchctl print "gui/$(id -u)" >/dev/null 2>&1; then echo 'runner GUI domain: present'; else echo 'runner GUI domain: absent'; fi
+            if test -x '/System/Library/CoreServices/Menu Extras/User.menu/Contents/Resources/CGSession'; then echo 'CGSession: present'; else echo 'CGSession: absent'; fi
+            if pgrep -x loginwindow >/dev/null; then echo 'loginwindow: present'; else echo 'loginwindow: absent'; fi
+            if pgrep -x WindowServer >/dev/null; then echo 'WindowServer: present'; else echo 'WindowServer: absent'; fi
+            printf 'runner processes:\n'
+            ps -axo pid,ppid,user,comm | awk '/[R]unner\.Listener|[R]unner\.Worker|[l]oginwindow|[W]indowServer/ {print}'
+            python3 - <<'PY'
+          import subprocess
+          try:
+              result = subprocess.run(['/usr/bin/osascript', '-e', 'tell application "System Events" to get UI elements enabled'], capture_output=True, text=True, timeout=8)
+              print('System Events accessibility:', result.returncode, result.stdout.strip(), result.stderr.strip()[:200])
+          except subprocess.TimeoutExpired:
+              print('System Events accessibility: timed out')
+          PY
+          } 2>&1 | tee "$RUNNER_TEMP/login-probe/inspection.txt"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: macos-login-probe-${{ matrix.os }}
+          path: ${{ runner.temp }}/login-probe/
+          if-no-files-found: warn
+          retention-days: 7
