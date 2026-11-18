@@ -187,6 +187,7 @@ jobs:
           sudo cp "$RUNNER_TEMP/logout-agent.plist" /Users/noopprobe/Library/LaunchAgents/dev.noop.test-logout.plist
           sudo chown noopprobe:staff /Users/noopprobe/Library/LaunchAgents/dev.noop.test-logout.plist
           sudo launchctl bootstrap "gui/$uid" /Users/noopprobe/Library/LaunchAgents/dev.noop.test-logout.plist
+          sudo launchctl kickstart "gui/$uid/dev.noop.test-logout" > "$RUNNER_TEMP/login-probe/logout-kickstart.txt" 2>&1 || true
           sleep 10
           sudo launchctl print "gui/$uid/dev.noop.test-logout" > "$RUNNER_TEMP/login-probe/logout-agent.txt" 2>&1 || true
           sudo cat /Users/noopprobe/logout-agent-error.log >> "$RUNNER_TEMP/login-probe/logout-agent.txt" 2>&1 || true
