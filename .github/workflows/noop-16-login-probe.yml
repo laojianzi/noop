@@ -5,44 +5,7 @@ on:
   workflow_dispatch:
 permissions:
   contents: read
-  actions: read
 jobs:
-  installer:
-    runs-on: ubuntu-24.04
-    timeout-minutes: 5
-    steps:
-      - uses: actions/checkout@v4
-      - name: Diagnose Linux package installer
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          set -euo pipefail
-          mkdir -p "$RUNNER_TEMP/installer-diagnosis/assets" "$RUNNER_TEMP/installer-diagnosis/logs"
-          gh run download 44095906742 --repo laojianzi/noop --name noop-linux-x86_64.tar.gz --dir "$RUNNER_TEMP/installer-diagnosis/assets"
-          cd "$RUNNER_TEMP/installer-diagnosis/assets"
-          sha256sum noop-linux-x86_64.tar.gz > sha256sums
-          python3 -m http.server 8765 > /dev/null 2>&1 &
-          server=$!
-          trap 'kill "$server" 2>/dev/null || true' EXIT
-          sleep 2
-          export NOOP_CLIENT_BASE_URL=http://127.0.0.1:8765
-          timeout --kill-after=5s 100s bash -x "$GITHUB_WORKSPACE/install-client.sh" > "$RUNNER_TEMP/installer-diagnosis/logs/install.log" 2>&1 &
-          task=$!
-          for n in {1..12}; do
-            if ! kill -0 "$task" 2>/dev/null; then break; fi
-            { date -u; ps -eo pid,ppid,stat,args | grep -E '[i]nstall-client|[a]pt-get|[d]pkg|[c]url|[l]dd|[h]ttp.server' || true; tail -8 "$RUNNER_TEMP/installer-diagnosis/logs/install.log"; } >> "$RUNNER_TEMP/installer-diagnosis/logs/processes.log"
-            sleep 10
-          done
-          status=0
-          wait "$task" || status=$?
-          cat "$RUNNER_TEMP/installer-diagnosis/logs/install.log"
-          echo "Installer exit: $status"
-          exit "$status"
-      - uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: installer-diagnosis
-          path: ${{ runner.temp }}/installer-diagnosis/logs/
   inspect:
     strategy:
       fail-fast: false
@@ -197,11 +160,17 @@ jobs:
           { printf 'console: '; stat -f '%Su' /dev/console; who; } | tee "$RUNNER_TEMP/login-probe/logout.txt"
           sudo cp "$RUNNER_TEMP/key" /Users/Shared/noop-test-key
           sudo chmod 755 /Users/Shared/noop-test-key
-          sudo launchctl asuser "$uid" sudo -H -u noopprobe /Users/Shared/noop-test-key logout
+          sudo launchctl asuser "$uid" sudo -H -u noopprobe /usr/bin/osascript -e 'tell application "System Events" to log out' > "$RUNNER_TEMP/login-probe/logout-command.txt" 2>&1 &
+          logout_pid=$!
+          sleep 8
+          sudo launchctl asuser "$uid" sudo -H -u noopprobe /usr/sbin/screencapture -x /Users/Shared/noop-test-logout.png 2>/dev/null || true
+          cp /Users/Shared/noop-test-logout.png "$RUNNER_TEMP/login-probe/logout-prompt.png" 2>/dev/null || true
+          sudo launchctl asuser "$uid" sudo -H -u noopprobe /Users/Shared/noop-test-key enter || true
           for n in {1..60}; do
             if ! sudo launchctl print "gui/$uid" >/dev/null 2>&1; then break; fi
             sleep 1
           done
+          kill "$logout_pid" 2>/dev/null || true
           { printf 'after logout console: '; stat -f '%Su' /dev/console; who; } | tee -a "$RUNNER_TEMP/login-probe/logout.txt"
           if sudo launchctl print "gui/$uid" >/dev/null 2>&1; then echo 'The isolated user is still logged in' | tee -a "$RUNNER_TEMP/login-probe/logout.txt"; exit 1; fi
           "$RUNNER_TEMP/key" enter
