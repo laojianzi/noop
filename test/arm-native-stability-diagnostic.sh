@@ -40,11 +40,17 @@ mode = "off"
 CONFIG
 bun /opt/noop/src/cli.ts daemon > "$out/daemon.log" 2>&1 &
 daemon=$!
+for n in $(seq 1 30); do
+  grep -q 'cloud bridge' "$out/daemon.log" && break
+  kill -0 "$daemon"
+  sleep 1
+done
+grep -q 'cloud bridge' "$out/daemon.log"
 for n in $(seq 1 180); do
   if ! kill -0 "$daemon" 2>/dev/null; then echo "native primary exited after $n seconds" >&2; tail -100 "$out/daemon.log"; exit 1; fi
   if ! kill -0 "$coordinator" 2>/dev/null; then echo "native coordinator exited after $n seconds" >&2; tail -100 "$out/coordinator.log"; exit 1; fi
   sleep 1
 done
-bun -e 'fetch("http://127.0.0.1:8790/api/status", {headers:{authorization:"Bearer synthetic-native-arm64-token-000"}}).then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))'
+bun -e 'fetch("http://127.0.0.1:8790/api/status", {headers:{authorization:"Bearer synthetic-native-arm64-token-000"}}).then(async r => process.exit(r.ok && Array.isArray((await r.json()).decisions) ? 0 : 1)).catch(() => process.exit(1))'
 printf '{"status":"passed","platform":"linux-arm64-native-container","seconds":180,"network":"none"}\n' > "$out/report.json"
 printf 'Native ARM64 primary and coordinator remained running for 180 seconds.\n'
