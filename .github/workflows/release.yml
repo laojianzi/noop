@@ -3,12 +3,50 @@ on:
   workflow_dispatch:
 permissions:
   contents: read
+  actions: read
 jobs:
-  cpu-features:
+  arm-native-stability:
     runs-on: ubuntu-24.04-arm
+    timeout-minutes: 15
     steps:
-      - name: Inspect native ARM64 CPU features
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.4
+      - uses: actions/download-artifact@v4
+        with:
+          name: coordinator-web
+          run-id: 44231492997
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/web-artifact
+      - name: Prepare inputs
+        shell: bash
         run: |
-          uname -a
-          lscpu
-          grep -m1 '^Features' /proc/cpuinfo
+          set -euo pipefail
+          cd "$RUNNER_TEMP/web-artifact"
+          sha256sum -c coordinator-web.sha256
+          test "$(cat web-source-commit)" = 98cf0a7d5fb387acb975137d81460eb2a3d08ea8
+          mkdir -p "$RUNNER_TEMP/web" "$RUNNER_TEMP/runtime" "$RUNNER_TEMP/evidence"
+          tar -xzf coordinator-web.tar.gz -C "$RUNNER_TEMP/web"
+          package=$(npm pack --silent --ignore-scripts '@cloudflare/workerd-linux-arm64@1.20261110.1' --pack-destination "$RUNNER_TEMP")
+          tar -xzf "$RUNNER_TEMP/$package" -C "$RUNNER_TEMP/runtime"
+          chmod +x "$RUNNER_TEMP/runtime/package/bin/workerd"
+          docker pull debian:bookworm-slim
+      - name: Run native ARM64 primary without public network
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker run --rm --network none --hostname noop-vm \
+            -v "$GITHUB_WORKSPACE:/src:ro" \
+            -v "$RUNNER_TEMP/web/noop:/web:ro" \
+            -v "$(readlink -f "$(command -v bun)"):/usr/local/bin/bun:ro" \
+            -v "$RUNNER_TEMP/runtime/package/bin/workerd:/usr/local/bin/workerd:ro" \
+            -v /etc/ssl/certs:/etc/ssl/certs:ro \
+            -v "$RUNNER_TEMP/evidence:/evidence" \
+            debian:bookworm-slim bash /src/test/arm-native-stability-diagnostic.sh
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: noop-13-native-arm64-stability
+          path: ${{ runner.temp }}/evidence/native-arm64/*.log
+          if-no-files-found: warn
