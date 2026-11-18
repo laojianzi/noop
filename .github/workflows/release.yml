@@ -41,6 +41,7 @@ jobs:
             -v "$RUNNER_TEMP/web/noop:/web:ro" \
             -v "$(readlink -f "$(command -v bun)"):/usr/local/bin/bun:ro" \
             -v "$RUNNER_TEMP/runtime/package/bin/workerd:/usr/local/bin/workerd:ro" \
+            -v /etc/ssl/certs:/etc/ssl/certs:ro \
             -v "$RUNNER_TEMP/evidence:/evidence" \
             debian:bookworm-slim bash /src/test/arm-native-stability-diagnostic.sh
       - uses: actions/upload-artifact@v4
