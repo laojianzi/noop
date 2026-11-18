@@ -167,6 +167,8 @@ jobs:
         if: matrix.target == 'macos'
         run: |
           set -x
+          export NSH_RUNTIME="$HOME/.nsh-dist/runtime"
+          file "$NSH_RUNTIME/macos/nsh-macos-app"
           args=(--build "$GITHUB_RUN_NUMBER")
           [ "$GITHUB_REF_TYPE" != tag ] || args+=(--app-version "${GITHUB_REF_NAME#v}")
           out="$RUNNER_TEMP/out-x86_64"
