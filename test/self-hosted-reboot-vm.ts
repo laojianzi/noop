@@ -137,7 +137,7 @@ echo NOOP_VM_PROVISIONED > "$TASK_TTY"
   run("qemu-img", ["create", "-f", "qcow2", "-F", "qcow2", "-b", resolve(image), disk, "6G"]);
   const listenPort = await port(), base = `http://127.0.0.1:${listenPort}`, arm = process.arch === "arm64";
   const qemu = arm ? "qemu-system-aarch64" : "qemu-system-x86_64";
-  const args = ["-machine", arm ? "virt,accel=tcg" : "q35,accel=kvm", "-cpu", arm ? "max" : "host", "-m", "2048", "-smp", "2",
+  const args = ["-machine", arm ? "virt,accel=tcg" : "q35,accel=kvm", "-cpu", arm ? "max,sve=off" : "host", "-m", "2048", "-smp", "2",
     ...(arm ? ["-bios", "/usr/share/qemu-efi-aarch64/QEMU_EFI.fd"] : []), "-display", "none", "-serial", "stdio", "-monitor", "none",
     "-qmp", `unix:${qmp},server=on,wait=off`, "-drive", `file=${disk},if=virtio,format=qcow2`, "-device", "virtio-scsi-pci,id=scsi0",
     "-drive", `file=${join(out, "seed.iso")},if=none,id=seed,media=cdrom,readonly=on`, "-device", "scsi-cd,drive=seed",
