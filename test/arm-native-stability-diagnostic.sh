@@ -38,9 +38,10 @@ enabled = false
 [tunnel]
 mode = "off"
 CONFIG
-bun /opt/noop/src/cli.ts daemon > "$out/daemon.log" 2>&1 &
+if [ "${NOOP_DIAG_JIT:-on}" = off ]; then export BUN_JSC_useJIT=0; fi
+qemu-aarch64-static -cpu "${NOOP_QEMU_CPU:-max}" /usr/local/bin/bun /opt/noop/src/cli.ts daemon > "$out/daemon.log" 2>&1 &
 daemon=$!
-for n in $(seq 1 30); do
+for n in $(seq 1 120); do
   grep -q 'cloud bridge' "$out/daemon.log" && break
   kill -0 "$daemon"
   sleep 1
@@ -52,5 +53,5 @@ for n in $(seq 1 180); do
   sleep 1
 done
 bun -e 'fetch("http://127.0.0.1:8790/api/status", {headers:{authorization:"Bearer synthetic-native-arm64-token-000"}}).then(async r => process.exit(r.ok && Array.isArray((await r.json()).decisions) ? 0 : 1)).catch(() => process.exit(1))'
-printf '{"status":"passed","platform":"linux-arm64-native-container","seconds":180,"network":"none"}\n' > "$out/report.json"
-printf 'Native ARM64 primary and coordinator remained running for 180 seconds.\n'
+printf '{"status":"passed","platform":"linux-arm64-qemu-user","seconds":180,"network":"none"}\n' > "$out/report.json"
+printf 'QEMU user-mode primary and native coordinator remained running for 180 seconds.\n'
