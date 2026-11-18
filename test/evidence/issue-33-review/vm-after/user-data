@@ -1,0 +1,106 @@
+#cloud-config
+users:
+  - name: nooptest
+    shell: /bin/bash
+    lock_passwd: true
+write_files:
+  - path: /root/noop-provision
+    permissions: '0700'
+    content: |
+      #!/bin/bash
+      TASK_TTY=/dev/ttyS0; if [ "$(uname -m)" = aarch64 ]; then TASK_TTY=/dev/ttyAMA0; fi
+      exec > /var/log/noop-provision.log 2>&1
+      set -euxo pipefail
+      trap 'TASK_RC=$?; echo "NOOP_VM_PROVISION_FAILED line=$LINENO status=$TASK_RC" > "$TASK_TTY"; tail -100 /var/log/noop-provision.log > "$TASK_TTY"; journalctl --no-pager -n 150 > "$TASK_TTY"; exit "$TASK_RC"' ERR
+      mkdir -p /mnt/noop-assets
+      mount -L NOOPASSETS /mnt/noop-assets
+      cp -a /mnt/noop-assets/repo /opt/noop
+      chown -R nooptest:nooptest /opt/noop
+      cp /mnt/noop-assets/bin/bun /mnt/noop-assets/bin/workerd /usr/local/bin/
+      chmod 755 /usr/local/bin/bun /usr/local/bin/workerd
+      install -d -o nooptest -g nooptest -m 700 /home/nooptest/.noop-test
+      printf '[server]\ntoken = "synthetic-reboot-vm-machine-token-000"\n' > /home/nooptest/.noop-test/noop.toml
+      chown nooptest:nooptest /home/nooptest/.noop-test/noop.toml
+      chmod 600 /home/nooptest/.noop-test/noop.toml
+      loginctl enable-linger nooptest
+      TASK_UID=$(id -u nooptest)
+      for n in $(seq 1 100); do [ -S "/run/user/$TASK_UID/bus" ] && break; sleep .2; done
+      runuser -u nooptest -- env NOOP_HOME=/home/nooptest/.noop-test HUB_NO_MEDIC=1 PATH=/usr/local/bin:/usr/bin:/bin XDG_RUNTIME_DIR=/run/user/$TASK_UID DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/$TASK_UID/bus /usr/local/bin/bun /opt/noop/src/cli.ts cloud service install --listen 0.0.0.0:8790
+      runuser -u nooptest -- env NOOP_HOME=/home/nooptest/.noop-test HUB_NO_MEDIC=1 HUB_HOST=noop-vm PATH=/usr/local/bin:/usr/bin:/bin /usr/local/bin/bun /opt/noop/src/cli.ts init --primary --local http://127.0.0.1:8790 --token synthetic-reboot-vm-machine-token-000
+      cat > /home/nooptest/.noop-test/data/config.local.toml <<'EOF'
+      [host]
+      tick_seconds = 1
+      [router]
+      cli = "not-installed"
+      [server]
+      enabled = false
+      [idle]
+      enabled = false
+      [supervisor]
+      enabled = false
+      [medic]
+      enabled = false
+      [tunnel]
+      mode = "off"
+      EOF
+      chown nooptest:nooptest /home/nooptest/.noop-test/data/config.local.toml
+      python3 - /opt/noop/cloud/src/index.ts <<'PY'
+      from pathlib import Path
+      import os
+      import sys
+      path = Path(sys.argv[1])
+      source = path.read_text()
+      needle = 'statusView() { return { ...(this.get("status") ?? {}), hub:'
+      assert needle in source
+      path.write_text(source.replace(needle, 'statusView() { return { release_marker: "owner-update-v2", ...(this.get("status") ?? {}), hub:', 1))
+      for name in [path, Path('/home/nooptest/.noop-test/data/config.local.toml')]:
+          fd = os.open(name, os.O_RDONLY)
+          os.fsync(fd)
+          os.close(fd)
+      fd = os.open('/home/nooptest/.noop-test/data', os.O_RDONLY)
+      os.fsync(fd)
+      os.close(fd)
+      PY
+      install -d -o nooptest -g nooptest -m 700 /home/nooptest/bootstrap
+      cp /home/nooptest/.noop-test/noop.toml /home/nooptest/bootstrap/custom.toml
+      chown nooptest:nooptest /home/nooptest/bootstrap/custom.toml
+      runuser -u nooptest -- env XDG_RUNTIME_DIR=/run/user/$TASK_UID DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/$TASK_UID/bus systemctl --user set-environment HUB_CONF=/home/nooptest/bootstrap/custom.toml
+      runuser -u nooptest -- env XDG_RUNTIME_DIR=/run/user/$TASK_UID DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/$TASK_UID/bus systemctl --user set-environment NOOP_CLIENT_BASE_URL=http://127.0.0.1:18888
+      runuser -u nooptest -- env NOOP_HOME=/home/nooptest/.noop-test HUB_NO_MEDIC=1 PATH=/usr/local/bin:/usr/bin:/bin XDG_RUNTIME_DIR=/run/user/$TASK_UID DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/$TASK_UID/bus /usr/local/bin/bun /opt/noop/src/cli.ts install
+      for n in $(seq 1 150); do journalctl _UID=$TASK_UID -o cat --no-pager | grep -q 'web client not updated' && break; sleep .2; done
+      journalctl _UID=$TASK_UID -o cat --no-pager | grep -q 'web client not updated'
+      systemd-run --unit=noop-vm-web /usr/bin/python3 /mnt/noop-assets/web-server.py
+      systemd-run --unit=noop-vm-log /bin/sh -c "journalctl -f -o cat _UID=$TASK_UID > $TASK_TTY 2>&1"
+      systemctl enable --now noop-vm-proof.service
+      if timeout 3 bash -c 'echo >/dev/tcp/1.1.1.1/443' 2>/dev/null; then echo NOOP_VM_PUBLIC_NETWORK_UNEXPECTED > "$TASK_TTY"; exit 1; else echo NOOP_VM_PUBLIC_NETWORK_BLOCKED > "$TASK_TTY"; fi
+      echo NOOP_VM_PROVISIONED > "$TASK_TTY"
+  - path: /usr/local/bin/noop-vm-proof
+    permissions: '0755'
+    content: |
+      #!/bin/bash
+      TASK_TTY=/dev/ttyS0; if [ "$(uname -m)" = aarch64 ]; then TASK_TTY=/dev/ttyAMA0; fi
+      for n in $(seq 1 100); do loginctl show-user nooptest >/dev/null 2>&1 && break; sleep .2; done
+      printf 'NOOP_VM_BOOT %s\n' "$(cat /proc/sys/kernel/random/boot_id)" > "$TASK_TTY"
+      for n in $(seq 1 120); do TASK_LOGIN_STATE=$(loginctl show-user nooptest -p Linger -p Sessions 2>&1); if printf '%s\n' "$TASK_LOGIN_STATE" | grep -qx 'Linger=yes' && printf '%s\n' "$TASK_LOGIN_STATE" | grep -qx 'Sessions='; then break; fi; sleep .5; done
+      printf '%s\n' "$TASK_LOGIN_STATE" > "$TASK_TTY"
+      TASK_UID=$(id -u nooptest)
+      for n in $(seq 1 100); do [ -S "/run/user/$TASK_UID/bus" ] && break; sleep .2; done
+      runuser -u nooptest -- env XDG_RUNTIME_DIR=/run/user/$TASK_UID DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/$TASK_UID/bus systemctl --user status noop-coordinator.service --no-pager > "$TASK_TTY" 2>&1 || true
+      runuser -u nooptest -- env XDG_RUNTIME_DIR=/run/user/$TASK_UID DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/$TASK_UID/bus systemctl --user show noop.service -p Environment --value > "$TASK_TTY" 2>&1 || true
+      for n in $(seq 1 100); do runuser -u nooptest -- env XDG_RUNTIME_DIR=/run/user/$TASK_UID DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/$TASK_UID/bus systemctl --user is-active --quiet noop.service && break; sleep .2; done
+      runuser -u nooptest -- env XDG_RUNTIME_DIR=/run/user/$TASK_UID DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/$TASK_UID/bus systemctl --user is-active --quiet noop.service && echo NOOP_VM_PRIMARY_ACTIVE > "$TASK_TTY" || true
+      journalctl _UID=$TASK_UID -o cat --no-pager -n 100 > "$TASK_TTY" 2>&1 || true
+      ss -ltnp > "$TASK_TTY" 2>&1 || true
+  - path: /etc/systemd/system/noop-vm-proof.service
+    permissions: '0644'
+    content: |
+      [Unit]
+      Description=Record Noop VM login state
+      After=systemd-logind.service
+      [Service]
+      Type=oneshot
+      ExecStart=/usr/local/bin/noop-vm-proof
+      [Install]
+      WantedBy=multi-user.target
+runcmd:
+  - [ /root/noop-provision ]

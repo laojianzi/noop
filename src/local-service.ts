@@ -1,16 +1,23 @@
 import { existsSync, lstatSync, mkdirSync, readFileSync, rmSync, unlinkSync, writeFileSync } from "node:fs";
 import { homedir, userInfo } from "node:os";
-import { dirname, join } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { spawnSync } from "node:child_process";
 import { CODE, HOME_DIR } from "./core";
 import { readHubToml } from "./sync";
 
 const LABEL = "dev.noop.coordinator", UNIT = "noop-coordinator.service";
+const serviceFile = () => process.platform === "linux" ? join(homedir(), ".config", "systemd", "user", UNIT)
+  : process.platform === "darwin" ? join(homedir(), "Library", "LaunchAgents", `${LABEL}.plist`) : "";
+
+export function localServiceInstalled(home = HOME_DIR) {
+  const file = serviceFile();
+  return !!file && existsSync(file) && readFileSync(file, "utf8").includes(`noop-home:${Buffer.from(home).toString("base64")}`);
+}
 
 export async function localService(action: string, listen = "127.0.0.1:8790", source?: string, runtime?: string) {
   const linux = process.platform === "linux", mac = process.platform === "darwin";
   if (!linux && !mac) throw new Error("The local coordinator service supports Linux and macOS");
-  const file = linux ? join(homedir(), ".config", "systemd", "user", UNIT) : join(homedir(), "Library", "LaunchAgents", `${LABEL}.plist`);
+  const file = serviceFile();
   const domain = `gui/${process.getuid!()}`, marker = `noop-home:${Buffer.from(HOME_DIR).toString("base64")}`;
   const exec = (command: string, args: string[], show = false) => {
     const result = spawnSync(command, args, { encoding: "utf8", env: process.env });
@@ -19,7 +26,7 @@ export async function localService(action: string, listen = "127.0.0.1:8790", so
     return result.stdout;
   };
   const installed = () => {
-    if (!existsSync(file) || !readFileSync(file, "utf8").includes(marker)) throw new Error("This Noop home has no installed coordinator service");
+    if (!localServiceInstalled()) throw new Error("This Noop home has no installed coordinator service");
   };
   const stop = () => linux ? exec("systemctl", ["--user", "stop", UNIT]) : exec("launchctl", ["bootout", domain, file]);
   const ready = async () => {
@@ -72,7 +79,7 @@ export async function localService(action: string, listen = "127.0.0.1:8790", so
         writeFileSync(file, `<?xml version="1.0" encoding="UTF-8"?>\n<!-- ${marker} -->\n<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">\n<plist version="1.0"><dict><key>Label</key><string>${LABEL}</string><key>ProgramArguments</key><array>${args}</array><key>WorkingDirectory</key><string>${xml(repo)}</string><key>EnvironmentVariables</key><dict>${env}</dict><key>RunAtLoad</key><true/><key>KeepAlive</key><true/><key>StandardOutPath</key><string>${log}</string><key>StandardErrorPath</key><string>${log}</string></dict></plist>\n`, { mode: 0o600, flag: "wx" });
       }
       syncPath(file);
-      for (let dir = dirname(file); ; dir = dirname(dir)) { syncPath(dir); if (dir === homedir()) break; }
+      for (let dir = dirname(file); ; dir = dirname(dir)) { syncPath(dir); if (dir === resolve(homedir()) || dir === dirname(dir)) break; }
       if (linux) {
         exec("systemctl", ["--user", "daemon-reload"]); exec("systemctl", ["--user", "enable", "--now", UNIT]);
         syncPath(join(dirname(file), "default.target.wants")); syncPath(dirname(file)); await ready();

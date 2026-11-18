@@ -1,0 +1,15 @@
+{
+  "status": "failed",
+  "source": "/var/tmp/noop-13-review-20261118",
+  "platform": "linux-x64",
+  "bun": "1.4.4",
+  "checks": [
+    "real Web assets and workerd are supplied",
+    "owner configures authentication",
+    "owner requests a login code",
+    "owner signs in",
+    "owner requests a real Git update",
+    "Git switched to the new revision"
+  ],
+  "error": "Error: a foreground coordinator does not prevent the updated primary from restarting\n    at check (/var/tmp/noop-13-review-20261118/test/self-hosted-owner-update-e2e.ts:14:79)\n    at /var/tmp/noop-13-review-20261118/test/self-hosted-owner-update-e2e.ts:78:3"
+}

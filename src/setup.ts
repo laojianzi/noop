@@ -2,7 +2,7 @@
 import { $ } from "bun";
 import { cpSync, existsSync, mkdirSync, readFileSync, readdirSync, unlinkSync, writeFileSync } from "node:fs";
 import { homedir, hostname } from "node:os";
-import { dirname, join } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { CODE, DATA, HOME_DIR, P, isCloudDeployHost } from "./core";
 
 const STATE_DIRS = [
@@ -235,7 +235,7 @@ export async function install() {
   const syncService = (file: string) => {
     if (!syncPath) return;
     syncPath(file);
-    for (let dir = dirname(file); ; dir = dirname(dir)) { syncPath(dir); if (dir === homedir()) break; }
+    for (let dir = dirname(file); ; dir = dirname(dir)) { syncPath(dir); if (dir === resolve(homedir()) || dir === dirname(dir)) break; }
   };
   if (process.platform === "linux") {
     const unit = join(homedir(), `.config/systemd/user/${SERVICE}.service`);

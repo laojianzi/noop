@@ -1,7 +1,7 @@
 // Boot an isolated Debian VM, install the user service, and reset the machine without logging in.
 import { spawn, spawnSync, type ChildProcess } from "node:child_process";
 import { createHash, createHmac } from "node:crypto";
-import { closeSync, copyFileSync, cpSync, existsSync, mkdirSync, mkdtempSync, openSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { appendFileSync, closeSync, copyFileSync, cpSync, existsSync, mkdirSync, mkdtempSync, openSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { createConnection, createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
@@ -62,6 +62,13 @@ try {
     cpSync(join(source, name), join(stage, "repo", name), { recursive: true, filter: (p) => !p.includes("/node_modules/") && !p.includes("/dist/") });
   for (const name of ["package.json", "bunfig.toml", "tsconfig.json"]) cpSync(join(source, name), join(stage, "repo", name));
   mkdirSync(join(stage, "repo", "app", "dist", "web"), { recursive: true }); cpSync(assets, join(stage, "repo", "app", "dist", "web", "noop"), { recursive: true });
+  writeFileSync(join(stage, "repo", "app", "dist", "web", ".release"), "old-release\n");
+  cpSync(assets, join(stage, "web-next"), { recursive: true });
+  appendFileSync(join(stage, "web-next", "index.html"), "\n<!-- owner-update-web-v2 -->\n");
+  mkdirSync(join(stage, "web-release"), { recursive: true });
+  run("tar", ["-czf", join(stage, "web-release", "noop-web.tar.gz"), "-C", join(stage, "web-next"), "."]);
+  writeFileSync(join(stage, "web-release", "sha256sums"), `${createHash("sha256").update(readFileSync(join(stage, "web-release", "noop-web.tar.gz"))).digest("hex")}  noop-web.tar.gz\n`);
+  writeFileSync(join(stage, "web-server.py"), `from http.server import HTTPServer, SimpleHTTPRequestHandler\nfrom threading import Thread\nclass Handler(SimpleHTTPRequestHandler):\n    def __init__(self, *args, **kwargs):\n        super().__init__(*args, directory='/mnt/noop-assets/web-release', **kwargs)\n    def do_GET(self):\n        if self.path == '/stop':\n            self.send_response(200)\n            self.end_headers()\n            Thread(target=self.server.shutdown, daemon=True).start()\n        else:\n            super().do_GET()\nHTTPServer(('0.0.0.0', 18888), Handler).serve_forever()\n`);
   mkdirSync(join(stage, "bin"), { recursive: true }); copyFileSync(process.execPath, join(stage, "bin", "bun")); copyFileSync(workerd, join(stage, "bin", "workerd"));
   const proof = `#!/bin/bash\nTASK_TTY=/dev/ttyS0; if [ "$(uname -m)" = aarch64 ]; then TASK_TTY=/dev/ttyAMA0; fi\nfor n in $(seq 1 100); do loginctl show-user nooptest >/dev/null 2>&1 && break; sleep .2; done\nprintf 'NOOP_VM_BOOT %s\\n' "$(cat /proc/sys/kernel/random/boot_id)" > "$TASK_TTY"\nfor n in $(seq 1 120); do TASK_LOGIN_STATE=$(loginctl show-user nooptest -p Linger -p Sessions 2>&1); if printf '%s\\n' "$TASK_LOGIN_STATE" | grep -qx 'Linger=yes' && printf '%s\\n' "$TASK_LOGIN_STATE" | grep -qx 'Sessions='; then break; fi; sleep .5; done\nprintf '%s\\n' "$TASK_LOGIN_STATE" > "$TASK_TTY"\nTASK_UID=$(id -u nooptest)\nfor n in $(seq 1 100); do [ -S "/run/user/$TASK_UID/bus" ] && break; sleep .2; done\nrunuser -u nooptest -- env XDG_RUNTIME_DIR=/run/user/$TASK_UID DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/$TASK_UID/bus systemctl --user status noop-coordinator.service --no-pager > "$TASK_TTY" 2>&1 || true\nrunuser -u nooptest -- env XDG_RUNTIME_DIR=/run/user/$TASK_UID DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/$TASK_UID/bus systemctl --user show noop.service -p Environment --value > "$TASK_TTY" 2>&1 || true\nfor n in $(seq 1 100); do runuser -u nooptest -- env XDG_RUNTIME_DIR=/run/user/$TASK_UID DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/$TASK_UID/bus systemctl --user is-active --quiet noop.service && break; sleep .2; done\nrunuser -u nooptest -- env XDG_RUNTIME_DIR=/run/user/$TASK_UID DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/$TASK_UID/bus systemctl --user is-active --quiet noop.service && echo NOOP_VM_PRIMARY_ACTIVE > "$TASK_TTY" || true\njournalctl _UID=$TASK_UID -o cat --no-pager -n 100 > "$TASK_TTY" 2>&1 || true\nss -ltnp > "$TASK_TTY" 2>&1 || true\n`;
   const provision = `#!/bin/bash
@@ -72,6 +79,7 @@ trap 'TASK_RC=$?; echo "NOOP_VM_PROVISION_FAILED line=$LINENO status=$TASK_RC" >
 mkdir -p /mnt/noop-assets
 mount -L NOOPASSETS /mnt/noop-assets
 cp -a /mnt/noop-assets/repo /opt/noop
+chown -R nooptest:nooptest /opt/noop
 cp /mnt/noop-assets/bin/bun /mnt/noop-assets/bin/workerd /usr/local/bin/
 chmod 755 /usr/local/bin/bun /usr/local/bin/workerd
 install -d -o nooptest -g nooptest -m 700 /home/nooptest/.noop-test
@@ -121,7 +129,11 @@ install -d -o nooptest -g nooptest -m 700 /home/nooptest/bootstrap
 cp /home/nooptest/.noop-test/noop.toml /home/nooptest/bootstrap/custom.toml
 chown nooptest:nooptest /home/nooptest/bootstrap/custom.toml
 runuser -u nooptest -- env XDG_RUNTIME_DIR=/run/user/$TASK_UID DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/$TASK_UID/bus systemctl --user set-environment HUB_CONF=/home/nooptest/bootstrap/custom.toml
+runuser -u nooptest -- env XDG_RUNTIME_DIR=/run/user/$TASK_UID DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/$TASK_UID/bus systemctl --user set-environment NOOP_CLIENT_BASE_URL=http://127.0.0.1:18888
 runuser -u nooptest -- env NOOP_HOME=/home/nooptest/.noop-test HUB_NO_MEDIC=1 PATH=/usr/local/bin:/usr/bin:/bin XDG_RUNTIME_DIR=/run/user/$TASK_UID DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/$TASK_UID/bus /usr/local/bin/bun /opt/noop/src/cli.ts install
+for n in $(seq 1 150); do journalctl _UID=$TASK_UID -o cat --no-pager | grep -q 'web client not updated' && break; sleep .2; done
+journalctl _UID=$TASK_UID -o cat --no-pager | grep -q 'web client not updated'
+systemd-run --unit=noop-vm-web /usr/bin/python3 /mnt/noop-assets/web-server.py
 systemd-run --unit=noop-vm-log /bin/sh -c "journalctl -f -o cat _UID=$TASK_UID > $TASK_TTY 2>&1"
 systemctl enable --now noop-vm-proof.service
 if timeout 3 bash -c 'echo >/dev/tcp/1.1.1.1/443' 2>/dev/null; then echo NOOP_VM_PUBLIC_NETWORK_UNEXPECTED > "$TASK_TTY"; exit 1; else echo NOOP_VM_PUBLIC_NETWORK_BLOCKED > "$TASK_TTY"; fi
@@ -135,14 +147,14 @@ echo NOOP_VM_PROVISIONED > "$TASK_TTY"
   run("cloud-localds", [`--network-config=${join(out, "network-config")}`, join(out, "seed.iso"), join(out, "user-data"), join(out, "meta-data")]);
   run("genisoimage", ["-quiet", "-R", "-J", "-V", "NOOPASSETS", "-o", join(out, "assets.iso"), stage]);
   run("qemu-img", ["create", "-f", "qcow2", "-F", "qcow2", "-b", resolve(image), disk, "6G"]);
-  const listenPort = await port(), base = `http://127.0.0.1:${listenPort}`, arm = process.arch === "arm64";
+  const listenPort = await port(), fixturePort = await port(), base = `http://127.0.0.1:${listenPort}`, arm = process.arch === "arm64";
   const qemu = arm ? "qemu-system-aarch64" : "qemu-system-x86_64";
   const args = ["-machine", arm ? "virt,accel=tcg" : "q35,accel=kvm", "-cpu", arm ? "max" : "host", "-m", "2048", "-smp", "2",
     ...(arm ? ["-bios", "/usr/share/qemu-efi-aarch64/QEMU_EFI.fd"] : []), "-display", "none", "-serial", "stdio", "-monitor", "none",
     "-qmp", `unix:${qmp},server=on,wait=off`, "-drive", `file=${disk},if=virtio,format=qcow2`, "-device", "virtio-scsi-pci,id=scsi0",
     "-drive", `file=${join(out, "seed.iso")},if=none,id=seed,media=cdrom,readonly=on`, "-device", "scsi-cd,drive=seed",
     "-drive", `file=${join(out, "assets.iso")},if=none,id=assets,media=cdrom,readonly=on`, "-device", "scsi-cd,drive=assets",
-    "-netdev", `user,id=net0,restrict=on,hostfwd=tcp:127.0.0.1:${listenPort}-:8790`, "-device", "virtio-net-pci,netdev=net0,mac=52:54:00:12:34:56"];
+    "-netdev", `user,id=net0,restrict=on,hostfwd=tcp:127.0.0.1:${listenPort}-:8790,hostfwd=tcp:127.0.0.1:${fixturePort}-:18888`, "-device", "virtio-net-pci,netdev=net0,mac=52:54:00:12:34:56"];
   const fd = openSync(serial, "a"); vm = spawn(qemu, args, { detached: true, stdio: ["ignore", fd, fd] }); closeSync(fd);
   const available = async () => { try { return (await fetch(base, { signal: AbortSignal.timeout(1000) })).ok; } catch { return false; } };
   await waitFor(async () => (await available()) && existsSync(serial) && readFileSync(serial, "utf8").includes("NOOP_VM_PROVISIONED"), "VM did not install and start the coordinator");
@@ -170,6 +182,13 @@ echo NOOP_VM_PROVISIONED > "$TASK_TTY"
     try { const r = await request("/api/status"); return r.ok && ((await r.json()) as any).release_marker === "owner-update-v2"; } catch { return false; }
   }, "the owner request did not update the co-located coordinator", process.arch === "arm64" ? 120_000 : 45_000);
   check(true, "the owner request updates the co-located coordinator");
+  check((await (await fetch(base)).text()).includes("owner-update-web-v2"), "the first coordinator update serves the newly released Web client");
+  let firstUpdate = "";
+  await waitFor(async () => { try { const s = await (await request("/api/status")).json() as any; const u = s.hosts?.find((h: any) => h.host === "noop-vm")?.update; firstUpdate = u?.at || ""; return !!firstUpdate && u.state === "current"; } catch { return false; } }, "first update did not complete");
+  check((await fetch(`http://127.0.0.1:${fixturePort}/stop`)).ok, "the isolated Web release source can be taken offline");
+  check((await request("/api/fleet/update", "POST", {}, ownerSession)).ok, "owner requests another update with the Web release source offline");
+  await waitFor(async () => { try { const s = await (await request("/api/status")).json() as any; const u = s.hosts?.find((h: any) => h.host === "noop-vm")?.update; return u?.at > firstUpdate && u.state === "current"; } catch { return false; } }, "offline coordinator update did not complete");
+  check((await (await fetch(base)).text()).includes("owner-update-web-v2"), "offline update retains the last available Web client");
   const updatedFiles = ((await (await request("/api/files/changes?since=0")).json()) as any).files as any[];
   check(updatedFiles.some((file) => file.path === "reports/reboot.md"), "the owner-requested update preserves committed data");
   await waitFor(() => bootLines().length >= 1, "first boot marker is missing");

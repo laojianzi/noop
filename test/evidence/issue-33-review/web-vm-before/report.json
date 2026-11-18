@@ -1,0 +1,27 @@
+{
+  "status": "failed",
+  "source": "/var/tmp/noop-13-review-20261118",
+  "revision": "bd013ecfeb06ed75a0cb5a8e55870d9410346996",
+  "changes": "M src/cli.ts\n M src/local-service.ts\n M src/setup.ts\n M test/self-hosted-reboot-vm.ts\n?? test/self-hosted-install-home-e2e.sh\n?? test/self-hosted-owner-update-e2e.ts",
+  "platform": "linux-x64",
+  "timestamp": "2026-11-18T10:10:55.500Z",
+  "bun": "1.4.4",
+  "vm": "QEMU x86_64 KVM",
+  "debianImageSha256": "b94ebc662796cbd4fd1f5053ce63b59ebc56e034f8f550689713c0cae493310e",
+  "workerdSha256": "620d9f7e5eb461067e08af17316aaa087445b4232e0e98e3dd146763bd9ab394",
+  "webIndexSha256": "09d269993e3a7a26ae0733ca512c5d1d698d248acffd3a1343e8391ee76df5fc",
+  "checks": [
+    "the VM host is Linux x86_64 or ARM64",
+    "Debian image, pinned workerd and real Web assets are supplied",
+    "coordinator installs with linger while the guest has no public network",
+    "the primary service keeps its configured Noop home",
+    "owner binds TOTP on the offline VM",
+    "offline owner requests a login code",
+    "owner signs in to the offline VM",
+    "a host commits a file before reboot",
+    "the installed coordinator does not change before an explicit update",
+    "the owner requests an update through the real coordinator API",
+    "the owner request updates the co-located coordinator"
+  ],
+  "error": "Error: the first coordinator update serves the newly released Web client\n    at check (/var/tmp/noop-13-review-20261118/test/self-hosted-reboot-vm.ts:14:79)\n    at /var/tmp/noop-13-review-20261118/test/self-hosted-reboot-vm.ts:184:3"
+}
