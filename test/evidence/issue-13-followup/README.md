@@ -1,8 +1,9 @@
 # Local coordinator integration follow-up
 
 This evidence uses synthetic credentials and disposable machines. The source
-base is `98cf0a7d5fb387acb975137d81460eb2a3d08ea8`. The tested implementation
-and test diff, excluding this evidence directory, has SHA-256
+base is `98cf0a7d5fb387acb975137d81460eb2a3d08ea8`. The original tested
+implementation and test diff, before the crash assertion and excluding this
+evidence directory, has SHA-256
 `306d79976a008ebb4c5341459a389f1309780a821875af4bf7c44355e89b4a06`.
 The Linux report records the base commit because the changes were uncommitted
 when the isolated VM ran.
@@ -37,6 +38,10 @@ and synchronization by a new host. The test makes its own fixture writes
 durable before the reset. Its Web bundle came from the base commit, not the
 candidate. The PR's coordinator workflow builds Web from the PR checkout.
 
+`linux-x64-stability` repeats the scenario with the crash assertion and the
+Web bundle built from commit `8355e71`. The implementation is unchanged from
+that commit. Its report records the then-uncommitted test and evidence edits.
+
 `linux-arm64` passed the same functional checks on a native ARM64 runner using
 an emulated QEMU TCG guest. Before the reset, the primary daemon crashed twice
 and systemd restarted it. The cause is not established. A native-container
@@ -44,6 +49,8 @@ comparison is tracked in https://github.com/laojianzi/noop/actions/runs/44263150
 A QEMU CPU-feature comparison is tracked in
 https://github.com/laojianzi/noop/actions/runs/44263482350. This result does
 not prove crash-free use.
+The E2E script now fails when the serial log records a Bun crash or a failed
+service, even if systemd restarts it and later requests succeed.
 
 `cloud-after` contains the local Web/CLI E2E report. It verifies that the same
 cloud command fails without invoking Wrangler or altering local configuration,

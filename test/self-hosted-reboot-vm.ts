@@ -192,6 +192,7 @@ echo NOOP_VM_PROVISIONED > "$TASK_TTY"
   const peer = join(out, "peer"), env = { ...process.env, NOOP_HOME: peer, HUB_NO_MEDIC: "1" };
   const joined = spawnSync(process.execPath, [join(source, "src", "cli.ts"), "init", "--local", base, "--token", token], { cwd: source, env, encoding: "utf8", timeout: 30_000 });
   check(joined.status === 0 && readFileSync(join(peer, "data", "reports", "reboot.md"), "utf8") === "survives reboot", "a fresh host synchronizes the persisted file after reboot");
+  check(!/Bun has crashed|noop(?:-coordinator)?\.service: Failed with result/.test(readFileSync(serial, "utf8")), "neither service crashes or fails during the scenario");
 } catch (e) {
   error = e instanceof Error ? e.stack || e.message : String(e); console.error(`FAIL ${error}`); process.exitCode = 1;
 } finally {
