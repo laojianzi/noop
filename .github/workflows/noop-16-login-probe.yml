@@ -56,6 +56,22 @@ jobs:
           CGEvent(mouseEventSource: nil, mouseType: .mouseMoved, mouseCursorPosition: CGPoint(x: x, y: y), mouseButton: .left)!.post(tap: .cghidEventTap)
           SWIFT
           swiftc "$RUNNER_TEMP/move.swift" -o "$RUNNER_TEMP/move"
+          cat > "$RUNNER_TEMP/type.swift" <<'SWIFT'
+          import ApplicationServices
+          import Foundation
+          for char in "synthetic-noop-probe-2026".utf16 {
+              var value = char
+              for down in [true, false] {
+                  let event = CGEvent(keyboardEventSource: nil, virtualKey: 0, keyDown: down)!
+                  event.keyboardSetUnicodeString(stringLength: 1, unicodeString: &value)
+                  event.post(tap: .cghidEventTap)
+              }
+              usleep(20000)
+          }
+          CGEvent(keyboardEventSource: nil, virtualKey: 36, keyDown: true)!.post(tap: .cghidEventTap)
+          CGEvent(keyboardEventSource: nil, virtualKey: 36, keyDown: false)!.post(tap: .cghidEventTap)
+          SWIFT
+          swiftc "$RUNNER_TEMP/type.swift" -o "$RUNNER_TEMP/type"
           dscl /Search -authonly noopprobe synthetic-noop-probe-2026 >> "$RUNNER_TEMP/login-probe/user-create.txt" 2>&1 || true
           sudo defaults write /Library/Preferences/.GlobalPreferences MultipleSessionEnabled -bool true
           { defaults read /Library/Preferences/.GlobalPreferences MultipleSessionEnabled || true; find /System/Library/CoreServices /System/Library/PrivateFrameworks -iname '*CGSession*' -o -iname '*UserSwitch*' 2>/dev/null || true; } >> "$RUNNER_TEMP/login-probe/user-create.txt"
@@ -105,15 +121,15 @@ jobs:
           /usr/bin/osascript -e 'tell application "System Events" to tell process "loginwindow" to click button 1 of group 1 of list 1 of list 1 of scroll area 1 of window "Login"' > "$RUNNER_TEMP/login-probe/select.txt" 2>&1 || true
           sleep 3
           /usr/bin/osascript -e 'tell application "System Events" to tell process "loginwindow" to get entire contents of window 1' >> "$RUNNER_TEMP/login-probe/select.txt" 2>&1 || true
-          /usr/bin/osascript -e 'tell application "System Events" to keystroke "synthetic-noop-probe-2026"' -e 'tell application "System Events" to key code 36' >> "$RUNNER_TEMP/login-probe/select.txt" 2>&1 || true
+          "$RUNNER_TEMP/type" >> "$RUNNER_TEMP/login-probe/select.txt" 2>&1 || true
           for n in {1..60}; do
-            if launchctl print "gui/$(id -u noopprobe)" >/dev/null 2>&1; then break; fi
+            if sudo launchctl print "gui/$(id -u noopprobe)" >/dev/null 2>&1; then break; fi
             sleep 1
           done
           {
             printf 'console owner: '; stat -f '%Su' /dev/console
             printf 'sessions:\n'; who
-            printf 'test GUI domain:\n'; launchctl print "gui/$(id -u noopprobe)" 2>&1 || true
+            printf 'test GUI domain:\n'; sudo launchctl print "gui/$(id -u noopprobe)" 2>&1 || true
             printf 'test user processes:\n'; ps -u noopprobe -o pid,ppid,user,command || true
           } > "$RUNNER_TEMP/login-probe/switch.txt" 2>&1
           screencapture -x "$RUNNER_TEMP/login-probe/switched.png" || true
