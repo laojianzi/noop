@@ -41,6 +41,12 @@ jobs:
               print('System Events accessibility: timed out')
           PY
           } 2>&1 | tee "$RUNNER_TEMP/login-probe/inspection.txt"
+      - name: Create a disposable test user
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo sysadminctl -addUser noopprobe -fullName "Noop Probe" -password "synthetic-noop-probe-2026" -home /Users/noopprobe -shell /bin/bash > "$RUNNER_TEMP/login-probe/user-create.txt" 2>&1
+          id noopprobe >> "$RUNNER_TEMP/login-probe/user-create.txt"
       - name: Inspect the disposable lock screen
         shell: bash
         run: |
@@ -51,7 +57,7 @@ jobs:
           screencapture -x "$RUNNER_TEMP/login-probe/locked.png" || true
           python3 - <<'PY2' | tee "$RUNNER_TEMP/login-probe/locked.txt"
           import subprocess
-          for script in ['tell application "System Events" to get UI elements enabled', 'tell application "System Events" to tell process "loginwindow" to get name of every window']:
+          for script in ['tell application "System Events" to get UI elements enabled', 'tell application "System Events" to tell process "loginwindow" to get name of every window', 'tell application "System Events" to tell process "loginwindow" to get entire contents of window 1']:
               try:
                   result = subprocess.run(['/usr/bin/osascript', '-e', script], capture_output=True, text=True, timeout=8)
                   print('probe:', script, 'exit:', result.returncode, 'output:', result.stdout.strip(), 'error:', result.stderr.strip()[:200])
