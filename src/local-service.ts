@@ -52,9 +52,11 @@ export async function localService(action: string, listen = "127.0.0.1:8790", so
     const root = join(HOME_DIR, "coordinator"), current = join(root, "current");
     if (lstatSync(current, { throwIfNoEntry: false })) throw new Error("A coordinator release already exists in this Noop home");
     const { stageRelease, pointRelease } = await import("./local-release");
+    const { syncPath } = await import("./local-backup");
     const release = stageRelease(CODE, workerd), repo = join(current, "repo");
     try {
       pointRelease("current", release);
+      syncPath(root);
       const environment: Record<string, string> = { NOOP_HOME: HOME_DIR, PATH: `${join(current, "bin")}:${dirname(process.execPath)}:${process.env.PATH || ""}` };
       for (const name of ["HUB_DATA", "HUB_CONF", "SSL_CERT_FILE", "SSL_CERT_DIR"]) if (process.env[name]) environment[name] = process.env[name]!;
       if (linux) {
@@ -69,7 +71,12 @@ export async function localService(action: string, listen = "127.0.0.1:8790", so
         const log = xml(join(HOME_DIR, "coordinator", "service.log"));
         writeFileSync(file, `<?xml version="1.0" encoding="UTF-8"?>\n<!-- ${marker} -->\n<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">\n<plist version="1.0"><dict><key>Label</key><string>${LABEL}</string><key>ProgramArguments</key><array>${args}</array><key>WorkingDirectory</key><string>${xml(repo)}</string><key>EnvironmentVariables</key><dict>${env}</dict><key>RunAtLoad</key><true/><key>KeepAlive</key><true/><key>StandardOutPath</key><string>${log}</string><key>StandardErrorPath</key><string>${log}</string></dict></plist>\n`, { mode: 0o600, flag: "wx" });
       }
-      if (linux) { exec("systemctl", ["--user", "daemon-reload"]); exec("systemctl", ["--user", "enable", "--now", UNIT]); await ready(); }
+      syncPath(file);
+      for (let dir = dirname(file); ; dir = dirname(dir)) { syncPath(dir); if (dir === homedir()) break; }
+      if (linux) {
+        exec("systemctl", ["--user", "daemon-reload"]); exec("systemctl", ["--user", "enable", "--now", UNIT]);
+        syncPath(join(dirname(file), "default.target.wants")); syncPath(dirname(file)); await ready();
+      }
       else await start();
     } catch (error) {
       try { if (linux) exec("systemctl", ["--user", "disable", "--now", UNIT]); else stop(); } catch {}

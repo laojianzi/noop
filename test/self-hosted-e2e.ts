@@ -227,6 +227,11 @@ try {
   const bootstrap = Bun.TOML.parse(readFileSync(join(localHome, "noop.toml"), "utf8")) as any;
   const token = bootstrap.server?.token;
   check(typeof token === "string" && token.length >= 16, "local machine credential is persisted");
+  const localBootstrap = readFileSync(join(localHome, "noop.toml"), "utf8");
+  const cloudFromLocal = cli(["cloud", "deploy"], env);
+  writeFileSync(join(artifacts, "local-cloud-deploy.log"), cloudFromLocal.output);
+  check(cloudFromLocal.status !== 0 && !readFileSync(guard, "utf8") && readFileSync(join(localHome, "noop.toml"), "utf8") === localBootstrap,
+    "a local coordinator rejects cloud deployment without invoking Cloudflare or changing its address");
 
   const bootstrapBefore = readFileSync(join(localHome, "noop.toml"), "utf8"), duplicatePort = await availablePort();
   const duplicateLog = openSync(join(artifacts, "duplicate-deployment.log"), "a");
