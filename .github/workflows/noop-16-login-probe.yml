@@ -172,9 +172,24 @@ jobs:
           { printf 'console: '; stat -f '%Su' /dev/console; who; } | tee "$RUNNER_TEMP/login-probe/logout.txt"
           sudo cp "$RUNNER_TEMP/key" /Users/Shared/noop-test-key
           sudo chmod 755 /Users/Shared/noop-test-key
-          sudo launchctl asuser "$uid" sudo -H -u noopprobe /usr/bin/osascript -e 'tell application "System Events" to log out' > "$RUNNER_TEMP/login-probe/logout-command.txt" 2>&1 &
-          logout_pid=$!
-          sleep 8
+          sudo mkdir -p /Users/noopprobe/Library/LaunchAgents
+          cat > "$RUNNER_TEMP/logout-agent.plist" <<'PLIST'
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0"><dict>
+            <key>Label</key><string>dev.noop.test-logout</string>
+            <key>ProgramArguments</key><array><string>/usr/bin/osascript</string><string>-e</string><string>tell application "System Events" to log out</string></array>
+            <key>RunAtLoad</key><true/>
+            <key>StandardOutPath</key><string>/Users/noopprobe/logout-agent.log</string>
+            <key>StandardErrorPath</key><string>/Users/noopprobe/logout-agent-error.log</string>
+          </dict></plist>
+          PLIST
+          sudo cp "$RUNNER_TEMP/logout-agent.plist" /Users/noopprobe/Library/LaunchAgents/dev.noop.test-logout.plist
+          sudo chown noopprobe:staff /Users/noopprobe/Library/LaunchAgents/dev.noop.test-logout.plist
+          sudo launchctl bootstrap "gui/$uid" /Users/noopprobe/Library/LaunchAgents/dev.noop.test-logout.plist
+          sleep 10
+          sudo launchctl print "gui/$uid/dev.noop.test-logout" > "$RUNNER_TEMP/login-probe/logout-agent.txt" 2>&1 || true
+          sudo cat /Users/noopprobe/logout-agent-error.log >> "$RUNNER_TEMP/login-probe/logout-agent.txt" 2>&1 || true
           sudo launchctl asuser "$uid" sudo -H -u noopprobe /usr/sbin/screencapture -x /Users/Shared/noop-test-logout.png 2>/dev/null || true
           cp /Users/Shared/noop-test-logout.png "$RUNNER_TEMP/login-probe/logout-prompt.png" 2>/dev/null || true
           sudo launchctl asuser "$uid" sudo -H -u noopprobe /Users/Shared/noop-test-key enter || true
@@ -182,7 +197,6 @@ jobs:
             if ! sudo launchctl print "gui/$uid" >/dev/null 2>&1; then break; fi
             sleep 1
           done
-          kill "$logout_pid" 2>/dev/null || true
           { printf 'after logout console: '; stat -f '%Su' /dev/console; who; } | tee -a "$RUNNER_TEMP/login-probe/logout.txt"
           if sudo launchctl print "gui/$uid" >/dev/null 2>&1; then echo 'The isolated user is still logged in' | tee -a "$RUNNER_TEMP/login-probe/logout.txt"; exit 1; fi
           "$RUNNER_TEMP/key" enter
