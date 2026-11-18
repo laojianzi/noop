@@ -38,20 +38,27 @@ sed "s/__NOOP_PORT__/$port/g" "$root/scripts/fixtures/linux-runtime/App.tsx" > "
 "${NSH:-nsh}" build "$work/source/App.tsx" -o "$work/nsh"
 printf '%s\n' '{"name":"Noop runtime check","id":"dev.noop.runtime-check"}' > "$work/nsh/app.json"
 cp "$runtime" "$work/runner"
+export RUST_LOG=info
+code=0
+stopped=0
 if [[ -n "${WAYLAND_DISPLAY:-}${DISPLAY:-}" ]]; then
-  setsid "$work/runner" > "$work/log" 2>&1 &
+  setsid timeout --kill-after=5s 30s "$work/runner" > "$work/log" 2>&1 &
 else
-  setsid xvfb-run -a "$work/runner" > "$work/log" 2>&1 &
+  setsid timeout --kill-after=5s 30s xvfb-run -a "$work/runner" > "$work/log" 2>&1 &
 fi
 runner_pid=$!
 for _ in {1..300}; do
   if grep -qE 'NOOP_LINUX_RUNTIME_(WS_OK|WS_FAILED|NETWORK_FAILED)' "$work/log" || ! kill -0 "$runner_pid" 2>/dev/null; then break; fi
   sleep 0.1
 done
-kill -TERM -- "-$runner_pid" 2>/dev/null || true
-wait "$runner_pid" 2>/dev/null || true
+if kill -TERM "$runner_pid" 2>/dev/null; then stopped=1; fi
+wait "$runner_pid" 2>/dev/null || code=$?
 runner_pid=''
 cat "$work/log"
-grep -q 'INFO js: NOOP_LINUX_RUNTIME_OK' "$work/log"
-grep -q 'INFO js: NOOP_LINUX_RUNTIME_HTTP_OK' "$work/log"
-grep -q 'INFO js: NOOP_LINUX_RUNTIME_WS_OK' "$work/log"
+if [[ "$stopped" != 1 && "$code" != 0 && "$code" != 124 ]]; then exit "$code"; fi
+for marker in OK HTTP_OK WS_OK; do
+  if ! grep -q "INFO js: NOOP_LINUX_RUNTIME_$marker" "$work/log"; then
+    echo "Linux runtime did not emit $marker (exit $code)" >&2
+    exit 1
+  fi
+done
