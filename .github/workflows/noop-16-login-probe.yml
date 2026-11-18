@@ -48,6 +48,14 @@ jobs:
           sudo sysadminctl -addUser noopprobe -fullName "Noop Probe" -password "synthetic-noop-probe-2026" -home /Users/noopprobe -shell /bin/bash > "$RUNNER_TEMP/login-probe/user-create.txt" 2>&1
           id noopprobe >> "$RUNNER_TEMP/login-probe/user-create.txt"
           sudo createhomedir -c -u noopprobe >> "$RUNNER_TEMP/login-probe/user-create.txt" 2>&1 || true
+          cat > "$RUNNER_TEMP/move.swift" <<'SWIFT'
+          import ApplicationServices
+          import Foundation
+          let x = Double(CommandLine.arguments[1])!
+          let y = Double(CommandLine.arguments[2])!
+          CGEvent(mouseEventSource: nil, mouseType: .mouseMoved, mouseCursorPosition: CGPoint(x: x, y: y), mouseButton: .left)!.post(tap: .cghidEventTap)
+          SWIFT
+          swiftc "$RUNNER_TEMP/move.swift" -o "$RUNNER_TEMP/move"
           sudo defaults write /Library/Preferences/.GlobalPreferences MultipleSessionEnabled -bool true
           { defaults read /Library/Preferences/.GlobalPreferences MultipleSessionEnabled || true; find /System/Library/CoreServices /System/Library/PrivateFrameworks -iname '*CGSession*' -o -iname '*UserSwitch*' 2>/dev/null || true; } >> "$RUNNER_TEMP/login-probe/user-create.txt"
       - name: Inspect the disposable lock screen
@@ -68,6 +76,12 @@ jobs:
                   print('probe:', script, 'timed out')
           PY2
           who | tee -a "$RUNNER_TEMP/login-probe/locked.txt"
+          coords=$(/usr/bin/osascript -e 'tell application "System Events" to tell process "loginwindow" to get position of text field 1 of window "Login"')
+          x=$(echo "$coords" | cut -d, -f1); y=$(echo "$coords" | cut -d, -f2)
+          "$RUNNER_TEMP/move" "$((x + 80))" "$((y - 22))"
+          sleep 3
+          screencapture -x "$RUNNER_TEMP/login-probe/hover.png" || true
+          /usr/bin/osascript -e 'tell application "System Events" to tell process "loginwindow" to get entire contents of window 1' > "$RUNNER_TEMP/login-probe/hover.txt" 2>&1 || true
           python3 - <<'PY3' | tee "$RUNNER_TEMP/login-probe/users.txt"
           import subprocess, time
           scripts = ['tell application "System Events" to tell process "loginwindow" to click button "show all users" of scroll area 1 of window "Login"',
