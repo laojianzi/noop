@@ -9,7 +9,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        variant: [candidate, baseline]
+        variant: [without-cli, cli-only]
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 60
     steps:
