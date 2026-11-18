@@ -11,7 +11,8 @@ const repo = join(out, "repo with spaces"), home = join(out, "coordinator home")
 const assets = process.env.NOOP_E2E_WEB_ASSETS || "", workerd = process.env.NOOP_E2E_WORKERD || "", archive = process.env.NOOP_E2E_ARCHIVE || "", token = "synthetic-service-machine-token-000";
 const unit = process.platform === "linux" ? join(homedir(), ".config", "systemd", "user", "noop-coordinator.service") : join(homedir(), "Library", "LaunchAgents", "dev.noop.coordinator.plist");
 const checks: string[] = [];
-let error = "", installed = false;
+const reloginState = process.env.NOOP_E2E_RELOGIN_STATE || "";
+let error = "", installed = false, keepForRelogin = false;
 function check(ok: unknown, message: string): asserts ok { if (!ok) throw new Error(message); checks.push(message); console.log(`PASS ${message}`); }
 function totp(secret: string, counter: number) {
   let bits = 0, value = 0; const bytes: number[] = [];
@@ -88,26 +89,32 @@ try {
   check(primary.status === 0 && added.status === 0 && !!task, "primary creates a shared task through the installed service");
   const peer = join(out, "peer home"), joined = cli(["init", base, "--token", token], peer);
   check(joined.status === 0 && existsSync(join(peer, "data", "tasks", "inbox", `${task}.md`)), "an independent host synchronizes the task");
-  check(cli(["cloud", "service", "stop"]).status === 0, "native service stops");
-  await waitFor(async () => !(await available()), "service remained reachable after stop");
-  const stopped = cli(["cloud", "service", "status"]);
-  check(stopped.status !== 0 || /inactive|stopped|not running/i.test(stopped.out), "status reports that the service is stopped");
-  const keyFile = join(home, "coordinator", "namespace-key"), namespace = readFileSync(keyFile, "utf8");
-  writeFileSync(keyFile, "invalid namespace");
-  check(cli(["cloud", "service", "start"]).status !== 0, "service start reports an invalid namespace");
-  writeFileSync(keyFile, namespace);
-  check(cli(["cloud", "service", "start"]).status === 0, "native service restarts after the namespace is repaired");
-  await waitFor(available, "restarted service is not reachable");
-  const feed = await fetch(base + "/api/feed", { headers: { authorization: `Bearer ${session}` } });
-  check(feed.ok && existsSync(join(peer, "data", "tasks", "inbox", `${task}.md`)), "owner session and task survive a service restart");
-  const logs = cli(["cloud", "service", "logs"]); writeFileSync(join(out, "service-manager.log"), logs.out);
-  check(logs.status === 0 && /Local coordinator candidate|namespace key is invalid/i.test(logs.out), "service logs show startup and configuration errors");
-  check(cli(["cloud", "service", "stop"]).status === 0, "service can be stopped after verification");
-  await waitFor(async () => !(await available()), "service remained reachable after final stop");
+  if (reloginState) {
+    writeFileSync(reloginState, JSON.stringify({ home, repo, bin, base, token, session, secret, peer, task }), { mode: 0o600 });
+    check(existsSync(reloginState), "service and synthetic state are ready for a real user relogin");
+    keepForRelogin = true;
+  } else {
+    check(cli(["cloud", "service", "stop"]).status === 0, "native service stops");
+    await waitFor(async () => !(await available()), "service remained reachable after stop");
+    const stopped = cli(["cloud", "service", "status"]);
+    check(stopped.status !== 0 || /inactive|stopped|not running/i.test(stopped.out), "status reports that the service is stopped");
+    const keyFile = join(home, "coordinator", "namespace-key"), namespace = readFileSync(keyFile, "utf8");
+    writeFileSync(keyFile, "invalid namespace");
+    check(cli(["cloud", "service", "start"]).status !== 0, "service start reports an invalid namespace");
+    writeFileSync(keyFile, namespace);
+    check(cli(["cloud", "service", "start"]).status === 0, "native service restarts after the namespace is repaired");
+    await waitFor(available, "restarted service is not reachable");
+    const feed = await fetch(base + "/api/feed", { headers: { authorization: `Bearer ${session}` } });
+    check(feed.ok && existsSync(join(peer, "data", "tasks", "inbox", `${task}.md`)), "owner session and task survive a service restart");
+    const logs = cli(["cloud", "service", "logs"]); writeFileSync(join(out, "service-manager.log"), logs.out);
+    check(logs.status === 0 && /Local coordinator candidate|namespace key is invalid/i.test(logs.out), "service logs show startup and configuration errors");
+    check(cli(["cloud", "service", "stop"]).status === 0, "service can be stopped after verification");
+    await waitFor(async () => !(await available()), "service remained reachable after final stop");
+  }
 } catch (e) {
   error = e instanceof Error ? e.stack || e.message : String(e); console.error(`FAIL ${error}`); process.exitCode = 1;
 } finally {
-  if (installed) {
+  if (installed && !keepForRelogin) {
     const env = { ...process.env, NOOP_HOME: home, PATH: `${bin}:${process.env.PATH || ""}` };
     if (process.platform === "linux") {
       spawnSync("systemctl", ["--user", "disable", "--now", "noop-coordinator.service"], { env });

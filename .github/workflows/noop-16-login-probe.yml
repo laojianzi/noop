@@ -5,15 +5,29 @@ on:
   workflow_dispatch:
 permissions:
   contents: read
+  actions: read
 jobs:
   inspect:
+    timeout-minutes: 20
     strategy:
       fail-fast: false
       matrix:
-        os: [macos-15]
+        os: [macos-15-intel, macos-15]
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.4
+      - uses: actions/download-artifact@v4
+        with:
+          name: coordinator-web
+          run-id: 44231492997
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/coordinator-web
       - name: Inspect disposable graphical login capabilities
         shell: bash
         run: |
@@ -98,6 +112,41 @@ jobs:
           dscl /Search -authonly noopprobe synthetic-noop-probe-2026 >> "$RUNNER_TEMP/login-probe/user-create.txt" 2>&1 || true
           sudo defaults write /Library/Preferences/.GlobalPreferences MultipleSessionEnabled -bool true
           { defaults read /Library/Preferences/.GlobalPreferences MultipleSessionEnabled || true; find /System/Library/CoreServices /System/Library/PrivateFrameworks -iname '*CGSession*' -o -iname '*UserSwitch*' 2>/dev/null || true; } >> "$RUNNER_TEMP/login-probe/user-create.txt"
+      - name: Prepare exact coordinator test assets
+        shell: bash
+        run: |
+          set -euo pipefail
+          base=98cf0a7d5fb387acb975137d81460eb2a3d08ea8
+          git diff --exit-code "$base" HEAD -- src cloud app templates presets package.json bunfig.toml tsconfig.json
+          cd "$RUNNER_TEMP/coordinator-web"
+          shasum -a 256 -c coordinator-web.sha256
+          test "$(cat web-source-commit)" = "$base"
+          case "$(uname -m)" in
+            x86_64) runtime=workerd-darwin-64 ;;
+            arm64) runtime=workerd-darwin-arm64 ;;
+            *) echo 'Unexpected architecture' >&2; exit 1 ;;
+          esac
+          mkdir -p "$RUNNER_TEMP/noop-fixture/bin" "$RUNNER_TEMP/noop-fixture/workerd"
+          package=$(npm pack --silent --ignore-scripts "@cloudflare/$runtime@1.20261110.1" --pack-destination "$RUNNER_TEMP/noop-fixture")
+          tar -xzf "$RUNNER_TEMP/noop-fixture/$package" -C "$RUNNER_TEMP/noop-fixture/workerd"
+          cp "$RUNNER_TEMP/noop-fixture/workerd/package/bin/workerd" "$RUNNER_TEMP/noop-fixture/bin/workerd"
+          cp "$(command -v bun)" "$RUNNER_TEMP/noop-fixture/bin/bun"
+          chmod +x "$RUNNER_TEMP/noop-fixture/bin/workerd" "$RUNNER_TEMP/noop-fixture/bin/bun"
+          git clone --no-hardlinks --no-checkout "$GITHUB_WORKSPACE" "$RUNNER_TEMP/noop-fixture/repo"
+          git -C "$RUNNER_TEMP/noop-fixture/repo" checkout --detach "$GITHUB_SHA"
+          mkdir -p "$RUNNER_TEMP/noop-fixture/repo/app/dist/web" "$RUNNER_TEMP/noop-fixture/runs"
+          tar -xzf "$RUNNER_TEMP/coordinator-web/coordinator-web.tar.gz" -C "$RUNNER_TEMP/noop-fixture/repo/app/dist/web"
+          {
+            printf 'product commit: %s\n' "$base"
+            printf 'probe commit: %s\n' "$GITHUB_SHA"
+            printf 'architecture: '; uname -m
+            printf 'bun: '; "$RUNNER_TEMP/noop-fixture/bin/bun" --version
+            printf 'workerd: '; "$RUNNER_TEMP/noop-fixture/bin/workerd" --version
+            shasum -a 256 "$RUNNER_TEMP/noop-fixture/bin/workerd" "$RUNNER_TEMP/noop-fixture/repo/app/dist/web/noop/index.html"
+          } > "$RUNNER_TEMP/login-probe/versions.txt"
+          rm -rf "$RUNNER_TEMP/noop-fixture/workerd" "$RUNNER_TEMP/noop-fixture/$package"
+          sudo mv "$RUNNER_TEMP/noop-fixture" /Users/Shared/noop16
+          sudo chown -R noopprobe:staff /Users/Shared/noop16
       - name: Inspect the disposable lock screen
         shell: bash
         run: |
@@ -169,6 +218,24 @@ jobs:
             exit 1
           fi
           echo 'Synthetic desktop ready' | tee "$RUNNER_TEMP/login-probe/desktop-ready.txt"
+      - name: Install coordinator and seed isolated state
+        shell: bash
+        run: |
+          set -euo pipefail
+          uid=$(id -u noopprobe)
+          sudo launchctl asuser "$uid" sudo -H -u noopprobe env \
+            PATH=/Users/Shared/noop16/bin:/usr/bin:/bin:/usr/sbin:/sbin \
+            NOOP_E2E_DISPOSABLE=1 NOOP_E2E_OUT=/Users/Shared/noop16/runs \
+            NOOP_E2E_WEB_ASSETS=/Users/Shared/noop16/repo/app/dist/web/noop \
+            NOOP_E2E_WORKERD=/Users/Shared/noop16/bin/workerd \
+            NOOP_E2E_RELOGIN_STATE=/Users/noopprobe/noop16-state.json \
+            /Users/Shared/noop16/bin/bun /Users/Shared/noop16/repo/test/self-hosted-service-e2e.ts \
+            | tee "$RUNNER_TEMP/login-probe/coordinator-prepare.log"
+          report=$(sudo find /Users/Shared/noop16/runs -name report.json -type f -print -quit)
+          test -n "$report"
+          mkdir -p "$RUNNER_TEMP/login-probe/coordinator-prepare"
+          sudo cp "$(dirname "$report")/report.json" "$(dirname "$report")/install.log" "$(dirname "$report")/SHA256SUMS" "$RUNNER_TEMP/login-probe/coordinator-prepare/"
+          sudo chmod -R a+rX "$RUNNER_TEMP/login-probe/coordinator-prepare"
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -181,6 +248,21 @@ jobs:
         run: |
           set -euo pipefail
           uid=$(id -u noopprobe)
+          state=/Users/noopprobe/noop16-state.json
+          base=$(sudo -H -u noopprobe /usr/bin/python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["base"])' "$state")
+          interface=$(/sbin/route -n get default | awk '/interface:/{print $2; exit}')
+          test -n "$interface"
+          curl --noproxy '*' -fsS --max-time 10 https://github.com/ -o /dev/null
+          curl --noproxy '*' -fsS --max-time 5 "$base" -o /dev/null
+          (sleep 300; sudo -n pfctl -d >/dev/null 2>&1 || true) >/dev/null 2>&1 &
+          guard=$!
+          restore() { sudo -n pfctl -d >/dev/null 2>&1 || true; kill "$guard" 2>/dev/null || true; }
+          trap restore EXIT
+          printf 'block drop out quick on %s all\n' "$interface" | sudo -n pfctl -f - >/dev/null 2>&1
+          sudo -n pfctl -e >/dev/null 2>&1
+          if curl --noproxy '*' -fsS --max-time 5 https://github.com/ -o /dev/null 2>/dev/null; then echo 'Public network is still reachable' >&2; exit 1; fi
+          curl --noproxy '*' -fsS --max-time 5 "$base" -o /dev/null
+          { date -u; echo "Default interface $interface blocked; coordinator available"; } | tee "$RUNNER_TEMP/login-probe/network.txt"
           sudo launchctl print "gui/$uid" > "$RUNNER_TEMP/login-probe/before-logout-domain.txt"
           { printf 'console: '; stat -f '%Su' /dev/console; who; } | tee "$RUNNER_TEMP/login-probe/logout.txt"
           sudo cp "$RUNNER_TEMP/key" /Users/Shared/noop-test-key
@@ -197,6 +279,13 @@ jobs:
           { printf 'after logout console: '; stat -f '%Su' /dev/console; who; } | tee -a "$RUNNER_TEMP/login-probe/logout.txt"
           if sudo launchctl print "gui/$uid" >/dev/null 2>&1; then echo 'The isolated GUI domain is still active' | tee -a "$RUNNER_TEMP/login-probe/logout.txt"; exit 1; fi
           if who | awk '{ print $1 }' | grep -Fxq noopprobe; then echo 'The isolated user still has a login session' | tee -a "$RUNNER_TEMP/login-probe/logout.txt"; exit 1; fi
+          for n in {1..30}; do
+            if ! curl --noproxy '*' -fsS --max-time 1 "$base" -o /dev/null 2>/dev/null; then break; fi
+            sleep 1
+          done
+          if curl --noproxy '*' -fsS --max-time 1 "$base" -o /dev/null 2>/dev/null; then echo 'Coordinator is still available after logout' >&2; exit 1; fi
+          if curl --noproxy '*' -fsS --max-time 5 https://github.com/ -o /dev/null 2>/dev/null; then echo 'Public network returned during logout' >&2; exit 1; fi
+          { date -u; echo 'Old GUI session and coordinator have stopped'; } | tee -a "$RUNNER_TEMP/login-probe/network.txt"
           "$RUNNER_TEMP/key" enter
           sleep 3
           /usr/bin/osascript -e 'tell application "System Events" to tell process "loginwindow" to get entire contents of window 1' > "$RUNNER_TEMP/login-probe/relogin-window.txt" 2>&1 || true
@@ -217,6 +306,31 @@ jobs:
           pgrep -u noopprobe -x Finder >/dev/null
           pgrep -u noopprobe -x Dock >/dev/null
           echo 'Synthetic user logged in again and desktop is ready' | tee "$RUNNER_TEMP/login-probe/relogin-ready.txt"
+          sudo launchctl asuser "$uid" sudo -H -u noopprobe env \
+            PATH=/Users/Shared/noop16/bin:/usr/bin:/bin:/usr/sbin:/sbin \
+            NOOP_E2E_RELOGIN_STATE="$state" NOOP_E2E_VERIFY_OUT=/Users/Shared/noop16/verify \
+            NOOP_E2E_PRODUCT_COMMIT=98cf0a7d5fb387acb975137d81460eb2a3d08ea8 \
+            /Users/Shared/noop16/bin/bun /Users/Shared/noop16/repo/test/self-hosted-relogin-e2e.ts \
+            | tee "$RUNNER_TEMP/login-probe/coordinator-verify.log"
+          if curl --noproxy '*' -fsS --max-time 5 https://github.com/ -o /dev/null 2>/dev/null; then echo 'Public network returned before verification completed' >&2; exit 1; fi
+          { date -u; echo 'Coordinator authentication and synchronization completed while offline'; } | tee -a "$RUNNER_TEMP/login-probe/network.txt"
+          mkdir -p "$RUNNER_TEMP/login-probe/coordinator-relogin"
+          sudo cp /Users/Shared/noop16/verify/report.json /Users/Shared/noop16/verify/SHA256SUMS "$RUNNER_TEMP/login-probe/coordinator-relogin/"
+          sudo chmod -R a+rX "$RUNNER_TEMP/login-probe/coordinator-relogin"
+          (cd "$RUNNER_TEMP/login-probe/coordinator-relogin" && shasum -a 256 -c SHA256SUMS)
+          restore
+          trap - EXIT
+          curl --noproxy '*' -fsS --retry 3 --max-time 10 https://github.com/ -o /dev/null
+          { date -u; echo 'Public network restored'; } | tee -a "$RUNNER_TEMP/login-probe/network.txt"
+      - name: Collect coordinator verification evidence
+        if: always()
+        shell: bash
+        run: |
+          if sudo test -f /Users/Shared/noop16/verify/report.json; then
+            mkdir -p "$RUNNER_TEMP/login-probe/coordinator-relogin"
+            sudo cp /Users/Shared/noop16/verify/report.json /Users/Shared/noop16/verify/SHA256SUMS "$RUNNER_TEMP/login-probe/coordinator-relogin/"
+            sudo chmod -R a+rX "$RUNNER_TEMP/login-probe/coordinator-relogin"
+          fi
       - uses: actions/upload-artifact@v4
         if: always()
         with:
