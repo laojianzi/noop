@@ -181,40 +181,38 @@ jobs:
             printf 'test user processes:\n'; ps -u noopprobe -o pid,ppid,user,command || true
           } > "$RUNNER_TEMP/login-probe/switch.txt" 2>&1
           screencapture -x "$RUNNER_TEMP/login-probe/switched.png" || true
-          if sudo launchctl print "gui/$(id -u noopprobe)" >/dev/null 2>&1; then
-            {
-              printf 'before logout: '; who
-              sudo launchctl print "gui/$(id -u noopprobe)" | awk '/asid =/ {print; exit}'
-            } > "$RUNNER_TEMP/login-probe/logout.txt" 2>&1
-            "$RUNNER_TEMP/key" logout
-            for n in {1..60}; do
-              if ! sudo launchctl print "gui/$(id -u noopprobe)" >/dev/null 2>&1; then break; fi
-              sleep 1
-            done
-            {
-              printf 'after logout console: '; stat -f '%Su' /dev/console
-              printf 'after logout sessions:\n'; who
-              sudo launchctl print "gui/$(id -u noopprobe)" 2>&1 | head -15 || true
-              /usr/bin/osascript -e 'tell application "System Events" to tell process "loginwindow" to get entire contents of window 1' 2>&1 || true
-            } >> "$RUNNER_TEMP/login-probe/logout.txt"
-            "$RUNNER_TEMP/key" enter
-            sleep 4
-            "$RUNNER_TEMP/type"
-            for n in {1..60}; do
-              if sudo launchctl print "gui/$(id -u noopprobe)" >/dev/null 2>&1; then break; fi
-              sleep 1
-            done
-            {
-              printf 'after relogin console: '; stat -f '%Su' /dev/console
-              printf 'after relogin sessions:\n'; who
-              sudo launchctl print "gui/$(id -u noopprobe)" 2>&1 | head -22 || true
-            } >> "$RUNNER_TEMP/login-probe/logout.txt"
-            screencapture -x "$RUNNER_TEMP/login-probe/relogin.png" || true
-          fi
-          /usr/bin/osascript -e 'tell application "System Events" to key code 53' || true
-          sleep 3
-          /usr/bin/osascript -e 'tell application "System Events" to tell process "loginwindow" to get entire contents of window 1' > "$RUNNER_TEMP/login-probe/escape.txt" 2>&1 || true
-          screencapture -x "$RUNNER_TEMP/login-probe/escape.png" || true
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: macos-login-before-logout-${{ matrix.os }}
+          path: ${{ runner.temp }}/login-probe/
+          if-no-files-found: warn
+          retention-days: 7
+      - name: Log out only the isolated user
+        shell: bash
+        run: |
+          set -euo pipefail
+          uid=$(id -u noopprobe)
+          sudo launchctl print "gui/$uid" > "$RUNNER_TEMP/login-probe/before-logout-domain.txt"
+          { printf 'console: '; stat -f '%Su' /dev/console; who; } | tee "$RUNNER_TEMP/login-probe/logout.txt"
+          sudo cp "$RUNNER_TEMP/key" /Users/Shared/noop-test-key
+          sudo chmod 755 /Users/Shared/noop-test-key
+          sudo launchctl asuser "$uid" sudo -H -u noopprobe /Users/Shared/noop-test-key logout
+          for n in {1..60}; do
+            if ! sudo launchctl print "gui/$uid" >/dev/null 2>&1; then break; fi
+            sleep 1
+          done
+          { printf 'after logout console: '; stat -f '%Su' /dev/console; who; } | tee -a "$RUNNER_TEMP/login-probe/logout.txt"
+          if sudo launchctl print "gui/$uid" >/dev/null 2>&1; then echo 'The isolated user is still logged in' | tee -a "$RUNNER_TEMP/login-probe/logout.txt"; exit 1; fi
+          "$RUNNER_TEMP/key" enter
+          sleep 4
+          "$RUNNER_TEMP/type"
+          for n in {1..60}; do
+            if sudo launchctl print "gui/$uid" >/dev/null 2>&1; then break; fi
+            sleep 1
+          done
+          { printf 'after login console: '; stat -f '%Su' /dev/console; who; sudo launchctl print "gui/$uid" 2>&1 || true; } > "$RUNNER_TEMP/login-probe/after-relogin.txt"
+          sudo launchctl print "gui/$uid" >/dev/null 2>&1
       - uses: actions/upload-artifact@v4
         if: always()
         with:
