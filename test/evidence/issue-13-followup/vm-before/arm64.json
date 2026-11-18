@@ -1,0 +1,28 @@
+{
+  "status": "failed",
+  "source": "/home/runner/work/noop/noop",
+  "revision": "5522e54165d7beff7033f86e59adde5f5d1de65d",
+  "changes": "",
+  "platform": "linux-arm64",
+  "timestamp": "2026-11-18T07:41:27.503Z",
+  "bun": "1.4.4",
+  "vm": "QEMU ARM64 TCG",
+  "debianImageSha256": "2bb4cfb9f3040fa5e80b2cb6a7a9aac7f35252f3b1a5c8f0ea9fbdeb518f9316",
+  "workerdSha256": "9d557f449060e57feb17541092929801dd7f8df79be9424fd8b61b772c7237c0",
+  "webIndexSha256": "09d269993e3a7a26ae0733ca512c5d1d698d248acffd3a1343e8391ee76df5fc",
+  "checks": [
+    "the VM host is Linux x86_64 or ARM64",
+    "Debian image, pinned workerd and real Web assets are supplied",
+    "coordinator installs with linger while the guest has no public network",
+    "the primary service keeps its configured Noop home",
+    "owner binds TOTP on the offline VM",
+    "offline owner requests a login code",
+    "owner signs in to the offline VM",
+    "a host commits a file before reboot",
+    "the installed coordinator does not change before an explicit update",
+    "the owner requests an update through the real coordinator API",
+    "the owner request updates the co-located coordinator",
+    "the owner-requested update preserves committed data"
+  ],
+  "error": "Error: after a new boot the service starts with linger and no user login session\n    at check (/home/runner/work/noop/noop/test/self-hosted-reboot-vm.ts:14:79)\n    at /home/runner/work/noop/noop/test/self-hosted-reboot-vm.ts:179:3"
+}

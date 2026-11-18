@@ -5,7 +5,7 @@ import { $ } from "bun";
 import { existsSync, readFileSync, unlinkSync, writeFileSync, mkdirSync } from "node:fs";
 import { parseArgs } from "node:util";
 import {
-  type Cfg, P, ROOT, _commitPush, _pull, agentName, asText, chooseCli, claim, commitPush, guardMemory, heartbeat, hostCaps, hostName, journal,
+  type Cfg, HOME_DIR, P, ROOT, _commitPush, _pull, agentName, asText, chooseCli, claim, commitPush, guardMemory, heartbeat, hostCaps, hostName, journal,
   list, loadConfig, locked, newTask, now, onlineHosts, pickTask, pull, readDoc, remember, writeDoc,
 } from "./core";
 import { amendDecision, closeDecision, IGNORE, ignoreDecision, openDecision, overrideJudge, ownerPickedMenu, recentJudgeIds, routeDecision } from "./decisions";
@@ -15,7 +15,7 @@ import { writeRules } from "./rules";
 import { backoffMinutes, CHECKED_FALLBACK_MIN, isNoChangeRoutine, MAX_WAKES, tooManyWakes, waitMeta } from "./waits";
 import { allowedParallel, budget, canRunHeavy, ensureDisk, pressureOf, sample } from "./resources";
 import { homedir } from "node:os";
-import { basename, resolve } from "node:path";
+import { basename, dirname, join, resolve } from "node:path";
 import { init, install, selfUpdate } from "./setup";
 import { computeMetrics } from "./metrics";
 import { writeUsageReport } from "./usage-report";
@@ -507,13 +507,39 @@ async function ownerUpdate(c: Cfg, host: string) {
   };
   await report("updating", L("Pulling and testing the new code", "拉取并测试新代码"));
   const updated = await selfUpdate({ force: true, deploy: true }).catch(() => false);
+  const now7 = Bun.which("git") ? Bun.spawnSync(["git", "-C", CODE, "rev-parse", "--short", "HEAD"], { stdout: "pipe", stderr: "ignore" }).stdout.toString().trim() || before : before;
+  const coordinatorHome = !process.env.NOOP_HOME && process.env.HUB_DATA && !existsSync(join(HOME_DIR, "coordinator", "namespace-key")) ? dirname(ROOT) : HOME_DIR;
+  const coordinator = join(coordinatorHome, "coordinator");
+  let coordinatorUpdated = false;
+  if (readHubToml().cloud?.mode === "local" && isPrimary(c, host) && existsSync(join(coordinator, "namespace-key"))) {
+    if (!updated && now7 !== before) {
+      await report("failed", L("Local changes or failing tests, still running the old code", "有本地改动或测试没通过，仍在运行旧代码"));
+      return;
+    }
+    if (running || inflight.size) {
+      await report("waiting", L("Waiting for running work to finish", "等待运行中的任务完成"));
+      while (running > 0 || inflight.size > 0) { await Bun.sleep(3000); await Promise.allSettled([...inflight]); }
+    }
+    await report("deploying", L("Updating the local coordinator", "正在更新本地协调服务"));
+    try {
+      const runtime = Bun.which("workerd") ?? join(coordinator, "current", "bin", "workerd");
+      const child = Bun.spawn([process.execPath, join(CODE, "src", "cli.ts"), "cloud", "service", "update", "--source", CODE, "--workerd", runtime],
+        { env: { ...process.env, NOOP_HOME: coordinatorHome }, stdout: "ignore", stderr: "pipe" });
+      const [code, error] = await Promise.all([child.exited, new Response(child.stderr).text()]);
+      if (code !== 0) throw new Error(error.trim() || `exit ${code}`);
+      coordinatorUpdated = true;
+    } catch (error) {
+      journal(host, `⬆️ local coordinator update failed: ${String(error).replace(/\s+/g, " ").slice(0, 300)}`);
+      await report("failed", L("Coordinator update failed; check the host logs", "协调服务更新失败，请查看主机日志"));
+      return;
+    }
+  }
   if (updated) {
     journal(host, `⬆️ updated on the owner's request (was ${before}); restarting${running ? ` after ${running} running task(s)` : ""}`);
     await report(running ? "waiting" : "restarting", running ? L(`Restarting after ${running} running task(s) finish`, `等 ${running} 个任务跑完后重启`) : undefined);
     void drainAndExit("self-update", host);
     return;
   }
-  const now7 = (Bun.spawnSync(["git", "-C", CODE, "rev-parse", "--short", "HEAD"], { stdout: "pipe" }).stdout.toString().trim()) || before;
   const stale = now7 !== before; // the code moved but this process could not take it (local edits, failing tests)
   if (isCloudDeployHost(c, host) && c.cloud?.url && readHubToml().cloud?.mode !== "local") {
     await report("deploying", L("Redeploying", "重新发布线上"));
@@ -523,7 +549,8 @@ async function ownerUpdate(c: Cfg, host: string) {
     await report(err ? "failed" : "current", err ? L(`Code is current, redeploy failed: ${err.replace(/\s+/g, " ").slice(0, 120)}`, `代码已是最新，重新发布线上失败：${err.replace(/\s+/g, " ").slice(0, 120)}`) : L("Redeployed", "已重新发布线上"));
   } else {
     journal(host, stale ? `⬆️ not updated (still running ${before}; local edits or failing tests)` : `⬆️ already at ${now7}`);
-    await report(stale ? "failed" : "current", stale ? L("Local changes or failing tests, still running the old code", "有本地改动或测试没通过，仍在运行旧代码") : undefined);
+    await report(stale ? "failed" : "current", stale ? L("Local changes or failing tests, still running the old code", "有本地改动或测试没通过，仍在运行旧代码")
+      : coordinatorUpdated ? L("Coordinator updated", "协调服务已更新") : undefined);
   }
 }
 

@@ -172,6 +172,7 @@ jobs:
       - name: Package and verify Intel macOS
         if: matrix.target == 'macos'
         run: |
+          export NSH_RUNTIME="$HOME/.nsh-dist/runtime"
           args=(--build "$GITHUB_RUN_NUMBER")
           [ "$GITHUB_REF_TYPE" != tag ] || args+=(--app-version "${GITHUB_REF_NAME#v}")
           out="$RUNNER_TEMP/out-x86_64"

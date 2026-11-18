@@ -1,0 +1,35 @@
+{
+  "status": "passed",
+  "source": "/Users/runner/work/noop/noop",
+  "revision": "c331ed5c85e0fe09b93b132f3fe42753670cd229",
+  "changes": "",
+  "platform": "darwin-arm64",
+  "timestamp": "2026-11-18T07:46:28.525Z",
+  "bun": "1.4.4",
+  "webVersion": "not specified",
+  "webIndexSha256": "09d269993e3a7a26ae0733ca512c5d1d698d248acffd3a1343e8391ee76df5fc",
+  "workerd": {
+    "version": "workerd 2026-11-10",
+    "sha256": "f08ed8b7be3588cc7393b274e7278bee3125a1015ed3e214293e5e75088dd5b1"
+  },
+  "checks": [
+    "test runs on a disposable host without an existing coordinator service",
+    "real Web assets and native workerd are supplied",
+    "native service installs successfully: Coordinator service installed and running\n Local coordinator candidate: http://127.0.0.1:49181\n",
+    "service status reports the actual running state",
+    "macOS service is loaded in the logged-in user's launchd domain",
+    "owner binds TOTP through the installed service",
+    "owner requests a CLI login code",
+    "owner signs in without SMTP",
+    "primary creates a shared task through the installed service",
+    "an independent host synchronizes the task",
+    "native service stops",
+    "status reports that the service is stopped",
+    "service start reports an invalid namespace",
+    "native service restarts after the namespace is repaired",
+    "owner session and task survive a service restart",
+    "service logs show startup and configuration errors",
+    "service can be stopped after verification"
+  ],
+  "error": ""
+}
