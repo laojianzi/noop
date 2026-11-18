@@ -9,18 +9,31 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        repeat: [1, 2]
+        variant: [baseline]
+        repeat: [1, 2, 3, 4]
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Select production variant
+        shell: bash
+        run: |
+          set -euo pipefail
+          case '${{ matrix.variant }}' in
+            candidate) ;;
+            without-cli) git restore --source=98cf0a7d5fb387acb975137d81460eb2a3d08ea8 -- src/cli.ts ;;
+            cli-only) git restore --source=98cf0a7d5fb387acb975137d81460eb2a3d08ea8 -- src; git restore --source=c331ed5 -- src/cli.ts ;;
+            baseline) git restore --source=98cf0a7d5fb387acb975137d81460eb2a3d08ea8 -- src ;;
+          esac
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: 1.4.4
       - uses: actions/download-artifact@v4
         with:
           name: coordinator-web
-          run-id: 44271159062
+          run-id: 44231492997
           github-token: ${{ github.token }}
           path: ${{ runner.temp }}/web-artifact
       - name: Prepare VM and verified test inputs
@@ -31,7 +44,7 @@ jobs:
           sudo env DEBIAN_FRONTEND=noninteractive apt-get install -y -qq qemu-system-arm qemu-efi-aarch64 qemu-utils cloud-image-utils genisoimage
           cd "$RUNNER_TEMP/web-artifact"
           sha256sum -c coordinator-web.sha256
-          test "$(cat web-source-commit)" = bd013ecfeb06ed75a0cb5a8e55870d9410346996
+          test "$(cat web-source-commit)" = 98cf0a7d5fb387acb975137d81460eb2a3d08ea8
           mkdir -p "$RUNNER_TEMP/web" "$RUNNER_TEMP/runtime" "$RUNNER_TEMP/evidence"
           tar -xzf coordinator-web.tar.gz -C "$RUNNER_TEMP/web"
           package=$(npm pack --silent --ignore-scripts '@cloudflare/workerd-linux-arm64@1.20261110.1' --pack-destination "$RUNNER_TEMP")
@@ -48,11 +61,12 @@ jobs:
           NOOP_E2E_WEB_ASSETS: ${{ runner.temp }}/web/noop
           NOOP_E2E_WORKERD: ${{ runner.temp }}/runtime/package/bin/workerd
           NOOP_E2E_DEBIAN_IMAGE: ${{ runner.temp }}/debian.qcow2
+          NOOP_E2E_PRIMARY_ONLY: '1'
         run: bun test/self-hosted-reboot-vm.ts
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: noop-13-arm-sve128-${{ matrix.repeat }}
+          name: noop-13-arm-baseline-repeat-${{ matrix.repeat }}
           path: |
             ${{ runner.temp }}/evidence/**/report.json
             ${{ runner.temp }}/evidence/**/SHA256SUMS
