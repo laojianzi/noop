@@ -143,5 +143,12 @@ jobs:
             ${{ runner.temp }}/coordinator-e2e/**/proxy.key
             ${{ runner.temp }}/coordinator-e2e/**/proxy.crt
             ${{ runner.temp }}/coordinator-e2e/**/discovery.json
+            ${{ runner.temp }}/coordinator-e2e/**/shared-mcp-task.json
             ${{ runner.temp }}/coordinator-e2e/**/bad-workerd
           if-no-files-found: warn
+      - uses: actions/download-artifact@v4
+        with:
+          name: noop-coordinator-evidence-linux-${{ matrix.arch }}
+          path: ${{ runner.temp }}/downloaded-coordinator-evidence
+      - name: Verify downloaded acceptance evidence
+        run: bash test/verify-coordinator-evidence.sh "$RUNNER_TEMP/downloaded-coordinator-evidence"
