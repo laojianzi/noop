@@ -15,7 +15,7 @@ async function digest(path: string) {
   return hash.digest("hex");
 }
 
-function syncPath(path: string) {
+export function syncPath(path: string) {
   const fd = openSync(path, "r");
   try { fsyncSync(fd); } finally { closeSync(fd); }
 }

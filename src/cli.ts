@@ -5,7 +5,7 @@ import { $ } from "bun";
 import { existsSync, readFileSync, unlinkSync, writeFileSync, mkdirSync } from "node:fs";
 import { parseArgs } from "node:util";
 import {
-  type Cfg, P, ROOT, _commitPush, _pull, agentName, asText, chooseCli, claim, commitPush, guardMemory, heartbeat, hostCaps, hostName, journal,
+  type Cfg, HOME_DIR, P, ROOT, _commitPush, _pull, agentName, asText, chooseCli, claim, commitPush, guardMemory, heartbeat, hostCaps, hostName, journal,
   list, loadConfig, locked, newTask, now, onlineHosts, pickTask, pull, readDoc, remember, writeDoc,
 } from "./core";
 import { amendDecision, closeDecision, IGNORE, ignoreDecision, openDecision, overrideJudge, ownerPickedMenu, recentJudgeIds, routeDecision } from "./decisions";
@@ -15,7 +15,7 @@ import { writeRules } from "./rules";
 import { backoffMinutes, CHECKED_FALLBACK_MIN, isNoChangeRoutine, MAX_WAKES, tooManyWakes, waitMeta } from "./waits";
 import { allowedParallel, budget, canRunHeavy, ensureDisk, pressureOf, sample } from "./resources";
 import { homedir } from "node:os";
-import { basename, resolve } from "node:path";
+import { basename, dirname, join, resolve } from "node:path";
 import { init, install, selfUpdate } from "./setup";
 import { computeMetrics } from "./metrics";
 import { writeUsageReport } from "./usage-report";
@@ -457,6 +457,7 @@ function noteUnservable(cfg: Cfg, host: string) {
 let running = 0;
 /** Set when the daemon is asked to stop or restart: running agents finish first instead of being killed and redone. */
 let draining = false;
+let drainExitRequested = false;
 const RESTART_FLAG = () => P("..", "restart-requested");
 /** Follow-up work a finished task still owes (retry bookkeeping etc.): drain waits for it too. */
 const inflight = new Set<Promise<unknown>>();
@@ -467,12 +468,17 @@ export function restartAllowed(force = false, file = LAST_RESTART(), t = Date.no
   if (force) return true;
   try { return t - Date.parse(readFileSync(file, "utf8").trim()) >= minGapMs; } catch { return true; }
 }
-async function drainAndExit(why: string, host: string) {
-  if (draining) return;
+async function drainAndExit(why: string, host: string, afterDrain?: () => Promise<boolean>) {
+  if (draining) { drainExitRequested = true; return; }
   draining = true;
   if (running) console.log(`${why}: waiting for ${running} running task(s) to finish`);
   // `running` covers each task from claim until its agent process exited and its result was committed
   while (running > 0 || inflight.size > 0) { await Bun.sleep(3000); await Promise.allSettled([...inflight]); }
+  if (afterDrain) {
+    let shouldExit = true;
+    try { shouldExit = await afterDrain(); } catch (error) { console.error("update after drain failed", error); }
+    if (!shouldExit && !drainExitRequested) { draining = false; return; }
+  }
   try {
     mkdirSync(P("logs"), { recursive: true });
     writeFileSync(LAST_RESTART(), new Date().toISOString());
@@ -507,14 +513,51 @@ async function ownerUpdate(c: Cfg, host: string) {
   };
   await report("updating", L("Pulling and testing the new code", "拉取并测试新代码"));
   const updated = await selfUpdate({ force: true, deploy: true }).catch(() => false);
+  const currentRev = Bun.which("git") ? Bun.spawnSync(["git", "-C", CODE, "rev-parse", "HEAD"], { stdout: "pipe", stderr: "ignore" }).stdout.toString().trim() : "";
+  const now7 = currentRev.slice(0, 7) || before;
+  const stale = !!from && !!currentRev && currentRev !== from;
+  const coordinatorHome = !process.env.NOOP_HOME && process.env.HUB_DATA && !existsSync(join(HOME_DIR, "coordinator", "namespace-key")) ? dirname(ROOT) : HOME_DIR;
+  const coordinator = join(coordinatorHome, "coordinator");
+  if (readHubToml().cloud?.mode === "local" && isPrimary(c, host) && (await import("./local-service")).localServiceInstalled(coordinatorHome)) {
+    const targetRev = !updated && currentRev ? Bun.spawnSync(["git", "-C", CODE, "rev-parse", "--verify", "@{u}"], { stdout: "pipe", stderr: "ignore" }).stdout.toString().trim() : "";
+    if (!updated && (stale || (!!targetRev && targetRev !== currentRev))) {
+      await report("failed", L("Local changes or failing tests, still running the old code", "有本地改动或测试没通过，仍在运行旧代码"));
+      return;
+    }
+    if (running || inflight.size) {
+      await report("waiting", L("Waiting for running work to finish", "等待运行中的任务完成"));
+    }
+    void drainAndExit("self-update", host, async () => {
+      await report("deploying", L("Updating the local coordinator", "正在更新本地协调服务"));
+      try {
+        await (await import("./webclient")).ensureWebClient();
+        const runtime = Bun.which("workerd") ?? join(coordinator, "current", "bin", "workerd");
+        const child = Bun.spawn([process.execPath, join(CODE, "src", "cli.ts"), "cloud", "service", "update", "--source", CODE, "--workerd", runtime],
+          { env: { ...process.env, NOOP_HOME: coordinatorHome }, stdout: "ignore", stderr: "pipe" });
+        const [code, error] = await Promise.all([child.exited, new Response(child.stderr).text()]);
+        if (code !== 0) throw new Error(error.trim() || `exit ${code}`);
+      } catch (error) {
+        journal(host, `⬆️ local coordinator update failed: ${String(error).replace(/\s+/g, " ").slice(0, 300)}`);
+        await report("failed", L("Coordinator update failed; check the host logs", "协调服务更新失败，请查看主机日志"));
+        return updated;
+      }
+      if (updated) {
+        journal(host, `⬆️ updated on the owner's request (was ${before}); restarting`);
+        await report("restarting");
+      } else {
+        journal(host, `⬆️ already at ${now7}; coordinator updated`);
+        await report("current", L("Coordinator updated", "协调服务已更新"));
+      }
+      return updated;
+    });
+    return;
+  }
   if (updated) {
     journal(host, `⬆️ updated on the owner's request (was ${before}); restarting${running ? ` after ${running} running task(s)` : ""}`);
     await report(running ? "waiting" : "restarting", running ? L(`Restarting after ${running} running task(s) finish`, `等 ${running} 个任务跑完后重启`) : undefined);
     void drainAndExit("self-update", host);
     return;
   }
-  const now7 = (Bun.spawnSync(["git", "-C", CODE, "rev-parse", "--short", "HEAD"], { stdout: "pipe" }).stdout.toString().trim()) || before;
-  const stale = now7 !== before; // the code moved but this process could not take it (local edits, failing tests)
   if (isCloudDeployHost(c, host) && c.cloud?.url && readHubToml().cloud?.mode !== "local") {
     await report("deploying", L("Redeploying", "重新发布线上"));
     const cloud = await import("./cloud");

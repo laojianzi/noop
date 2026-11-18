@@ -1,0 +1,8 @@
+# machine-local Noop bootstrap (never synced): your Worker URL + this machine's token
+[cloud]
+mode = "local"
+url = "https://synthetic.workers.dev"
+name = "noop"
+
+[server]
+token = "synthetic-machine-token-000000"

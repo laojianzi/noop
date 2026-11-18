@@ -303,6 +303,13 @@ It writes logs, versions, a report and checksums to a temporary directory.
 
 ## Run native service and update acceptance
 
+Run `bash test/self-hosted-install-home-e2e.sh` to check installation with
+normalized and unnormalized home paths. It uses isolated homes and a simulated
+service manager. With the Web and workerd paths above, run
+`bun test/self-hosted-owner-update-e2e.ts` to check owner updates with real Git,
+a primary daemon, a local coordinator and simulated agents. The failure case
+uses a simulated service definition. Both tests save logs and checksums.
+
 Run these only on a disposable machine or VM without an existing Noop
 coordinator service. Set `NOOP_E2E_DISPOSABLE=1`, `NOOP_E2E_WEB_ASSETS`, and
 `NOOP_E2E_WORKERD`, then run:
@@ -333,5 +340,6 @@ For unattended Linux reboot acceptance, provide a Debian 12 cloud image and
 the VM dependencies used by `test/self-hosted-reboot-vm.ts`. Set
 `NOOP_E2E_DEBIAN_IMAGE`, `NOOP_E2E_WEB_ASSETS`, and `NOOP_E2E_WORKERD`, then
 run `bun test/self-hosted-reboot-vm.ts`. The test creates a new QEMU VM, blocks
-its public network, resets it, and checks service state, login and host sync.
-Its report records whether the VM used KVM or software emulation.
+its public network, checks online and offline Web release updates from a local
+fixture, resets the VM, and checks service state, login and host sync. Its report
+records whether the VM used KVM or software emulation.

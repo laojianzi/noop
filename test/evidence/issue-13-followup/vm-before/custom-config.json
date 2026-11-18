@@ -1,0 +1,26 @@
+{
+  "status": "failed",
+  "source": "/var/tmp/noop-13-review-20261118",
+  "revision": "98cf0a7d5fb387acb975137d81460eb2a3d08ea8",
+  "changes": "M .github/workflows/release.yml\n M app/App.tsx\n M src/cli.ts\n M src/cloud.ts\n M src/local-backup.ts\n M src/local-release.ts\n M src/local-service.ts\n M src/server.ts\n M src/setup.ts\n M test/self-hosted-e2e.ts\n M test/self-hosted-reboot-vm.ts",
+  "platform": "linux-x64",
+  "timestamp": "2026-11-18T07:43:23.280Z",
+  "bun": "1.4.4",
+  "vm": "QEMU x86_64 KVM",
+  "debianImageSha256": "b94ebc662796cbd4fd1f5053ce63b59ebc56e034f8f550689713c0cae493310e",
+  "workerdSha256": "620d9f7e5eb461067e08af17316aaa087445b4232e0e98e3dd146763bd9ab394",
+  "webIndexSha256": "09d269993e3a7a26ae0733ca512c5d1d698d248acffd3a1343e8391ee76df5fc",
+  "checks": [
+    "the VM host is Linux x86_64 or ARM64",
+    "Debian image, pinned workerd and real Web assets are supplied",
+    "coordinator installs with linger while the guest has no public network",
+    "the primary service keeps its configured Noop home",
+    "owner binds TOTP on the offline VM",
+    "offline owner requests a login code",
+    "owner signs in to the offline VM",
+    "a host commits a file before reboot",
+    "the installed coordinator does not change before an explicit update",
+    "the owner requests an update through the real coordinator API"
+  ],
+  "error": "Error: the owner request did not update the co-located coordinator:  0.0.0.0:*        users:((\"systemd-resolve\",pid=404,fd=12))                                      \r\nLISTEN    0         4096            127.0.0.54:53               0.0.0.0:*        users:((\"systemd-resolve\",pid=404,fd=20))                                      \r\nLISTEN    0         4096               0.0.0.0:8790             0.0.0.0:*        users:((\"workerd\",pid=702,fd=12))                                              \r\nLISTEN    0         128                   [::]:22                  [::]:*        users:((\"sshd\",pid=504,fd=4))                                                  \r\nLISTEN    0         4096                  [::]:5355                [::]:*        users:((\"systemd-resolve\",pid=404,fd=14))                                      \r\n[\u001b[0;32m  OK  \u001b[0m] Finished \u001b[0;1;39mnoop-vm-proof.ser…\u001b[0m - Record Noop VM login state.\r\r\nNOOP_VM_PUBLIC_NETWORK_BLOCKED\r\nNOOP_VM_PROVISIONED\r\nci-info: no authorized SSH keys fingerprints found for user nooptest.\r\n<14>Nov 18 07:42:37 cloud-init: #############################################################\r\n<14>Nov 18 07:42:37 cloud-init: -----BEGIN SSH HOST KEY FINGERPRINTS-----\r\n<14>Nov 18 07:42:37 cloud-init: 1024 SHA256:7CPlb9wtRePrMHX/9tCIojzlIOK9BrFJ3Mbrj+K2ZmA root@noop-vm (DSA)\r\n<14>Nov 18 07:42:37 cloud-init: 256 SHA256:1fWvgFF2XUk2l1L72eFeSZKogtMY9HnVsc0FfLNVHoc root@noop-vm (ECDSA)\r\n<14>Nov 18 07:42:37 cloud-init: 256 SHA256:w1+PKvDAEGhXlwrQyJsZlda+GLNsKdia+QyA1k6j4rE root@noop-vm (ED25519)\r\n<14>Nov 18 07:42:37 cloud-init: 3072 SHA256:Gxeoo7I20lDDLpcBSNKI/0E479/2ofzO8NdiEQi8MDo root@noop-vm (RSA)\r\n<14>Nov 18 07:42:37 cloud-init: -----END SSH HOST KEY FINGERPRINTS-----\r\n<14>Nov 18 07:42:37 cloud-init: #############################################################\r\n-----BEGIN SSH HOST KEY KEYS-----\r\necdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBP1hIC/tA2vjiOu666lM5cSp3pQcgblTDz/a6NZQ0e9NmabcCwW+Jhcl5EMvOR5ratwbh3Amflf89W8H3iL8RSo= root@noop-vm\r\nssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAID3X3EeYC007yycUtQvVf+MXA4yNwqSTIdQZ8RdIqqrz root@noop-vm\r\nssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABgQCxG32fuQc0EoaJVIGESH4KvSsP2kJY32nUEUaeTqLzaoStTMK35GG+Xn8ZuqQJDrirWTlfgF8Fer/Ux8jDJe1t7oYpX8nLB8D/QdV1xdevpQii+3I0j6ZJB7lzyjsh/4VyFBuje43O6VyFDJfUySqv2qKI2P9W03a6Kf38OCrA3cXRvfj0uZWEQNFkBb9covs98EaKtbuOm+5QfjbVXm7kP5CNNLLAUOomNtMh9+576QAH3GN4Y9IQv7nBO91kuww3/X6MRLnoBU+UDK30KFzV0SafDkG2l8+CTz+xSkaiEkcuLG5Bh0Pxw4Kfb3JvGf/8+EwEwnfQAem+S3oZKMo0AcvEYvwsDDdFl5BLUjLqkJFx0F3GW/4YuZ/JBz0TBoW7BgtuuGpK38YSyfbctATuthg/Js30gfTDPM56WAE9QHcg+fxJMbY8pQHwM5pfQSW4YmsnpDnGwCGi8mlc6N/+U/5/i4OfbCgzonZYdFaQDRDJsOlOiu7se23PVpAzAFE= root@noop-vm\r\n-----END SSH HOST KEY KEYS-----\r\n[   57.053897] cloud-init[549]: Cloud-init v. 22.4.2 finished at Wed, 18 Nov 2026 07:42:37 +0000. Datasource DataSourceNoCloud [seed=/dev/sr0][dsmode=net].  Up 57.03 seconds\r\n[\u001b[0;32m  OK  \u001b[0m] Finished \u001b[0;1;39mcloud-final.servi… Execute cloud user/final scripts.\r\r\n[\u001b[0;32m  OK  \u001b[0m] Reached target \u001b[0;1;39mcloud-init.target\u001b[0m - Cloud-init target.\r\r\n\n    at waitFor (/var/tmp/noop-13-review-20261118/test/self-hosted-reboot-vm.ts:38:13)"
+}

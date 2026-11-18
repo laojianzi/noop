@@ -1,0 +1,27 @@
+{
+  "status": "failed",
+  "source": "/var/tmp/noop-13-review-20261118",
+  "revision": "98cf0a7d5fb387acb975137d81460eb2a3d08ea8",
+  "changes": "M .github/workflows/release.yml\n M src/cli.ts\n M src/cloud.ts\n M test/self-hosted-e2e.ts\n M test/self-hosted-reboot-vm.ts",
+  "platform": "linux-x64",
+  "timestamp": "2026-11-18T07:11:22.100Z",
+  "bun": "1.4.4",
+  "vm": "QEMU x86_64 KVM",
+  "debianImageSha256": "b94ebc662796cbd4fd1f5053ce63b59ebc56e034f8f550689713c0cae493310e",
+  "workerdSha256": "620d9f7e5eb461067e08af17316aaa087445b4232e0e98e3dd146763bd9ab394",
+  "webIndexSha256": "09d269993e3a7a26ae0733ca512c5d1d698d248acffd3a1343e8391ee76df5fc",
+  "checks": [
+    "the VM host is Linux x86_64 or ARM64",
+    "Debian image, pinned workerd and real Web assets are supplied",
+    "coordinator installs with linger while the guest has no public network",
+    "owner binds TOTP on the offline VM",
+    "offline owner requests a login code",
+    "owner signs in to the offline VM",
+    "a host commits a file before reboot",
+    "the installed coordinator does not change before an explicit update",
+    "the owner requests an update through the real coordinator API",
+    "the owner request updates the co-located coordinator",
+    "the owner-requested update preserves committed data"
+  ],
+  "error": "Error: VM exited: : Main process exited, code=exited, status=1/FAILURE\r\nnoop-coordinator.service: Failed with result 'exit-code'.\r\nnoop-coordinator.service: Scheduled restart job, restart counter is at 6.\r\nStopped noop-coordinator.service - Noop coordination service.\r\nStarted noop-coordinator.service - Noop coordination service.\r\n74 |   if (!workerd) throw new Error(`Install workerd ${WORKERD_DATE} and put it on PATH`);\r\n75 |   const expected = WORKERD_SHA256[`${process.platform}-${process.arch}`];\r\n76 |   if (!expected) throw new Error(\"The local coordinator candidate supports Linux and macOS on x86_64 and ARM64\");\r\n77 |   const hash = new Bun.CryptoHasher(\"sha256\");\r\n78 |   for await (const chunk of Bun.file(workerd).stream()) hash.update(chunk);\r\n79 |   if (hash.digest(\"hex\") !== expected) throw new Error(`The workerd ${WORKERD_DATE} binary checksum does not match`);\r\n                                                      ^\r\nerror: The workerd 2026-11-10 binary checksum does not match\r\n      at localCoordinator (/home/nooptest/.noop-test/coordinator/releases/release-LsX4Y3/repo/src/local-coordinator.ts:79:50)\r\n      at async main (/home/nooptest/.noop-test/coordinator/releases/release-LsX4Y3/repo/src/cli.ts:1304:82)\r\nnoop-coordinator.service: Main process exited, code=exited, status=1/FAILURE\r\nnoop-coordinator.service: Failed with result 'exit-code'.\r\nnoop-coordinator.service: Scheduled restart job, restart counter is at 7.\r\nStopped noop-coordinator.service - Noop coordination service.\r\nStarted noop-coordinator.service - Noop coordination service.\r\nState     Recv-Q    Send-Q       Local Address:Port        Peer Address:Port    Process                                                                         \r\nLISTEN    0         4096            127.0.0.54:53               0.0.0.0:*        users:((\"systemd-resolve\",pid=391,fd=21))                                      \r\nLISTEN    0         128                0.0.0.0:22               0.0.0.0:*        users:((\"sshd\",pid=441,fd=3))                                                  \r\nLISTEN    0         4096               0.0.0.0:5355             0.0.0.0:*        users:((\"systemd-resolve\",pid=391,fd=12))                                      \r\nLISTEN    0         4096         127.0.0.53%lo:53               0.0.0.0:*        users:((\"systemd-resolve\",pid=391,fd=19))                                      \r\nLISTEN    0         128                   [::]:22                  [::]:*        users:((\"sshd\",pid=441,fd=4))                                                  \r\nLISTEN    0         4096                  [::]:5355                [::]:*        users:((\"systemd-resolve\",pid=391,fd=14))                                      \r\n[   26.592901] cloud-init[635]: Cloud-init v. 22.4.2 running 'modules:final' at Wed, 18 Nov 2026 07:10:51 +0000. Up 26.56 seconds.\r\n[   26.663509] cloud-init[635]: Cloud-init v. 22.4.2 finished at Wed, 18 Nov 2026 07:10:51 +0000. Datasource DataSourceNoCloud [seed=/dev/sr0][dsmode=net].  Up 26.65 seconds\r\n\n    at waitFor (/var/tmp/noop-13-review-20261118/test/self-hosted-reboot-vm.ts:34:75)"
+}

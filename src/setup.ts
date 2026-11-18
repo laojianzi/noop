@@ -2,7 +2,7 @@
 import { $ } from "bun";
 import { cpSync, existsSync, mkdirSync, readFileSync, readdirSync, unlinkSync, writeFileSync } from "node:fs";
 import { homedir, hostname } from "node:os";
-import { join } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { CODE, DATA, HOME_DIR, P, isCloudDeployHost } from "./core";
 
 const STATE_DIRS = [
@@ -49,8 +49,14 @@ async function joinViaLogin(url: string, host: string): Promise<string | null> {
  *  A host already set up as the primary (or already joined) keeps its role when init runs again. */
 export async function init(opts: { worker?: string; token?: string; primary?: boolean; local?: boolean } = {}) {
   const { commitPush, pull, loadConfig, hostName } = await import("./core");
-  const { hubDialUrl, readHubToml, syncMode, writeHubToml } = await import("./sync");
+  const { hubDialUrl, hubTomlPath, readHubToml, syncMode, writeHubToml } = await import("./sync");
   mkdirSync(DATA, { recursive: true });
+  const persistLocalConfig = async () => {
+    if ((process.platform !== "linux" && process.platform !== "darwin") || readHubToml().cloud?.mode !== "local") return;
+    const { syncPath } = await import("./local-backup");
+    for (const file of [hubTomlPath(), P("config.toml"), P("config.local.toml")]) if (existsSync(file)) syncPath(file);
+    for (const dir of new Set([DATA, dirname(DATA), dirname(hubTomlPath())])) syncPath(dir);
+  };
   const me = hostname().split(".")[0];
   const joined = readHubToml().cloud?.url;
   if (opts.primary && opts.local) {
@@ -71,6 +77,7 @@ export async function init(opts: { worker?: string; token?: string; primary?: bo
     writeHubToml({ cloud: { url, mode, ...(url !== joined ? { local_url: "" } : {}) }, server: { token } });
     if (!(await pull())) { console.error(`could not sync from ${url} (check the URL / token)`); process.exitCode = 1; return; }
     writeLocalConfig(me);
+    await persistLocalConfig();
     console.log(`✔ joined ${url}; data mirrored to ${DATA}\n  next: hub install   (runs the daemon as a service)`);
     return;
   }
@@ -96,6 +103,7 @@ export async function init(opts: { worker?: string; token?: string; primary?: bo
     if (!readHubToml().cloud?.url) console.log("Worker not deployed yet; data stays local until you run: hub cloud deploy");
   }
   if (await syncMode() === "remote" && !(await commitPush(`[${me}] init`))) console.error("could not push the initial data; it will sync on the next daemon tick");
+  await persistLocalConfig();
   console.log(`✔ data: ${DATA}\n  next: hub install   (runs the daemon as a service)`);
 }
 
@@ -195,7 +203,7 @@ export async function selfUpdate(opts: { busy?: number; force?: boolean; deploy?
 export const SERVICE = existsSync(join(homedir(), ".config/systemd/user/agent-hub.service")) || existsSync(join(homedir(), "Library/LaunchAgents/com.agent-hub.daemon.plist")) ? "agent-hub" : "noop";
 const LABEL = SERVICE === "agent-hub" ? "com.agent-hub.daemon" : "dev.noop.daemon";
 /** Write a launch agent without loading it; also supports fresh macOS accounts. */
-export function writeMacAgent(home: string, data: string, bun: string, cli: string, path: string, label: string): string {
+export function writeMacAgent(home: string, data: string, bun: string, cli: string, path: string, label: string, noopHome = ""): string {
   const xml = (value: string) => value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&apos;");
   const plist = join(home, `Library/LaunchAgents/${label}.plist`);
   mkdirSync(join(plist, ".."), { recursive: true });
@@ -205,7 +213,7 @@ export function writeMacAgent(home: string, data: string, bun: string, cli: stri
 <plist version="1.0"><dict>
   <key>Label</key><string>${xml(label)}</string>
   <key>ProgramArguments</key><array><string>/usr/bin/caffeinate</string><string>-i</string><string>${xml(bun)}</string><string>${xml(cli)}</string><string>daemon</string></array>
-  <key>EnvironmentVariables</key><dict><key>PATH</key><string>${xml(path)}</string><key>HUB_DATA</key><string>${xml(data)}</string></dict>
+  <key>EnvironmentVariables</key><dict><key>PATH</key><string>${xml(path)}</string><key>HUB_DATA</key><string>${xml(data)}</string>${noopHome ? `<key>NOOP_HOME</key><string>${xml(noopHome)}</string>` : ""}</dict>
   <key>RunAtLoad</key><true/>
   <key>KeepAlive</key><true/>
   <key>ProcessType</key><string>Background</string>
@@ -221,6 +229,14 @@ export async function install() {
   const cli = join(CODE, "src", "cli.ts");
   const path = [join(homedir(), ".bun/bin"), join(homedir(), ".local/bin"), join(homedir(), ".cargo/bin"), join(homedir(), "go/bin"), join(homedir(), ".local/share/mise/shims"),
     join(homedir(), ".local/share/mise/command-wrappers/bin"), "/opt/homebrew/bin", "/usr/local/bin", "/usr/bin", "/bin"].join(":");
+  const { readHubToml } = await import("./sync");
+  const syncPath = (process.platform === "linux" || process.platform === "darwin") && readHubToml().cloud?.mode === "local"
+    ? (await import("./local-backup")).syncPath : undefined;
+  const syncService = (file: string) => {
+    if (!syncPath) return;
+    syncPath(file);
+    for (let dir = dirname(file); ; dir = dirname(dir)) { syncPath(dir); if (dir === resolve(homedir()) || dir === dirname(dir)) break; }
+  };
   if (process.platform === "linux") {
     const unit = join(homedir(), `.config/systemd/user/${SERVICE}.service`);
     mkdirSync(join(unit, ".."), { recursive: true });
@@ -240,22 +256,25 @@ KillMode=mixed
 TimeoutStopSec=90min
 Environment=PATH=${path}
 Environment=HUB_DATA=${DATA}
-Nice=5
+${process.env.NOOP_HOME ? `Environment=${JSON.stringify(`NOOP_HOME=${HOME_DIR.replace(/%/g, "%%")}`)}\n` : ""}Nice=5
 # keep the box awake while the fleet runs
 ExecStartPre=-/usr/bin/true
 
 [Install]
 WantedBy=default.target
 `);
+    syncService(unit);
     await $`systemctl --user daemon-reload`.nothrow();
     await $`systemctl --user enable --now ${SERVICE}.service`.nothrow();
+    if (syncPath) { syncPath(join(dirname(unit), "default.target.wants")); syncPath(dirname(unit)); }
     await $`loginctl enable-linger ${process.env.USER ?? ""}`.nothrow(); // run without a login session / monitor
     console.log(`✔ systemd user service installed: ${unit}
   logs:   journalctl --user -u ${SERVICE} -f
   24/7:   linger enabled (runs with no one logged in). To prevent sleep on this always-on box:
           sudo systemctl mask sleep.target suspend.target hibernate.target hybrid-sleep.target`);
   } else if (process.platform === "darwin") {
-    const plist = writeMacAgent(homedir(), DATA, bun, cli, path, LABEL);
+    const plist = writeMacAgent(homedir(), DATA, bun, cli, path, LABEL, process.env.NOOP_HOME ? HOME_DIR : "");
+    syncService(plist);
     await $`launchctl bootout gui/${process.getuid!()} ${plist}`.quiet().nothrow();
     await $`launchctl bootstrap gui/${process.getuid!()} ${plist}`;
     console.log(`✔ launchd agent installed: ${plist} (starts at login; caffeinate -i prevents idle sleep). Keep a primary Mac logged in and awake: sleep, logout or closing the lid pauses coordination until it returns.`);

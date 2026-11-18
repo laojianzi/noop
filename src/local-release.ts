@@ -1,9 +1,9 @@
-import { chmodSync, copyFileSync, cpSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readlinkSync, renameSync, rmSync, symlinkSync, unlinkSync } from "node:fs";
+import { chmodSync, copyFileSync, cpSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, readlinkSync, renameSync, rmSync, symlinkSync, unlinkSync } from "node:fs";
 import { createServer } from "node:net";
 import { dirname, join, relative, resolve } from "node:path";
 import { CODE, HOME_DIR } from "./core";
 import { readHubToml } from "./sync";
-import { backupCoordinator, restoreCoordinator } from "./local-backup";
+import { backupCoordinator, restoreCoordinator, syncPath } from "./local-backup";
 
 const root = join(HOME_DIR, "coordinator"), releases = join(root, "releases");
 
@@ -22,6 +22,15 @@ export function stageRelease(source = CODE, runtime = Bun.which("workerd")) {
     cpSync(join(source, "app", "dist", "web", "noop"), join(repo, "app", "dist", "web", "noop"), { recursive: true });
     mkdirSync(join(release, "bin"), { mode: 0o700 });
     copyFileSync(runtime, join(release, "bin", "workerd")); chmodSync(join(release, "bin", "workerd"), 0o700);
+    const sync = (path: string) => {
+      for (const entry of readdirSync(path, { withFileTypes: true })) {
+        const child = join(path, entry.name);
+        if (entry.isDirectory()) sync(child);
+        else if (entry.isFile()) syncPath(child);
+      }
+      syncPath(path);
+    };
+    sync(release); syncPath(releases);
     return release;
   } catch (error) { rmSync(release, { recursive: true, force: true }); throw error; }
 }
@@ -82,6 +91,7 @@ export async function updateRelease(action: "update" | "rollback", start: () => 
     renameSync(join(clone, "coordinator", "storage"), storage); newStorage = true;
     pointRelease("current", selected); changedCurrent = true;
     pointRelease("previous", oldRelease); changedPrevious = true;
+    syncPath(root);
     await start(); stopped = false;
     try { rmSync(saved, { recursive: true, force: true }); } catch { console.error(`Old coordinator storage remains at ${saved}`); }
     console.log(`Coordinator ${action} complete. Backup: ${backup}`);
@@ -93,6 +103,7 @@ export async function updateRelease(action: "update" | "rollback", start: () => 
         if (savedStorage) renameSync(saved, storage);
         if (changedCurrent) pointRelease("current", oldRelease);
         if (changedPrevious) { if (oldPrevious) pointRelease("previous", oldPrevious); else unlinkSync(previous); }
+        syncPath(root);
         await start();
       } catch (recovery) { throw new Error(`Coordinator ${action} failed: ${error}. Recovery failed: ${recovery}.${preserved} Backup: ${backup}`); }
     }
