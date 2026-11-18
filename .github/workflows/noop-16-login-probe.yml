@@ -47,6 +47,9 @@ jobs:
           set -euo pipefail
           sudo sysadminctl -addUser noopprobe -fullName "Noop Probe" -password "synthetic-noop-probe-2026" -home /Users/noopprobe -shell /bin/bash > "$RUNNER_TEMP/login-probe/user-create.txt" 2>&1
           id noopprobe >> "$RUNNER_TEMP/login-probe/user-create.txt"
+          sudo createhomedir -c -u noopprobe >> "$RUNNER_TEMP/login-probe/user-create.txt" 2>&1 || true
+          sudo defaults write /Library/Preferences/.GlobalPreferences MultipleSessionEnabled -bool true
+          { defaults read /Library/Preferences/.GlobalPreferences MultipleSessionEnabled || true; find /System/Library/CoreServices /System/Library/PrivateFrameworks -iname '*CGSession*' -o -iname '*UserSwitch*' 2>/dev/null || true; } >> "$RUNNER_TEMP/login-probe/user-create.txt"
       - name: Inspect the disposable lock screen
         shell: bash
         run: |
@@ -78,6 +81,10 @@ jobs:
               time.sleep(2)
           PY3
           screencapture -x "$RUNNER_TEMP/login-probe/users.png" || true
+          /usr/bin/osascript -e 'tell application "System Events" to key code 53' || true
+          sleep 3
+          /usr/bin/osascript -e 'tell application "System Events" to tell process "loginwindow" to get entire contents of window 1' > "$RUNNER_TEMP/login-probe/escape.txt" 2>&1 || true
+          screencapture -x "$RUNNER_TEMP/login-probe/escape.png" || true
       - uses: actions/upload-artifact@v4
         if: always()
         with:
