@@ -72,6 +72,17 @@ jobs:
           CGEvent(keyboardEventSource: nil, virtualKey: 36, keyDown: false)!.post(tap: .cghidEventTap)
           SWIFT
           swiftc "$RUNNER_TEMP/type.swift" -o "$RUNNER_TEMP/type"
+          cat > "$RUNNER_TEMP/key.swift" <<'SWIFT'
+          import ApplicationServices
+          import Foundation
+          let code: CGKeyCode = CommandLine.arguments[1] == "logout" ? 12 : 36
+          for down in [true, false] {
+              let event = CGEvent(keyboardEventSource: nil, virtualKey: code, keyDown: down)!
+              if code == 12 { event.flags = [.maskCommand, .maskShift, .maskAlternate] }
+              event.post(tap: .cghidEventTap)
+          }
+          SWIFT
+          swiftc "$RUNNER_TEMP/key.swift" -o "$RUNNER_TEMP/key"
           dscl /Search -authonly noopprobe synthetic-noop-probe-2026 >> "$RUNNER_TEMP/login-probe/user-create.txt" 2>&1 || true
           sudo defaults write /Library/Preferences/.GlobalPreferences MultipleSessionEnabled -bool true
           { defaults read /Library/Preferences/.GlobalPreferences MultipleSessionEnabled || true; find /System/Library/CoreServices /System/Library/PrivateFrameworks -iname '*CGSession*' -o -iname '*UserSwitch*' 2>/dev/null || true; } >> "$RUNNER_TEMP/login-probe/user-create.txt"
@@ -119,7 +130,7 @@ jobs:
           PY3
           screencapture -x "$RUNNER_TEMP/login-probe/users.png" || true
           /usr/bin/osascript -e 'tell application "System Events" to tell process "loginwindow" to click button 1 of group 1 of list 1 of list 1 of scroll area 1 of window "Login"' > "$RUNNER_TEMP/login-probe/select.txt" 2>&1 || true
-          sleep 3
+          sleep 8
           /usr/bin/osascript -e 'tell application "System Events" to tell process "loginwindow" to get entire contents of window 1' >> "$RUNNER_TEMP/login-probe/select.txt" 2>&1 || true
           "$RUNNER_TEMP/type" >> "$RUNNER_TEMP/login-probe/select.txt" 2>&1 || true
           for n in {1..60}; do
@@ -133,6 +144,36 @@ jobs:
             printf 'test user processes:\n'; ps -u noopprobe -o pid,ppid,user,command || true
           } > "$RUNNER_TEMP/login-probe/switch.txt" 2>&1
           screencapture -x "$RUNNER_TEMP/login-probe/switched.png" || true
+          if sudo launchctl print "gui/$(id -u noopprobe)" >/dev/null 2>&1; then
+            {
+              printf 'before logout: '; who
+              sudo launchctl print "gui/$(id -u noopprobe)" | awk '/asid =/ {print; exit}'
+            } > "$RUNNER_TEMP/login-probe/logout.txt" 2>&1
+            "$RUNNER_TEMP/key" logout
+            for n in {1..60}; do
+              if ! sudo launchctl print "gui/$(id -u noopprobe)" >/dev/null 2>&1; then break; fi
+              sleep 1
+            done
+            {
+              printf 'after logout console: '; stat -f '%Su' /dev/console
+              printf 'after logout sessions:\n'; who
+              sudo launchctl print "gui/$(id -u noopprobe)" 2>&1 | head -15 || true
+              /usr/bin/osascript -e 'tell application "System Events" to tell process "loginwindow" to get entire contents of window 1' 2>&1 || true
+            } >> "$RUNNER_TEMP/login-probe/logout.txt"
+            "$RUNNER_TEMP/key" enter
+            sleep 4
+            "$RUNNER_TEMP/type"
+            for n in {1..60}; do
+              if sudo launchctl print "gui/$(id -u noopprobe)" >/dev/null 2>&1; then break; fi
+              sleep 1
+            done
+            {
+              printf 'after relogin console: '; stat -f '%Su' /dev/console
+              printf 'after relogin sessions:\n'; who
+              sudo launchctl print "gui/$(id -u noopprobe)" 2>&1 | head -22 || true
+            } >> "$RUNNER_TEMP/login-probe/logout.txt"
+            screencapture -x "$RUNNER_TEMP/login-probe/relogin.png" || true
+          fi
           /usr/bin/osascript -e 'tell application "System Events" to key code 53' || true
           sleep 3
           /usr/bin/osascript -e 'tell application "System Events" to tell process "loginwindow" to get entire contents of window 1' > "$RUNNER_TEMP/login-probe/escape.txt" 2>&1 || true
