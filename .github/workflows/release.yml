@@ -97,7 +97,15 @@ jobs:
             ls -l assets
             exit 0
           fi
+          if [ "$TARGET" = linux ]; then
+            export NSH_RUNTIME="$HOME/.nsh-dist/runtime"
+          fi
           (cd app && nsh package --target "$TARGET" -o "$out" "${args[@]}")
+          if [ "$TARGET" = linux ]; then
+            mkdir -p "$RUNNER_TEMP/verify-linux"
+            tar -xzf "$out/Noop.tar.gz" -C "$RUNNER_TEMP/verify-linux"
+            TMPDIR="$RUNNER_TEMP" bash scripts/check-linux-runtime.sh "$RUNNER_TEMP/verify-linux/Noop/Noop"
+          fi
           case "$TARGET" in
             linux) mv "$out/Noop.tar.gz" "assets/$ASSET"; mv "$out"/Noop-*.tar.gz assets/ ;;
             windows) mv "$out/Noop.zip" "assets/$ASSET"; mv "$out"/Noop-*.zip assets/ ;;

@@ -1,0 +1,33 @@
+{
+  "status": "passed",
+  "source": "/home/runner/work/noop/noop",
+  "revision": "a3dee577cf159ea5da7fac2cd9884124c2778a9c",
+  "platform": "linux-x64",
+  "timestamp": "2026-11-16T16:36:44.779Z",
+  "bun": "1.4.4",
+  "apkSha256": "265e45074c42650492a16b599577283f1e08cccd9136108d01301d36ca802ee0",
+  "workerd": {
+    "version": "workerd 2026-11-10",
+    "sha256": "620d9f7e5eb461067e08af17316aaa087445b4232e0e98e3dd146763bd9ab394"
+  },
+  "webIndexSha256": "bd9ed72ccec6e59169751686b2383b27699b7b967b8fca5e85e55d33e3a16dfc",
+  "checks": [
+    "disposable Android emulator, APK, workerd and Web bundle are supplied",
+    "Android emulator is online",
+    "local coordinator starts",
+    "synthetic owner binds TOTP",
+    "Android app requests a login code through local HTTP",
+    "owner retrieves the Android login code from the CLI",
+    "Android app signs in with the CLI code and TOTP",
+    "Android app opens the live WebSocket",
+    "Android app sends a message to the local coordinator",
+    "independent peer starts sign-in",
+    "independent peer signs in",
+    "independent peer sends a message",
+    "Android WebSocket receives the peer message",
+    "Android app renders the peer message",
+    "Android screenshot is saved"
+  ],
+  "emulatorEvents": [],
+  "error": ""
+}

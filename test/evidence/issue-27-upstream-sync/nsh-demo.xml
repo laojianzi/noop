@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuites name="nsh test" tests="6" failures="0" errors="0" skipped="0" time="1.847">
+  <testsuite name="app/demo.test.tsx" tests="6" failures="0" errors="0" skipped="0" time="1.830">
+    <testcase classname="app/demo.test.tsx" name="demo server › demo addresses are recognised, real ones are not" time="0.000"/>
+    <testcase classname="app/demo.test.tsx" name="demo server › signs in with any code and a message becomes a finished task" time="0.001"/>
+    <testcase classname="app/demo.test.tsx" name="demo server › answering the open decision closes it" time="0.000"/>
+    <testcase classname="app/demo.test.tsx" name="demo server › history, task detail, channels, files and settings answer" time="0.000"/>
+    <testcase classname="app/demo.test.tsx" name="demo in the app › the test account opens a working chat at once, without codes or any network" time="0.788"/>
+    <testcase classname="app/demo.test.tsx" name="demo in the app › the address demo signs in with the codes it shows" time="1.040"/>
+  </testsuite>
+</testsuites>

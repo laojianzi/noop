@@ -1,0 +1,81 @@
+cSeaBIOS (version 1.17.0-debian-1.17.0-1)
+
+
+iPXE (https://ipxe.org) 00:02.0 CA00 PCI2.10 PnP PMM+3EFC7810+3EB87810 CA00
+Press Ctrl-B to configure iPXE (PCI 00:02.0)...
+
+
+
+Booting from ROM...
+Probing EDD (edd=off to disable)... ok
+cLocal coordinator candidate: http://127.0.0.1:8790
+cSeaBIOS (version 1.17.0-debian-1.17.0-1)
+
+
+iPXE (https://ipxe.org) 00:02.0 CA00 PCI2.10 PnP PMM+3EFC7810+3EB87810 CA00
+Press Ctrl-B to configure iPXE (PCI 00:02.0)...
+
+
+
+Booting from ROM...
+Probing EDD (edd=off to disable)... oc/state/coordinator/workerd.capnp:7:68: Parse error.
+ 96 |         const response = await fetch(`${url}/api/status`, { headers: { Authorization: `Bearer ${token}` }, signal: AbortSignal.timeout(500) });
+ 97 |         if (response.ok) { ready = true; break; }
+ 98 |       } catch {}
+ 99 |       await Bun.sleep(100);
+100 |     }
+101 |     if (!ready) throw new Error("The local coordinator did not start");
+                                ^
+error: The local coordinator did not start
+      at localCoordinator (/repo/src/local-coordinator.ts:101:27)
+      at async main (/repo/src/cli.ts:1240:82)
+
+[    1.940160] Kernel panic - not syncing: Attempted to kill init! exitcode=0x00000100
+[    1.940881] CPU: 0 UID: 0 PID: 120 Comm: Bundler Not tainted 7.2.15-1-omarchy #1 PREEMPT(full)  7f5048bf73dafcc4bb07ba093bd0f8686d3ad229
+[    1.941995] Hardware name: QEMU Standard PC (Q35 + ICH9, 2009), BIOS 1.17.0-debian-1.17.0-1 04/01/2014
+[    1.942863] Call Trace:
+[    1.943120]  <TASK>
+[    1.943333]  dump_stack_lvl+0x5d/0x80
+[    1.943728]  vpanic+0x246/0x440
+[    1.944066]  panic+0x6b/0x70
+[    1.944360]  do_exit.cold+0x26/0x5c
+[    1.944699]  do_group_exit+0x2d/0xc0
+[    1.945053]  ? schedule+0x27/0xa0
+[    1.945413]  ? _raw_spin_unlock_irq+0xe/0x50
+[    1.945829]  get_signal+0xa78/0xaa0
+[    1.946268]  ? __pfx_autoremove_wake_function+0x10/0x10
+[    1.946913]  arch_do_signal_or_restart+0x77/0x2b0
+[    1.947499]  exit_to_user_mode_loop+0xe5/0x720
+[    1.948046]  do_syscall_64+0x21d/0x630
+[    1.948421]  ? __mod_memcg_lruvec_state+0x158/0x300
+[    1.948887]  ? _raw_spin_unlock_irq+0xe/0x50
+[    1.949362]  ? lruvec_stat_mod_folio+0x93/0xd0
+[    1.949903]  ? folio_add_file_rmap_ptes+0x5b/0x290
+[    1.950462]  ? next_uptodate_folio+0xaa/0x3c0
+[    1.950888]  ? __pte_offset_map+0x1b/0x100
+[    1.951298]  ? set_pte_range+0x10d/0x2a0
+[    1.951674]  ? percpu_counter_add_batch+0x4a/0xb0
+[    1.952124]  ? _raw_spin_unlock+0xe/0x30
+[    1.952493]  ? filemap_map_pages+0x3b5/0x9f0
+[    1.952908]  ? do_read_fault+0x198/0x200
+[    1.953283]  ? pte_offset_map_rw_nolock+0x1f/0x90
+[    1.953730]  ? __handle_mm_fault+0xd12/0x1070
+[    1.954143]  ? count_memcg_events+0xd9/0x210
+[    1.954545]  ? handle_mm_fault+0x1dd/0x2c0
+[    1.954934]  ? do_user_addr_fault+0x357/0xc20
+[    1.955364]  ? do_syscall_64+0x5f/0x630
+[    1.955789]  ? clear_bhb_loop+0x60/0xb0
+[    1.956276]  ? clear_bhb_loop+0x60/0xb0
+[    1.956774]  entry_SYSCALL_64_after_hwframe+0x76/0x7e
+[    1.957392] RIP: 0033:0x7f8de48a08f2
+[    1.957844] Code: 08 0f 85 c1 3f ff ff 49 89 fb 48 89 f0 48 89 d7 48 89 ce 4c 89 c2 4d 89 ca 4c 8b 44 24 08 4c 8b 4c 24 10 4c 89 5c 24 08 0f 05 <c3> 66 2e 0f 1f 84 00 00 00 00 00 0f 1f 00 f3 0f 1e fa 55 bf 01 00
+[    1.959721] RSP: 002b:00007f8da2f754e8 EFLAGS: 00000246 ORIG_RAX: 0000000000000000
+[    1.960422] RAX: fffffffffffffe00 RBX: 8000000000000001 RCX: 00007f8de48a08f2
+[    1.961141] RDX: 0000000000000008 RSI: 00007f8da2f75530 RDI: 0000000000000007
+[    1.962012] RBP: 00007f8da2f75510 R08: 0000000000000000 R09: 0000000000000000
+[    1.962880] R10: 0000000000000000 R11: 0000000000000246 R12: 0000000000000000
+[    1.963746] R13: 0000000000000001 R14: 0000056c83c20101 R15: 0000056c8024de00
+[    1.964624]  </TASK>
+[    1.965006] Kernel Offset: 0x2d400000 from 0xffffffff81000000 (relocation range: 0xffffffff80000000-0xffffffffbfffffff)
+[    1.966264] ---[ end Kernel panic - not syncing: Attempted to kill init! exitcode=0x00000100 ]---
+qemu-system-x86_64: terminating on signal 15

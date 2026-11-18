@@ -1,0 +1,10 @@
+{
+  "mergedSource": "31a8d523e5d34656d34473bf149c8170a6b4c7b3",
+  "mergedUpstream": "4c2a3d246e21a4b7ee39a2f13e3a5e965eda87d5",
+  "webSource": "a74449a3604b755ca2bb4c1eacbca4ed205ca63a",
+  "webIndexSha256": "c77717bcb0c38a769ffe4bbda46ce4b4794eb1e0e319c4fb151c485f757942a2",
+  "workerd": "2026-11-10",
+  "workerdSha256": "620d9f7e5eb461067e08af17316aaa087445b4232e0e98e3dd146763bd9ab394",
+  "nsh": "0.5.0 nightly 00cfb08ec7c337c71e47e04034a5e5962bc0a871",
+  "nshArchiveSha256": "ecb8871f0c9aa51379fe964b49f98825188b2c8feedbabe039c67ea5d4c11fb5"
+}

@@ -1,0 +1,404 @@
+{
+  "databaseId": 44046847739,
+  "headSha": "3bd3f00ba40bf37a6c9d4543434b832382c2a4f4",
+  "event": "workflow_dispatch",
+  "status": "queued",
+  "conclusion": "",
+  "url": "https://github.com/laojianzi/noop/actions/runs/44046847739",
+  "jobs": [
+    {
+      "databaseId": 133914552571,
+      "name": "package (ios)",
+      "status": "queued",
+      "conclusion": "",
+      "startedAt": "2026-11-17T08:27:14Z",
+      "completedAt": "0001-01-01T00:00:00Z",
+      "steps": []
+    },
+    {
+      "databaseId": 133914552954,
+      "name": "package (web)",
+      "status": "completed",
+      "conclusion": "success",
+      "startedAt": "2026-11-17T08:27:17Z",
+      "completedAt": "2026-11-17T08:27:55Z",
+      "steps": [
+        {
+          "name": "Set up job",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Run actions/checkout@v4",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Simulate platform package failure",
+          "status": "completed",
+          "conclusion": "skipped"
+        },
+        {
+          "name": "Run ./.github/actions/setup-nsh",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Package",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Verify the macOS package",
+          "status": "completed",
+          "conclusion": "skipped"
+        },
+        {
+          "name": "Try the installer on this package",
+          "status": "completed",
+          "conclusion": "skipped"
+        },
+        {
+          "name": "Set up Intel nsh",
+          "status": "completed",
+          "conclusion": "skipped"
+        },
+        {
+          "name": "Package and verify Intel macOS",
+          "status": "completed",
+          "conclusion": "skipped"
+        },
+        {
+          "name": "Upload Intel macOS package",
+          "status": "completed",
+          "conclusion": "skipped"
+        },
+        {
+          "name": "Run actions/upload-artifact@v4",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Post Run ./.github/actions/setup-nsh",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Post Run actions/checkout@v4",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Complete job",
+          "status": "completed",
+          "conclusion": "success"
+        }
+      ]
+    },
+    {
+      "databaseId": 133914552957,
+      "name": "package (macos)",
+      "status": "completed",
+      "conclusion": "failure",
+      "startedAt": "2026-11-17T08:27:17Z",
+      "completedAt": "2026-11-17T08:27:26Z",
+      "steps": [
+        {
+          "name": "Set up job",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Run actions/checkout@v4",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Simulate platform package failure",
+          "status": "completed",
+          "conclusion": "failure"
+        },
+        {
+          "name": "Run ./.github/actions/setup-nsh",
+          "status": "completed",
+          "conclusion": "skipped"
+        },
+        {
+          "name": "Package",
+          "status": "completed",
+          "conclusion": "skipped"
+        },
+        {
+          "name": "Verify the macOS package",
+          "status": "completed",
+          "conclusion": "skipped"
+        },
+        {
+          "name": "Try the installer on this package",
+          "status": "completed",
+          "conclusion": "skipped"
+        },
+        {
+          "name": "Set up Intel nsh",
+          "status": "completed",
+          "conclusion": "skipped"
+        },
+        {
+          "name": "Package and verify Intel macOS",
+          "status": "completed",
+          "conclusion": "skipped"
+        },
+        {
+          "name": "Upload Intel macOS package",
+          "status": "completed",
+          "conclusion": "skipped"
+        },
+        {
+          "name": "Run actions/upload-artifact@v4",
+          "status": "completed",
+          "conclusion": "skipped"
+        },
+        {
+          "name": "Post Run actions/checkout@v4",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Complete job",
+          "status": "completed",
+          "conclusion": "success"
+        }
+      ]
+    },
+    {
+      "databaseId": 133914552984,
+      "name": "package (android)",
+      "status": "completed",
+      "conclusion": "failure",
+      "startedAt": "2026-11-17T08:27:16Z",
+      "completedAt": "2026-11-17T08:27:21Z",
+      "steps": [
+        {
+          "name": "Set up job",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Run actions/checkout@v4",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Simulate platform package failure",
+          "status": "completed",
+          "conclusion": "failure"
+        },
+        {
+          "name": "Run ./.github/actions/setup-nsh",
+          "status": "completed",
+          "conclusion": "skipped"
+        },
+        {
+          "name": "Package",
+          "status": "completed",
+          "conclusion": "skipped"
+        },
+        {
+          "name": "Verify the macOS package",
+          "status": "completed",
+          "conclusion": "skipped"
+        },
+        {
+          "name": "Try the installer on this package",
+          "status": "completed",
+          "conclusion": "skipped"
+        },
+        {
+          "name": "Set up Intel nsh",
+          "status": "completed",
+          "conclusion": "skipped"
+        },
+        {
+          "name": "Package and verify Intel macOS",
+          "status": "completed",
+          "conclusion": "skipped"
+        },
+        {
+          "name": "Upload Intel macOS package",
+          "status": "completed",
+          "conclusion": "skipped"
+        },
+        {
+          "name": "Run actions/upload-artifact@v4",
+          "status": "completed",
+          "conclusion": "skipped"
+        },
+        {
+          "name": "Post Run actions/checkout@v4",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Complete job",
+          "status": "completed",
+          "conclusion": "success"
+        }
+      ]
+    },
+    {
+      "databaseId": 133914553040,
+      "name": "package (windows)",
+      "status": "completed",
+      "conclusion": "success",
+      "startedAt": "2026-11-17T08:27:17Z",
+      "completedAt": "2026-11-17T08:28:24Z",
+      "steps": [
+        {
+          "name": "Set up job",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Run actions/checkout@v4",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Simulate platform package failure",
+          "status": "completed",
+          "conclusion": "skipped"
+        },
+        {
+          "name": "Run ./.github/actions/setup-nsh",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Package",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Verify the macOS package",
+          "status": "completed",
+          "conclusion": "skipped"
+        },
+        {
+          "name": "Try the installer on this package",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Set up Intel nsh",
+          "status": "completed",
+          "conclusion": "skipped"
+        },
+        {
+          "name": "Package and verify Intel macOS",
+          "status": "completed",
+          "conclusion": "skipped"
+        },
+        {
+          "name": "Upload Intel macOS package",
+          "status": "completed",
+          "conclusion": "skipped"
+        },
+        {
+          "name": "Run actions/upload-artifact@v4",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Post Run ./.github/actions/setup-nsh",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Post Run actions/checkout@v4",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Complete job",
+          "status": "completed",
+          "conclusion": "success"
+        }
+      ]
+    },
+    {
+      "databaseId": 133914553067,
+      "name": "package (linux)",
+      "status": "in_progress",
+      "conclusion": "",
+      "startedAt": "2026-11-17T08:27:17Z",
+      "completedAt": "0001-01-01T00:00:00Z",
+      "steps": [
+        {
+          "name": "Set up job",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Run actions/checkout@v4",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Simulate platform package failure",
+          "status": "completed",
+          "conclusion": "skipped"
+        },
+        {
+          "name": "Run ./.github/actions/setup-nsh",
+          "status": "in_progress",
+          "conclusion": ""
+        },
+        {
+          "name": "Package",
+          "status": "pending",
+          "conclusion": ""
+        },
+        {
+          "name": "Verify the macOS package",
+          "status": "pending",
+          "conclusion": ""
+        },
+        {
+          "name": "Try the installer on this package",
+          "status": "pending",
+          "conclusion": ""
+        },
+        {
+          "name": "Set up Intel nsh",
+          "status": "pending",
+          "conclusion": ""
+        },
+        {
+          "name": "Package and verify Intel macOS",
+          "status": "pending",
+          "conclusion": ""
+        },
+        {
+          "name": "Upload Intel macOS package",
+          "status": "pending",
+          "conclusion": ""
+        },
+        {
+          "name": "Run actions/upload-artifact@v4",
+          "status": "pending",
+          "conclusion": ""
+        },
+        {
+          "name": "Post Run ./.github/actions/setup-nsh",
+          "status": "pending",
+          "conclusion": ""
+        },
+        {
+          "name": "Post Run actions/checkout@v4",
+          "status": "pending",
+          "conclusion": ""
+        }
+      ]
+    }
+  ]
+}

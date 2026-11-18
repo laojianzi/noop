@@ -1,0 +1,2 @@
+INFO js: NOOP_LINUX_RUNTIME_OK
+ERROR js: NOOP_LINUX_RUNTIME_NETWORK_FAILED TypeError: Network request failed: this host has no network stack

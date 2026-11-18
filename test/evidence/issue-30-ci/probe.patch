@@ -1,0 +1,21 @@
+diff --git a/.github/workflows/release.yml b/.github/workflows/release.yml
+index 1d70b46..2b58b77 100644
+--- a/.github/workflows/release.yml
++++ b/.github/workflows/release.yml
+@@ -45,12 +45,15 @@ jobs:
+           - { target: linux, os: ubuntu-24.04, asset: noop-linux-x86_64.tar.gz, installer: install-client.sh }
+           - { target: windows, os: windows-latest, asset: noop-windows-x86_64.zip, installer: install-client.ps1 }
+           - { target: macos, os: macos-15, asset: noop-macos-arm64.zip, installer: install-client.sh }
+-          - { target: ios, os: xcode-27, asset: noop-ios-unsigned.ipa }
++          - { target: ios, os: noop-e2e-intentionally-unavailable, asset: noop-ios-unsigned.ipa }
+           - { target: android, os: ubuntu-24.04, asset: noop-android.apk }
+           - { target: web, os: ubuntu-24.04, asset: noop-web.tar.gz }
+     runs-on: ${{ matrix.os }}
+     steps:
+       - uses: actions/checkout@v4
++      - name: Simulate platform package failure
++        if: matrix.target == 'macos' || matrix.target == 'android'
++        run: exit 1
+       - uses: ./.github/actions/setup-nsh
+         with:
+           ref: ${{ env.NSH_REF }}

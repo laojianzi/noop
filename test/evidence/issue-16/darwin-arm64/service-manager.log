@@ -1,0 +1,26 @@
+Local coordinator candidate: http://127.0.0.1:49187
+17 | };
+18 | 
+19 | export function coordinatorNamespace(root: string) {
+20 |   const namespace = readFileSync(join(root, "namespace-key"), "utf8").trim();
+21 |   if (!/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(namespace))
+22 |     throw new Error("The coordinator namespace key is invalid; restore it from backup");
+                   ^
+error: The coordinator namespace key is invalid; restore it from backup
+      at coordinatorNamespace (/Users/runner/work/_temp/evidence/noop-service-e2e-p5sKa6/coordinator home/coordinator/releases/release-TQdlA7/repo/src/local-coordinator.ts:22:15)
+      at localCoordinator (/Users/runner/work/_temp/evidence/noop-service-e2e-p5sKa6/coordinator home/coordinator/releases/release-TQdlA7/repo/src/local-coordinator.ts:70:21)
+      at async main (/Users/runner/work/_temp/evidence/noop-service-e2e-p5sKa6/coordinator home/coordinator/releases/release-TQdlA7/repo/src/cli.ts:1257:82)
+
+17 | };
+18 | 
+19 | export function coordinatorNamespace(root: string) {
+20 |   const namespace = readFileSync(join(root, "namespace-key"), "utf8").trim();
+21 |   if (!/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(namespace))
+22 |     throw new Error("The coordinator namespace key is invalid; restore it from backup");
+                   ^
+error: The coordinator namespace key is invalid; restore it from backup
+      at coordinatorNamespace (/Users/runner/work/_temp/evidence/noop-service-e2e-p5sKa6/coordinator home/coordinator/releases/release-TQdlA7/repo/src/local-coordinator.ts:22:15)
+      at localCoordinator (/Users/runner/work/_temp/evidence/noop-service-e2e-p5sKa6/coordinator home/coordinator/releases/release-TQdlA7/repo/src/local-coordinator.ts:70:21)
+      at async main (/Users/runner/work/_temp/evidence/noop-service-e2e-p5sKa6/coordinator home/coordinator/releases/release-TQdlA7/repo/src/cli.ts:1257:82)
+
+Local coordinator candidate: http://127.0.0.1:49187

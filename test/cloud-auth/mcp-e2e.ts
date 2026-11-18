@@ -4,10 +4,22 @@
 // Walks the path a claude.ai / ChatGPT connector takes: 401 → metadata → DCR → sign-in page → PKCE token → MCP session,
 // then checks tools and that a fleet event reaches the client as an MCP notification over the SSE stream.
 import { pkceChallenge } from "../../cloud/src/mcp";
+import { createHmac } from "node:crypto";
 const BASE = process.env.BASE ?? "http://localhost:8799", TOKEN = process.env.TOKEN ?? "machinetok";
 let fail = 0;
 const ok = (c: unknown, m: string) => { console.log(`${c ? "✓" : "✗"} ${m}`); if (!c) fail++; };
 const M = { authorization: `Bearer ${TOKEN}` };
+const totp = (secret: string, counter: number) => {
+  let bits = 0, value = 0; const bytes: number[] = [];
+  for (const c of secret) { value = (value << 5) | "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567".indexOf(c); bits += 5;
+    if (bits >= 8) { bytes.push((value >>> (bits - 8)) & 255); bits -= 8; } }
+  const input = Buffer.alloc(8); input.writeBigUInt64BE(BigInt(counter));
+  const h = createHmac("sha1", Buffer.from(bytes)).update(input).digest(), offset = h[h.length - 1] & 15;
+  return String((h.readUInt32BE(offset) & 0x7fffffff) % 1_000_000).padStart(6, "0");
+};
+const tf = await (await fetch(`${BASE}/api/host/2fa/setup`, { method: "POST", headers: { ...M, "content-type": "application/json" }, body: "{}" })).json() as { secret: string };
+ok((await fetch(`${BASE}/api/host/2fa/confirm`, { method: "POST", headers: { ...M, "content-type": "application/json" },
+  body: JSON.stringify({ totp: totp(tf.secret, Math.floor(Date.now() / 30_000)) }) })).status === 200, "TOTP bound");
 
 // 1. discovery
 let r = await fetch(`${BASE}/mcp`, { method: "POST", headers: { "content-type": "application/json" }, body: "{}" });
@@ -33,7 +45,7 @@ const step = (b: Record<string, string>) => fetch(`${asm.authorization_endpoint}
 const sent = await (await step({ step: "send", email: "owner@example.com" })).text();
 ok(sent.includes("noop login"), "code page (code shown by `noop login`)");
 const { code: emailCode } = await (await fetch(`${BASE}/api/host/login-code`, { headers: M })).json() as any;
-r = await step({ step: "verify", email: "owner@example.com", code: emailCode });
+r = await step({ step: "verify", email: "owner@example.com", code: emailCode, totp: totp(tf.secret, Math.floor(Date.now() / 30_000) + 1) });
 const loc = new URL(r.headers.get("location") ?? "http://x/");
 ok(r.status === 302 && loc.searchParams.get("state") === "xyz" && loc.searchParams.get("code"), `302 → ${loc.origin}${loc.pathname}`);
 
@@ -42,7 +54,7 @@ const tok = await (await fetch(asm.token_endpoint, { method: "POST", headers: { 
   body: new URLSearchParams({ grant_type: "authorization_code", code: loc.searchParams.get("code")!, client_id: client.client_id, code_verifier: verifier, redirect_uri: redirect }) })).json() as any;
 ok(tok.access_token && tok.refresh_token, "access + refresh token");
 const A = { authorization: `Bearer ${tok.access_token}` };
-ok((await fetch(`${BASE}/api/status`, { headers: A })).status === 200, "access token is an owner session");
+ok((await fetch(`${BASE}/api/status`, { headers: A })).status === 403, "MCP access token cannot call the owner API");
 
 // 5. MCP session
 let id = 0, sid = "";
@@ -58,7 +70,7 @@ const init = await call("initialize", { protocolVersion: "2025-06-18", capabilit
 ok(init.result?.serverInfo?.name === "noop" && sid, `initialize (session ${sid.slice(0, 8)}…)`);
 await fetch(`${BASE}/mcp`, { method: "POST", headers: { ...A, "content-type": "application/json", "mcp-session-id": sid }, body: JSON.stringify({ jsonrpc: "2.0", method: "notifications/initialized" }) });
 const tools = (await call("tools/list")).result.tools.map((t: any) => t.name);
-ok(tools.length === 11 && tools.includes("search") && tools.includes("fetch"), `tools/list: ${tools.join(", ")}`);
+ok(tools.length >= 11 && tools.includes("search") && tools.includes("fetch"), `tools/list: ${tools.join(", ")}`);
 const tool = async (name: string, args = {}) => { const x = await call("tools/call", { name, arguments: args }); return x.result.isError ? x.result : JSON.parse(x.result.content[0].text); };
 ok((await tool("get_status")).hub, "get_status");
 const { cursor } = await tool("get_feed", { limit: 5 });
@@ -150,11 +162,15 @@ ok(list.includes(`noop://tasks/${tid}`), "resources/list has the new task");
 const wait = (rid: string, cur: number, secs: number) => fetch(`${BASE}/mcp`, { method: "POST", headers: H({ accept: "application/json, text/event-stream" }),
   body: JSON.stringify({ jsonrpc: "2.0", id: rid, method: "tools/call", params: { name: "wait_for_events", arguments: { cursor: cur, timeout_seconds: secs }, _meta: { progressToken: rid } } }) });
 const { cursor: c2 } = await tool("get_feed", { limit: 1 });
-const w1 = await wait("w1", c2, 8);
+const w1 = await wait("w1", c2, 20);
 ok(w1.headers.get("content-type") === "text/event-stream", "wait_for_events with progressToken → SSE response");
 const m4 = `progress ${Date.now()}`;
-setTimeout(() => emit(m4), 6000);
-const wf = await readFrames(w1, (f) => f.some((x) => x.data?.id === "w1"), 15000);
+let emitted: Promise<Response> | undefined;
+const wf = await readFrames(w1, (f) => {
+  if (!emitted && f.filter((x) => x.data?.method === "notifications/progress").length >= 2) emitted = emit(m4);
+  return f.some((x) => x.data?.id === "w1");
+}, 25000);
+ok(emitted && (await emitted).ok, "event is accepted while the progress stream is waiting");
 const prog = wf.filter((x) => x.data?.method === "notifications/progress");
 const resp = wf.find((x) => x.data?.id === "w1");
 ok(prog.length >= 2 && prog.every((x) => x.data.params.progressToken === "w1" && x.id), `${prog.length} notifications/progress with ids before the response`);

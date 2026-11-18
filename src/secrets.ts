@@ -6,6 +6,7 @@ import { chmodSync, existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { type SecretInfo, seal, secretProblem, unseal } from "../cloud/src/secrets";
 import { type Cfg, HOME_DIR } from "./core";
+import { hubDialUrl } from "./sync";
 
 const FILE = () => join(HOME_DIR, "secrets.json");
 type Stored = Record<string, { sealed: string; updated: string }>;
@@ -37,7 +38,7 @@ const FRESH_MS = 60_000;
 export async function sharedSecrets(cfg: Cfg, fetcher: typeof fetch = fetch): Promise<Record<string, string>> {
   if (Date.now() - cache.at < FRESH_MS) return cache.values;
   const token = String(cfg.server?.token ?? "");
-  const url = String(cfg.cloud?.url ?? "").replace(/\/$/, "");
+  const url = hubDialUrl(cfg.cloud?.url);
   if (url && token) {
     const r = await fetcher(`${url}/api/secrets/values`, { headers: { Authorization: `Bearer ${token}` }, signal: AbortSignal.timeout(10_000) }).catch(() => null);
     const j = r?.ok ? ((await r.json().catch(() => null)) as { values?: Record<string, string> } | null) : null;

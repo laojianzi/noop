@@ -1,0 +1,19 @@
+PASS real Web assets are supplied
+PASS workerd executable is supplied
+PASS container image is already installed
+PASS standalone coordinator starts without a primary or an agent
+PASS hosts do not need an agent CLI for setup
+PASS a primary with an invalid machine credential is not initialized
+PASS a separate primary initializes the existing local coordinator
+PASS the remote primary creates a task
+PASS worker1 receives the task over the container network
+PASS worker2 receives the task over the container network
+PASS worker3 receives the task over the container network
+PASS two hosts writing the same version produce one winner and one conflict
+PASS three hosts claiming one task produce exactly one winner
+PASS primary publishes a distinct advertised address
+FAIL Error: execution host forwards an event using its dial address
+    at check (/var/tmp/noop-network-ablation-VZHVqX/test/self-hosted-network-e2e.ts:16:22)
+    at /var/tmp/noop-network-ablation-VZHVqX/test/self-hosted-network-e2e.ts:111:3
+    at processTicksAndRejections (native:7:39)
+Evidence: /var/tmp/noop-network-e2e-XggKki

@@ -1,0 +1,19 @@
+{
+  "status": "failed",
+  "source": "/home/jeff/.codex/worktrees/noop-local-coordinator",
+  "revision": "fc735e5bc4b62dcced4bb0a719cea58ca53ace59",
+  "changes": "M test/self-hosted-backup-e2e.ts\n M test/self-hosted-ingress-e2e.ts\n M test/self-hosted-update-e2e.ts",
+  "platform": "linux-x64",
+  "timestamp": "2026-11-17T13:24:49.856Z",
+  "bun": "1.4.4",
+  "webVersion": "not specified",
+  "webIndexSha256": "c77717bcb0c38a769ffe4bbda46ce4b4794eb1e0e319c4fb151c485f757942a2",
+  "workerd": {
+    "version": "workerd 2026-11-10",
+    "sha256": "620d9f7e5eb461067e08af17316aaa087445b4232e0e98e3dd146763bd9ab394"
+  },
+  "checks": [
+    "Web assets and workerd are supplied"
+  ],
+  "error": "Error: coordinator exited: Socket \"health\": parseAddress: path must be shorter than SUN_LEN\n175 |         const response = await fetch(\"http://localhost/api/status\", { unix: healthSocket, headers: { Authorization: `Bearer ${token}` }, signal: AbortSignal.timeout(500) });\n176 |         if (response.ok) { ready = true; break; }\n177 |       } catch {}\n178 |       await Bun.sleep(100);\n179 |     }\n180 |     if (!ready) throw new Error(\"The local coordinator did not start; check its listener addresses and logs\");\n                                ^\nerror: The local coordinator did not start; check its listener addresses and logs\n      at localCoordinator (/tmp/n32-regression/noop-backup-e2e-MqFHVH/repo/src/local-coordinator.ts:180:27)\n      at async main (/tmp/n32-regression/noop-backup-e2e-MqFHVH/repo/src/cli.ts:1276:82)\n\n\n    at <anonymous> (/home/jeff/.codex/worktrees/noop-local-coordinator/test/self-hosted-backup-e2e.ts:51:92)\n    at waitFor (/home/jeff/.codex/worktrees/noop-local-coordinator/test/self-hosted-backup-e2e.ts:27:73)\n    at async <anonymous> (/home/jeff/.codex/worktrees/noop-local-coordinator/test/self-hosted-backup-e2e.ts:50:11)"
+}

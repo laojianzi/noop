@@ -1,0 +1,19 @@
+
+ ⛅️ wrangler 4.160.1
+────────────────────
+▲ [WARNING] Cannot find base config file "./.nsh/tsconfig.json" [tsconfig.json]
+
+    ../app/tsconfig.json:2:13:
+      2 │   "extends": "./.nsh/tsconfig.json",
+        ╵              ~~~~~~~~~~~~~~~~~~~~~~
+
+
+✨ Read 127 files from the assets directory /var/tmp/noop-self-hosted-uDPwGn/repo/app/dist/web/noop
+Total Upload: 159.80 KiB / gzip: 47.71 KiB
+Your Worker has access to the following bindings:
+Binding                        Resource
+env.HUB (Hub)                  Durable Object
+env.EMAIL (unrestricted)       Send Email
+env.ASSETS                     Assets
+
+--dry-run: exiting now.

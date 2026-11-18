@@ -1,0 +1,5 @@
+time="2026/11/16 19:55:24" level=info msg="[smtpd] enabling any authentication"
+time="2026/11/16 19:55:24" level=info msg="[smtpd] starting on 127.0.0.1:44749 (STARTTLS required)"
+time="2026/11/16 19:55:24" level=info msg="[http] starting on 127.0.0.1:41983"
+time="2026/11/16 19:55:24" level=info msg="[http] accessible via http://127.0.0.1:41983/"
+[db] got terminated signal, shutting down

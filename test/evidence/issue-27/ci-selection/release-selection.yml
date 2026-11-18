@@ -1,0 +1,53 @@
+# Packages the client apps. A tag `vX.Y.Z` publishes them as a GitHub release; pull requests touching this and
+# running it by hand only build them (workflow artifacts). Asset names carry no version, so
+# `releases/latest/download/<asset>`, which install-client.sh, install-client.ps1 and src/webclient.ts use, always resolves.
+name: release
+on:
+  push:
+    tags: ["v*"]
+  pull_request:
+    paths:
+      - .github/workflows/release.yml
+      - .github/actions/setup-nsh/**
+      - scripts/check-ios-sdk.sh
+      - scripts/check-linux-runtime.sh
+      - scripts/fixtures/linux-runtime/**
+      - scripts/setup-linux-deps.sh
+      - install-client.sh
+      - install-client.ps1
+      - app/build-web.sh
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  # `nightly` builds against the commit of the current NSH nightly release and reuses its prebuilt CLI and runtimes,
+  # so a release does not compile NSH. Pin a commit only when Noop needs NSH changes the nightly does not have yet.
+  # Every job resolves it the same way, so all client runtimes and the OTA package share one commit.
+  NSH_REF: nightly
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  package:
+    name: package (${{ matrix.target }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { target: linux, os: ubuntu-24.04, asset: noop-linux-x86_64.tar.gz, installer: install-client.sh }
+          - { target: windows, os: windows-latest, asset: noop-windows-x86_64.zip, installer: install-client.ps1 }
+          - { target: macos, os: macos-15, asset: noop-macos-arm64.zip, installer: install-client.sh }
+          - { target: ios, os: xcode-27, asset: noop-ios-unsigned.ipa }
+          - { target: android, os: ubuntu-24.04, asset: noop-android.apk }
+          - { target: web, os: ubuntu-24.04, asset: noop-web.tar.gz }
+    runs-on: ${{ matrix.os }}
+    steps:
+      - run: echo selected

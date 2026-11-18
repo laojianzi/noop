@@ -1,0 +1,10 @@
+{
+  "sourceCommit": "e1648b648106e0cae6c90de0309c0747bf3d8068",
+  "webSourceCommit": "e1648b648106e0cae6c90de0309c0747bf3d8068",
+  "platform": "linux",
+  "arch": "x64",
+  "workerdVersion": "2026-11-10",
+  "workerdSha256": "620d9f7e5eb461067e08af17316aaa087445b4232e0e98e3dd146763bd9ab394",
+  "bunVersion": "1.4.4",
+  "webIndexSha256": "6291026e12b5fbc7f6a3015ced704a1ba192b6a4c478bdd35897e92118a94785"
+}

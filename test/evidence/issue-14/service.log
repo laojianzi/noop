@@ -1,0 +1,24 @@
+11 |
+12 | export async function localCoordinator(cfg: Cfg, listen = "127.0.0.1:8790") {
+13 |   const match = listen.match(/^(127\.0\.0\.1|localhost|\[::1\]):(\d{1,5})$/);
+14 |   if (!match || Number(match[2]) < 1 || Number(match[2]) > 65535)
+15 |     throw new Error("The local coordinator candidate only accepts a loopback address and port");
+16 |   if (allowIps(cfg)) throw new Error("IP allow-lists need a trusted local ingress; do not deploy this candidate yet");
+                                    ^
+error: IP allow-lists need a trusted local ingress; do not deploy this candidate yet
+      at localCoordinator (/var/tmp/noop-self-hosted-1MY3RE/repo/src/local-coordinator.ts:16:32)
+      at main (/var/tmp/noop-self-hosted-1MY3RE/repo/src/cli.ts:1239:82)
+
+14 |   if (!match || Number(match[2]) < 1 || Number(match[2]) > 65535)
+15 |     throw new Error("The local coordinator candidate only accepts a loopback address and port");
+16 |   if (allowIps(cfg)) throw new Error("IP allow-lists need a trusted local ingress; do not deploy this candidate yet");
+17 |   const prior = readHubToml();
+18 |   if (prior.cloud?.url && prior.cloud?.mode !== "local")
+19 |     throw new Error("This Noop home already uses another coordination service; use a separate Noop home");
+                   ^
+error: This Noop home already uses another coordination service; use a separate Noop home
+      at localCoordinator (/var/tmp/noop-self-hosted-1MY3RE/repo/src/local-coordinator.ts:19:15)
+      at main (/var/tmp/noop-self-hosted-1MY3RE/repo/src/cli.ts:1239:82)
+
+Local coordinator candidate: http://127.0.0.1:35239
+Local coordinator candidate: http://127.0.0.1:35239

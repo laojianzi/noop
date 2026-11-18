@@ -1,0 +1,8 @@
+time="2026/11/16 13:50:20" level=info msg="[smtpd] enabling any authentication"
+time="2026/11/16 13:50:20" level=info msg="[smtpd] starting on 127.0.0.1:49277 (STARTTLS required)"
+time="2026/11/16 13:50:20" level=info msg="[http] starting on 127.0.0.1:49278"
+time="2026/11/16 13:50:20" level=info msg="[http] accessible via http://127.0.0.1:49278/"
+time="2026/11/16 13:50:22" level=error msg="[smtpd] response (127.0.0.1) 500 5.5.2 Syntax error, command unrecognized"
+time="2026/11/16 13:50:22" level=error msg="[smtpd] response (127.0.0.1) 500 5.5.2 Syntax error, command unrecognized"
+time="2026/11/16 13:50:22" level=error msg="[smtpd] response (127.0.0.1) 500 5.5.2 Syntax error, command unrecognized"
+[db] got terminated signal, shutting down

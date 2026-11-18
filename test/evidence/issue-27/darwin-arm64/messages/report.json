@@ -1,0 +1,40 @@
+{
+  "status": "passed",
+  "source": "/Users/runner/work/noop/noop",
+  "revision": "295ee633b3219b9b6da525898bf554f5241425b1",
+  "changes": "",
+  "platform": "darwin-arm64",
+  "timestamp": "2026-11-16T13:50:58.899Z",
+  "bun": "1.4.4",
+  "webVersion": "v0.3.18",
+  "webIndexSha256": "bd9ed72ccec6e59169751686b2383b27699b7b967b8fca5e85e55d33e3a16dfc",
+  "workerd": {
+    "version": "workerd 2026-11-10",
+    "sha256": "f08ed8b7be3588cc7393b274e7278bee3125a1015ed3e214293e5e75088dd5b1"
+  },
+  "chromium": "Google Chrome 157.0.8103.79",
+  "playwright": "1.64.0",
+  "checks": [
+    "Web assets, workerd and Chromium are supplied",
+    "local coordinator starts",
+    "owner starts authenticator setup",
+    "owner binds the authenticator",
+    "first@example.com gets a login code from the CLI",
+    "first@example.com signs in through the real Web client",
+    "second@example.com gets a login code from the CLI",
+    "second@example.com signs in through the real Web client",
+    "two separately authenticated clients have different sessions",
+    "owner uploads an image and sends a message from the Web UI",
+    "second Web client receives the message over its live WebSocket",
+    "media rejects anonymous access and returns exact bytes to the second owner",
+    "second Web client renders the attached image",
+    "non-image upload is rejected",
+    "uploads larger than 10 MiB are rejected",
+    "a message is created while the second Web client is offline",
+    "the second client automatically reconnects and synchronizes its missed message",
+    "the exact attachment survives coordinator restart",
+    "reconnected Web client receives new messages over WebSocket",
+    "a fresh page reads the original message after restart"
+  ],
+  "error": ""
+}

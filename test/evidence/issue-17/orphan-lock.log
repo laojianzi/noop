@@ -1,0 +1,10 @@
+34 |   const root = join(HOME_DIR, "coordinator"), bundle = join(root, "bundle"), storage = join(root, "storage");
+35 |   mkdirSync(root, { recursive: true, mode: 0o700 });
+36 |   const lockFd = openSync(join(root, "active.lock"), "a", 0o600);
+37 |   const libc = dlopen("libc.so.6", { flock: { args: ["int", "int"], returns: "int" } });
+38 |   using lock = { [Symbol.dispose]() { closeSync(lockFd); libc.close(); } };
+39 |   if (libc.symbols.flock(lockFd, 2 | 4) !== 0) throw new Error("Cannot lock coordinator data; another local coordinator may be running"); // LOCK_EX | LOCK_NB
+                                                              ^
+error: Cannot lock coordinator data; another local coordinator may be running
+      at localCoordinator (/var/tmp/noop-self-hosted-Vggg8C/repo/src/local-coordinator.ts:39:58)
+      at async main (/var/tmp/noop-self-hosted-Vggg8C/repo/src/cli.ts:1241:82)

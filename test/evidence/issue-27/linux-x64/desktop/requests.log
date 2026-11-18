@@ -1,0 +1,9 @@
+POST /api/auth/start 200
+POST /api/auth/verify 200
+GET /api/feed 200
+GET /api/status 200
+GET /api/stream 101
+GET /api/status 200
+GET /api/channels 200
+POST /api/messages 200
+GET /api/channels 200

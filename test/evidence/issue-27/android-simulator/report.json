@@ -1,0 +1,22 @@
+{
+  "status": "failed",
+  "source": "/home/runner/work/noop/noop",
+  "revision": "5498475cdbc07aed6781ae4de3e6887329d8a999",
+  "platform": "linux-x64",
+  "timestamp": "2026-11-16T15:29:02.611Z",
+  "bun": "1.4.4",
+  "apkSha256": "c9964138b2338a34aa1b8f7a2ab1a2547ac3d5fc3d745afdcf6d52b0ca30c341",
+  "workerd": {
+    "version": "workerd 2026-11-10",
+    "sha256": "620d9f7e5eb461067e08af17316aaa087445b4232e0e98e3dd146763bd9ab394"
+  },
+  "webIndexSha256": "bd9ed72ccec6e59169751686b2383b27699b7b967b8fca5e85e55d33e3a16dfc",
+  "checks": [
+    "disposable Android emulator, APK, workerd and Web bundle are supplied",
+    "Android emulator is online",
+    "local coordinator starts",
+    "synthetic owner binds TOTP"
+  ],
+  "emulatorEvents": [],
+  "error": "Error: Android app could not request the login code\n    at waitFor (/home/runner/work/noop/noop/test/self-hosted-android-e2e.ts:30:13)"
+}

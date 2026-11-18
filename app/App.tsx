@@ -263,6 +263,8 @@ const STALE_AFTER = 60_000;
 function createHub(cfg: Config) {
   const events = signal<HubEvent[]>([]);
   const status = signal<Status | null>(null);
+  // Before the primary's first snapshot the Worker returns only hub connectivity.
+  const setStatus = (snapshot: Partial<Status>) => status.set(Array.isArray(snapshot.decisions) ? snapshot as Status : null);
   const conn = signal<Conn>("connecting");
   const blockedIp = signal("");
   const loaded = signal(false);
@@ -298,7 +300,7 @@ function createHub(cfg: Config) {
   async function loadStatus() {
     try {
       const r = await hubFetch(`${cfg.url}/api/status`, { headers });
-      if (r.ok) status.set((await r.json()) as Status);
+      if (r.ok) setStatus((await r.json()) as Partial<Status>);
     } catch {
       /* the feed reports the connection */
     }
@@ -319,7 +321,7 @@ function createHub(cfg: Config) {
       if (m.data === "pong") return;
       try {
         const d = JSON.parse(String(m.data)) as HubEvent & { $status?: Status };
-        if (d.$status) status.set(d.$status);
+        if (d.$status) setStatus(d.$status);
         else events.update((evs) => merge(evs, [d]));
       } catch {
         /* not JSON */

@@ -24,7 +24,6 @@ import { CODE_RE, newCode, normCode } from "./authcode";
 import { newSecret, otpauthUri, totpMatch } from "./totp";
 import { mediaHeaders, ownerAttachments, sniffImage, uploadId, uploadProblem } from "./uploads";
 import { sendMail, type SmtpCfg } from "./smtp";
-import { EmailMessage } from "cloudflare:email";
 
 import { GUEST_TOKEN, guestApi, guestJoin, guestWho, guestsAdmin, initGuestSchema } from "./guests";
 import { seal, secretProblem, unseal } from "./secrets";
@@ -33,6 +32,7 @@ import { mcpServers } from "../../app/mcp-servers";
 
 const b64 = (t: string) => btoa(String.fromCharCode(...new TextEncoder().encode(t)));
 async function cfMail(binding: SendEmail, from: string, to: string, subject: string, text: string) {
+  const { EmailMessage } = await import("cloudflare:email");
   const raw = [`From: Noop <${from}>`, `To: ${to}`, `Subject: =?UTF-8?B?${b64(subject)}?=`,
     `Message-ID: <${crypto.randomUUID()}@${from.split("@")[1]}>`, `Date: ${new Date().toUTCString()}`,
     "MIME-Version: 1.0", "Content-Type: text/plain; charset=UTF-8", "Content-Transfer-Encoding: base64", "", b64(text)].join("\r\n");
@@ -55,6 +55,8 @@ interface Env {
   HUB_MOVED_TO?: string;    // the hub moved to another Worker (e.g. another account): forward every request there
   HUB_LANG?: string;        // [owner] language: "en" gives English text, otherwise Simplified Chinese
   HUB_ALLOW_IPS?: string;   // optional source-IP allow-list (IPs / CIDRs, comma or space separated); set → everyone else gets 403
+  HUB_LOCAL_MODE?: string;  // native workerd connection metadata and local resource policy
+  HUB_TRUSTED_PROXIES?: string;
 }
 
 const json = (d: unknown, status = 200) => Response.json(d, { status });
@@ -84,23 +86,51 @@ const alertTime = () => L(`Time: ${new Date().toISOString()}`, `时间：${new D
 const validEmail = (e: string) => e.length <= 254 && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e);
 
 export default {
-  async fetch(req: Request, env: Env): Promise<Response> {
+  async fetch(req: Request, env: Env, ctx?: { props?: { noopIngress?: string } }): Promise<Response> {
     setLang(env.HUB_LANG);
     const url = new URL(req.url);
+    const endpoint = env.HUB_LOCAL_MODE ? String((req as Request & { cf?: { clientIp?: string } }).cf?.clientIp ?? "") : "";
+    const peer = endpoint.match(/^\[([^\]]+)\]:\d+$/)?.[1] ?? endpoint.match(/^([^:]+):\d+$/)?.[1] ?? "";
+    const proxies = env.HUB_LOCAL_MODE ? parseAllowList(env.HUB_TRUSTED_PROXIES).nets : [];
+    const trustedProxy = env.HUB_LOCAL_MODE && ctx?.props?.noopIngress !== "local" && ipAllowed(peer, proxies);
+    let ip = env.HUB_LOCAL_MODE ? peer : req.headers.get("cf-connecting-ip") ?? "";
+    if (trustedProxy) {
+      ip = "";
+      const hops = (req.headers.get("x-forwarded-for") ?? "").split(",").map((s) => s.trim()).filter(Boolean);
+      for (let i = hops.length - 1; i >= 0; i--) if (!ipAllowed(hops[i], proxies)) { ip = hops[i]; break; }
+    }
     // Moved: machines still pointing here keep working (and pick up the new [cloud] url from the shared config).
     // IP allow-list (HUB_ALLOW_IPS): checked before anything else, static assets included
     if (env.HUB_ALLOW_IPS?.trim()) {
       const { nets, bad } = parseAllowList(env.HUB_ALLOW_IPS);
       if (bad.length) console.error(`HUB_ALLOW_IPS: ignored ${bad.join(" ")}`);
-      const ip = req.headers.get("cf-connecting-ip") ?? "";
       if (!ipAllowed(ip, nets)) return ipBlocked(req, ip);
     }
     if (env.HUB_MOVED_TO) return fetch(new Request(env.HUB_MOVED_TO.replace(/\/$/, "") + url.pathname + url.search, req));
     const mcp = isMcpPath(url.pathname);
+    if (mcp && trustedProxy) {
+      const protoHeader = req.headers.get("x-forwarded-proto");
+      if (protoHeader !== null) {
+        const proto = protoHeader.trim().toLowerCase(), host = req.headers.get("x-forwarded-host") || url.host;
+        if (proto !== "http" && proto !== "https") return json({ error: "invalid_forwarded_origin" }, 400);
+        let origin: URL;
+        try { origin = new URL(`${proto}://${host}`); } catch { return json({ error: "invalid_forwarded_origin" }, 400); }
+        if (!origin.host || origin.username || origin.password || origin.pathname !== "/" || origin.search || origin.hash)
+          return json({ error: "invalid_forwarded_origin" }, 400);
+        url.protocol = origin.protocol; url.host = origin.host;
+        req = new Request(url, req);
+      }
+    }
     if (mcp && req.method === "OPTIONS") return new Response(null, { status: 204, headers: CORS });
     if (!mcp && HASHED.test(url.pathname) && req.method === "GET") return hashedAsset(req, env, url);
     if (!mcp && !url.pathname.startsWith("/api/") && !url.pathname.startsWith("/media/")) return env.ASSETS.fetch(req);
     if (!env.HUB_TOKEN) return json({ error: "HUB_TOKEN secret not set" }, 500);
+    if (env.HUB_LOCAL_MODE) {
+      const headers = new Headers(req.headers), parsed = parseAllowList(ip);
+      if (ip && !ip.includes("/") && parsed.nets.length === 1 && !parsed.bad.length) headers.set("cf-connecting-ip", ip);
+      else headers.delete("cf-connecting-ip");
+      req = new Request(req, { headers });
+    }
     return env.HUB.get(env.HUB.idFromName("hub")).fetch(req);
   },
 };
@@ -340,7 +370,7 @@ export class Hub extends DurableObject<Env> {
   }
   /** The tightest of today's allowances, as a fraction of the free plan. */
   used() { const u = this.today(); return Math.max(u.requests / FREE.requests, u.rowsRead / FREE.rowsRead, u.rowsWritten / FREE.rowsWritten); }
-  level(): "ok" | "lean" | "shed" { const f = this.used(); return f < LEAN ? "ok" : f < SHED ? "lean" : "shed"; }
+  level(): "ok" | "lean" | "shed" { if (this.env.HUB_LOCAL_MODE) return "ok"; const f = this.used(); return f < LEAN ? "ok" : f < SHED ? "lean" : "shed"; }
   usageView() {
     return { ...this.today(), level: this.level(), dbBytes: this.ctx.storage.sql.databaseSize, free: FREE, target: TARGET,
       sockets: { owner: this.ctx.getWebSockets("owner").length, host: this.ctx.getWebSockets("host").length } };
@@ -687,7 +717,7 @@ export class Hub extends DurableObject<Env> {
       if (ownerOnly ? who === "machine" : who !== "machine") return json({ error: "forbidden" }, 403);
       const actor = who === "machine" ? (req.headers.get("x-noop-host") ?? "machine") : "owner";
       const rev0 = Number(this.sql.exec("SELECT COALESCE(MAX(rev), 0) AS n FROM files").one().n);
-      const r = await handleFiles(this.sql, req, url, actor);
+      const r = await handleFiles(this.sql, req, url, actor, !!this.env.HUB_LOCAL_MODE);
       if (r && m === "POST") { // tasks / decisions changed → MCP resources/updated
         const paths = this.sql.exec("SELECT path FROM files WHERE rev > ?", rev0).toArray().map((x) => String(x.path));
         const uris = new Set<string>();

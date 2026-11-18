@@ -28,7 +28,7 @@ import { ackInbound, answerFromChat, appendEvent, cancelTask, feed, handleOwnerM
 import { addFollowUp, reopenTask, routeWithoutModel, type BrainOut, ClaudeModel, systemPrompt, dataActs, localStore, logBrain, think } from "./brain";
 import { isWrite, runTool } from "../cloud/src/tools";
 import { cloudDeploy, startCloudBridge } from "./cloud";
-import { adoptCloudUrl, readHubToml } from "./sync";
+import { adoptCloudUrl, hubDialUrl, readHubToml } from "./sync";
 import { judgeAccuracy, level, needsApproval, noteStuckRoutine, proposeBatch, resolveProposals, routineParkedOnDecision, routineQueued, supersedeProposed } from "./autonomy";
 import { CODE, L, UPDATE_REQUEST, type UpdateState, setUpdateState, updateState, allowedClis, cliHintPatch, capOk, idTagFor, isPrimary, isCloudDeployHost, runningRev, setApprovalGate, setIdTag } from "./core";
 import { accountEnv, accountsStatus, classify, failoverAccount, pendingLoginIds, pickAccount, reportFailure, retryLogins, submitLoginCode } from "./accounts";
@@ -515,7 +515,7 @@ async function ownerUpdate(c: Cfg, host: string) {
   }
   const now7 = (Bun.spawnSync(["git", "-C", CODE, "rev-parse", "--short", "HEAD"], { stdout: "pipe" }).stdout.toString().trim()) || before;
   const stale = now7 !== before; // the code moved but this process could not take it (local edits, failing tests)
-  if (isCloudDeployHost(c, host) && c.cloud?.url) {
+  if (isCloudDeployHost(c, host) && c.cloud?.url && readHubToml().cloud?.mode !== "local") {
     await report("deploying", L("Redeploying", "重新发布线上"));
     const cloud = await import("./cloud");
     const err = await cloud.cloudDeploy(c).then((u) => (u ? "" : cloud.lastDeployError || "unknown"), (e) => String(e));
@@ -1058,10 +1058,10 @@ async function status(cfg: Cfg, brief = false) {
     return;
   }
   // the server this machine actually syncs with is noop.toml's; the shared config only proposes one (adopted next tick)
-  const hub = String(readHubToml().cloud?.url ?? "").replace(/\/$/, ""), shared = String(cfg.cloud?.url ?? "").replace(/\/$/, "");
-  console.log(`server: ${hub || "local (not connected to a hub)"}${shared && hub && shared !== hub ? `   (shared config says ${shared}: switching on the next tick)` : ""}`);
+  const bootstrap = readHubToml().cloud, hub = String(bootstrap?.url ?? "").replace(/\/$/, ""), shared = String(cfg.cloud?.url ?? "").replace(/\/$/, "");
+  console.log(`server: ${hub || "local (not connected to a hub)"}${shared && hub && shared !== hub ? `   (shared config says ${shared}${bootstrap?.mode === "local" ? "" : ": switching on the next tick"})` : ""}`);
   if (hub) { // today's Cloudflare usage against the free plan (cloud/src/budget.ts)
-    const u = await fetch(`${hub}/api/usage`, { headers: { Authorization: `Bearer ${cfg.server?.token}` }, signal: AbortSignal.timeout(5000) })
+    const u = await fetch(`${hubDialUrl(hub)}/api/usage`, { headers: { Authorization: `Bearer ${cfg.server?.token}` }, signal: AbortSignal.timeout(5000) })
       .then((r) => (r.ok ? r.json() : null)).catch(() => null) as any;
     const pct = (k: string) => `${Math.round((100 * u[k]) / u.free[k])}%`;
     if (u?.free) console.log(`cloudflare today (UTC): ${u.requests} requests ${pct("requests")} · ${u.rowsRead} rows read ${pct("rowsRead")} · ${u.rowsWritten} rows written ${pct("rowsWritten")} of the free plan · db ${(u.dbBytes / 1e6).toFixed(0)} MB · ${u.level}`);
@@ -1090,7 +1090,15 @@ async function status(cfg: Cfg, brief = false) {
 const HELP = `Noop — your own AI team
 
   noop init [<hub-url>] [--token <machine-token>]   join your hub (owner email login, or a machine token); asks for the URL if not given
+  noop init --local <hub-url> [--token <machine-token>]   join a self-hosted coordinator
   noop init --primary         the first machine, once: deploy your own Cloudflare Worker (holds the fleet data), seed ~/.noop/data
+  noop init --primary --local <hub-url> --token <machine-token>   initialize a primary against a local coordinator
+  noop cloud deploy --local [--listen 127.0.0.1:8790]   run the local coordinator candidate in the foreground
+  noop cloud service install [--listen 127.0.0.1:8790]   install and start the local coordinator service
+  noop cloud service start | stop | status | logs   manage the local coordinator service
+  noop cloud service update [--source <directory>] [--workerd <file>] | rollback   update or roll back the service
+  noop cloud backup <directory>   back up a stopped local coordinator
+  noop cloud restore <directory>  restore into a new NOOP_HOME
   noop install                run as a service (systemd / launchd / Task Scheduler)
   noop update                 self-update framework now (also automatic in daemon)
   noop fix ["what is wrong"]  AI medic: diagnose & repair this install (auto-runs on install/update/daemon failures)
@@ -1126,7 +1134,7 @@ async function main() {
       // a bare `--worker` (older install lines) means the default: join an existing noop
       const args = rest.flatMap((a, i) => (a === "--worker" && (!rest[i + 1] || rest[i + 1].startsWith("-")) ? [] : [a]));
       const { values, positionals } = parseArgs({ args, allowPositionals: true,
-        options: { worker: { type: "string" }, token: { type: "string" }, primary: { type: "boolean" } } });
+        options: { worker: { type: "string" }, token: { type: "string" }, primary: { type: "boolean" }, local: { type: "boolean" } } });
       return init({ ...values, worker: values.worker ?? positionals[0] });
     }
     case "install": return install();
@@ -1191,7 +1199,7 @@ async function main() {
       }
       return;
     case "login": { // show the pending sign-in code (used when email isn't configured)
-      const url = String(cfg.cloud?.url ?? "").replace(/\/$/, "");
+      const url = hubDialUrl(cfg.cloud?.url);
       const r = url ? await fetch(`${url}/api/host/login-code`, { headers: { Authorization: `Bearer ${cfg.server?.token}` } }).catch(() => null) : null;
       if (!r?.ok) return void console.log(L("No pending code: enter your email in the app, press Send code, then run noop login", "没有待使用的验证码：先在 app 里输入邮箱，点「发送验证码」，再运行 noop login"));
       const c = (await r.json()) as { email: string; code: string; expires: number };
@@ -1205,7 +1213,7 @@ async function main() {
       return;
     }
     case "2fa": { // the mandatory second factor; bound from a machine only (the machine key is the root of trust)
-      const url = String(cfg.cloud?.url ?? "").replace(/\/$/, "");
+      const url = hubDialUrl(cfg.cloud?.url);
       if (!url) return void console.log(L("[cloud] url is not configured", "没有配置 [cloud] url"));
       const call = (path: string, body?: unknown) => fetch(`${url}${path}`, { method: body === undefined ? "GET" : "POST",
         headers: { Authorization: `Bearer ${cfg.server?.token}`, "x-noop-host": host, "content-type": "application/json" }, ...(body === undefined ? {} : { body: JSON.stringify(body) }) });
@@ -1245,7 +1253,7 @@ async function main() {
       return void console.log(L("Not confirmed, the binding did not take effect.", "没有确认，绑定未生效。"));
     }
     case "revoke-sessions": { // a sign-in alert you didn't expect: everyone but the machines is out
-      const url = String(cfg.cloud?.url ?? "").replace(/\/$/, "");
+      const url = hubDialUrl(cfg.cloud?.url);
       if (!url) return void console.log(L("[cloud] url is not configured", "没有配置 [cloud] url"));
       const r = await fetch(`${url}/api/host/revoke-sessions`, { method: "POST", headers: { Authorization: `Bearer ${cfg.server?.token}`, "x-noop-host": host } }).catch((e) => e as Error);
       if (r instanceof Error || !r.ok) { process.exitCode = 1; const why = r instanceof Error ? r.message : `HTTP ${r.status} ${await r.text()}`; return void console.log(L(`Revoke failed: ${why}`, `撤销失败：${why}`)); }
@@ -1253,7 +1261,21 @@ async function main() {
       return void console.log(L(`✓ Revoked ${revoked} login(s) (phones, browsers, MCP connectors). Log in again with an email code.\n  If you suspect the mailbox is compromised, change its password first, then consider rotating the machine key.`, `✓ 已撤销 ${revoked} 个登录（手机、浏览器、MCP 连接器）。需要重新用邮箱验证码登录。\n  如果怀疑邮箱被盗，先改邮箱密码，再考虑轮换机器密钥。`));
     }
     case "cloud": {
-      if (rest[0] !== "deploy") return void console.log("usage: hub cloud deploy");
+      if (rest[0] === "service") {
+        const { values, positionals } = parseArgs({ args: rest.slice(1), allowPositionals: true, options: { listen: { type: "string" }, source: { type: "string" }, workerd: { type: "string" } } });
+        if (positionals.length !== 1 || (values.listen && positionals[0] !== "install") || ((values.source || values.workerd) && positionals[0] !== "update"))
+          throw new Error("usage: noop cloud service install [--listen address] | start | stop | status | logs | update [--source directory] [--workerd file] | rollback");
+        return void (await (await import("./local-service")).localService(positionals[0], values.listen, values.source, values.workerd));
+      }
+      if (rest[0] === "backup" || rest[0] === "restore") {
+        if (rest.length !== 2 || rest[1].startsWith("-")) throw new Error(`usage: noop cloud ${rest[0]} <directory>`);
+        const { backupCoordinator, restoreCoordinator } = await import("./local-backup");
+        return void (await (rest[0] === "backup" ? backupCoordinator(rest[1]) : restoreCoordinator(rest[1])));
+      }
+      if (rest[0] !== "deploy") return void console.log("usage: hub cloud deploy | service | backup | restore");
+      const { values } = parseArgs({ args: rest.slice(1), options: { local: { type: "boolean" }, listen: { type: "string" } } });
+      if (values.listen && !values.local) throw new Error("--listen requires --local");
+      if (values.local) return void (await (await import("./local-coordinator")).localCoordinator(cfg, values.listen));
       return void (await cloudDeploy(cfg));
     }
     case "notify": return void console.log(await notify(rest.join(" "), cfg));

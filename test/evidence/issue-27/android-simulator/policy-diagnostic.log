@@ -1,0 +1,1 @@
+11-16 16:35:05.759  2083  2182 E nsh     : js: NOOP_ANDROID_FETCH_DIAGNOSTIC TypeError: Network request failed: Cleartext HTTP traffic to 127.0.0.1 not permitted

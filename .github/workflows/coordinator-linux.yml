@@ -1,0 +1,154 @@
+name: coordinator-linux
+on:
+  push:
+    branches: ["**"]
+    tags: ["v*", "coord-v*"]
+  pull_request:
+    paths:
+      - .github/workflows/coordinator-linux.yml
+      - .github/actions/setup-nsh/**
+      - src/**
+      - cloud/**
+      - app/**
+      - templates/**
+      - presets/**
+      - scripts/package-local-coordinator.ts
+      - test/**
+      - package.json
+      - bun.lock
+      - bunfig.toml
+      - tsconfig.json
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  web:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify evidence checksums
+        run: |
+          for sums in test/evidence/issue-*/SHA256SUMS; do
+            (cd "$(dirname "$sums")" && sha256sum -c --quiet SHA256SUMS)
+          done
+      - uses: ./.github/actions/setup-nsh
+        with:
+          ref: nightly
+          target: web
+      - name: Build Web from this checkout
+        run: |
+          (cd app && NSH=nsh ./build-web.sh)
+          git rev-parse HEAD > "$RUNNER_TEMP/web-source-commit"
+          tar -czf "$RUNNER_TEMP/coordinator-web.tar.gz" -C app/dist/web noop
+          (cd "$RUNNER_TEMP" && sha256sum coordinator-web.tar.gz > coordinator-web.sha256)
+      - uses: actions/upload-artifact@v4
+        with:
+          name: coordinator-web
+          path: |
+            ${{ runner.temp }}/coordinator-web.tar.gz
+            ${{ runner.temp }}/coordinator-web.sha256
+            ${{ runner.temp }}/web-source-commit
+          if-no-files-found: error
+          retention-days: 7
+
+  package:
+    needs: web
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: ubuntu-24.04, arch: x86_64, workerd: workerd-linux-64 }
+          - { os: ubuntu-24.04-arm, arch: arm64, workerd: workerd-linux-arm64 }
+    runs-on: ${{ matrix.os }}
+    env:
+      NOOP_E2E_WEB_ASSETS: ${{ github.workspace }}/app/dist/web/noop
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+      - run: bun install --frozen-lockfile
+      - uses: actions/download-artifact@v4
+        with:
+          name: coordinator-web
+          path: ${{ runner.temp }}/coordinator-web
+      - name: Prepare Web and pinned workerd
+        env:
+          WORKERD_PACKAGE: ${{ matrix.workerd }}
+        run: |
+          export NOOP_E2E_WORKERD="$RUNNER_TEMP/workerd" NOOP_E2E_OUT="$RUNNER_TEMP/coordinator-e2e"
+          printf 'NOOP_E2E_WORKERD=%s\nNOOP_E2E_OUT=%s\n' "$NOOP_E2E_WORKERD" "$NOOP_E2E_OUT" >> "$GITHUB_ENV"
+          cd "$RUNNER_TEMP/coordinator-web"
+          sha256sum -c coordinator-web.sha256
+          test "$(cat web-source-commit)" = "$(git -C "$GITHUB_WORKSPACE" rev-parse HEAD)"
+          mkdir -p "$GITHUB_WORKSPACE/app/dist/web" "$RUNNER_TEMP/workerd-package" "$NOOP_E2E_OUT"
+          tar -xzf coordinator-web.tar.gz -C "$GITHUB_WORKSPACE/app/dist/web"
+          package=$(npm pack --silent --ignore-scripts "@cloudflare/$WORKERD_PACKAGE@1.20261110.1" --pack-destination "$RUNNER_TEMP")
+          tar -xzf "$RUNNER_TEMP/$package" -C "$RUNNER_TEMP/workerd-package"
+          cp "$RUNNER_TEMP/workerd-package/package/bin/workerd" "$NOOP_E2E_WORKERD"
+          chmod +x "$NOOP_E2E_WORKERD"
+      - name: Run Linux checks
+        run: |
+          bun run check
+          bun test
+          bun test test/budget.test.ts
+          git config --global user.name ci
+          git config --global user.email ci@ci
+          ./test/e2e.sh
+          bun test/local-workflow-e2e.ts
+      - name: Run coordinator acceptance
+        run: |
+          bun test/self-hosted-ingress-e2e.ts
+          NOOP_E2E_OVERLAP=1 bun test/self-hosted-mcp-e2e.ts
+          bun test/self-hosted-guest-e2e.ts
+          bun test/self-hosted-backup-e2e.ts
+          bun test/self-hosted-budget-e2e.ts
+      - name: Build and verify the coordinator archive
+        run: |
+          bun scripts/package-local-coordinator.ts --workerd "$NOOP_E2E_WORKERD" --output "$RUNNER_TEMP/coordinator-artifacts" \
+            --web-commit "$(cat "$RUNNER_TEMP/coordinator-web/web-source-commit")"
+          archive=$(find "$RUNNER_TEMP/coordinator-artifacts" -name '*.tar.gz' -type f -print -quit)
+          NOOP_E2E_ARCHIVE="$archive" bun test/local-package-e2e.ts
+      - name: Test archive service without public network
+        run: |
+          cleanup() {
+            sudo iptables -D OUTPUT ! -o lo -j REJECT || true
+            sudo ip6tables -D OUTPUT ! -o lo -j REJECT || true
+          }
+          trap cleanup EXIT
+          sudo iptables -I OUTPUT 1 ! -o lo -j REJECT
+          sudo ip6tables -I OUTPUT 1 ! -o lo -j REJECT
+          if timeout 3 bash -c 'echo > /dev/tcp/1.1.1.1/443' 2>/dev/null; then
+            echo "Public network remains available"
+            exit 1
+          fi
+          export NOOP_E2E_DISPOSABLE=1
+          export NOOP_E2E_ARCHIVE="$(find "$RUNNER_TEMP/coordinator-artifacts" -name '*.tar.gz' -type f -print -quit)"
+          bun test/self-hosted-service-e2e.ts
+          bun test/self-hosted-update-e2e.ts
+      - uses: actions/upload-artifact@v4
+        with:
+          name: noop-coordinator-linux-${{ matrix.arch }}
+          path: ${{ runner.temp }}/coordinator-artifacts/
+          if-no-files-found: error
+          compression-level: 0
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: noop-coordinator-evidence-linux-${{ matrix.arch }}
+          path: |
+            ${{ runner.temp }}/coordinator-e2e/**/report.json
+            ${{ runner.temp }}/coordinator-e2e/**/SHA256SUMS
+            ${{ runner.temp }}/coordinator-e2e/**/*.log
+            ${{ runner.temp }}/coordinator-e2e/**/proxy.key
+            ${{ runner.temp }}/coordinator-e2e/**/proxy.crt
+            ${{ runner.temp }}/coordinator-e2e/**/discovery.json
+            ${{ runner.temp }}/coordinator-e2e/**/shared-mcp-task.json
+            ${{ runner.temp }}/coordinator-e2e/**/bad-workerd
+          if-no-files-found: warn
+      - uses: actions/download-artifact@v4
+        with:
+          name: noop-coordinator-evidence-linux-${{ matrix.arch }}
+          path: ${{ runner.temp }}/downloaded-coordinator-evidence
+      - name: Verify downloaded acceptance evidence
+        run: bash test/verify-coordinator-evidence.sh "$RUNNER_TEMP/downloaded-coordinator-evidence"

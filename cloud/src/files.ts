@@ -15,8 +15,8 @@
 // Every write gets its own global `rev` (monotonic), so `changes?since=` pagination never splits a row.
 // History keeps ≤ 90 days, ≤ 20k rows and ≤ 30 versions per path, but always the latest row of each path.
 // Journals, logs and heartbeats keep no history (their history view is the current row): each write was a full copy,
-// and an append-only journal rewritten every minute alone grew history past a gigabyte. Past TARGET.storageBytes the
-// daily prune keeps only the latest row of every path.
+// and an append-only journal rewritten every minute alone grew history past a gigabyte. In cloud mode, past
+// TARGET.storageBytes the daily prune keeps only the latest row of every path.
 
 /** Structural subset of Cloudflare's SqlStorage (also satisfied by a bun:sqlite adapter in tests). */
 export interface FilesSql { exec(query: string, ...bindings: any[]): { toArray(): any[] }; readonly databaseSize?: number }
@@ -74,7 +74,7 @@ const liveVersion = (r?: Row) => (r && !r.deleted ? Number(r.version) : 0);
 type Prepared = { path: string; base: number; content: Uint8Array | null; hash: string | null };
 
 /** Synchronous check-and-apply: no awaits inside, so the DO cannot interleave another request. */
-function applyCas(sql: FilesSql, items: Prepared[], actor: string, msg: string): Response {
+function applyCas(sql: FilesSql, items: Prepared[], actor: string, msg: string, ignoreStorageTarget: boolean): Response {
   const conflicts = items.filter((it) => liveVersion(rowOf(sql, it.path)) !== it.base).map((it) => it.path);
   if (conflicts.length) return json({ conflicts }, 409);
   let rev = curRev(sql);
@@ -94,7 +94,7 @@ function applyCas(sql: FilesSql, items: Prepared[], actor: string, msg: string):
     out.push({ path: it.path, version, hash: it.hash, deleted: !it.content });
   }
   setRev(sql, rev);
-  pruneHistory(sql, Date.now(), sql.databaseSize ?? 0);
+  pruneHistory(sql, Date.now(), ignoreStorageTarget ? 0 : sql.databaseSize ?? 0);
   return json({ rev, files: out });
 }
 
@@ -145,7 +145,7 @@ export function handleReadFiles(sql: FilesSql, url: URL): Response | null {
 async function body(req: Request): Promise<any> { try { return await req.json(); } catch { return null; } }
 
 // ---------------------------------------------------------------- routes
-export async function handleFiles(sql: FilesSql, req: Request, url: URL, actor: string): Promise<Response | null> {
+export async function handleFiles(sql: FilesSql, req: Request, url: URL, actor: string, ignoreStorageTarget = false): Promise<Response | null> {
   const p = url.pathname;
   if (!p.startsWith("/api/files/")) return null;
 
@@ -187,7 +187,7 @@ export async function handleFiles(sql: FilesSql, req: Request, url: URL, actor: 
       if (content.length > MAX_FILE) return json({ error: `file too large: ${c.path} is ${content.length} bytes (max ${MAX_FILE}); keep large artifacts outside the data folder` }, 413);
       items.push({ path: c.path, base, content, hash: await sha256hex(content) });
     }
-    return applyCas(sql, items, actor, String(b.msg ?? "").slice(0, 500));
+    return applyCas(sql, items, actor, String(b.msg ?? "").slice(0, 500), ignoreStorageTarget);
   }
 
   if (p === "/api/files/history" && req.method === "GET") {
@@ -215,7 +215,7 @@ export async function handleFiles(sql: FilesSql, req: Request, url: URL, actor: 
     const content = h.content == null ? null : bytes(h.content);
     const base = liveVersion(rowOf(sql, b.path));
     const res = applyCas(sql, [{ path: b.path, base, content, hash: content ? String(h.hash) : null }], actor,
-      String(b.msg ?? `revert ${b.path} to v${b.version}`).slice(0, 500));
+      String(b.msg ?? `revert ${b.path} to v${b.version}`).slice(0, 500), ignoreStorageTarget);
     if (res.status !== 200) return res;
     const r = await res.json() as any;
     return json({ rev: r.rev, version: r.files[0].version });

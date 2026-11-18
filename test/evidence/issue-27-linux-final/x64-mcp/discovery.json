@@ -1,0 +1,17 @@
+{
+  "expectedOrigin": "https://noop.example.test:40451",
+  "status": 200,
+  "metadata": {
+    "resource": "https://noop.example.test:40451/mcp",
+    "authorization_servers": [
+      "https://noop.example.test:40451"
+    ],
+    "scopes_supported": [
+      "noop"
+    ],
+    "bearer_methods_supported": [
+      "header"
+    ],
+    "resource_name": "Noop"
+  }
+}

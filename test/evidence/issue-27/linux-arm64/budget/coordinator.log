@@ -1,0 +1,25 @@
+Local coordinator candidate: http://127.0.0.1:35667
+Local coordinator candidate: http://127.0.0.1:35667
+152 |         const response = await fetch("http://localhost/api/status", { unix: healthSocket, headers: { Authorization: `Bearer ${token}` }, signal: AbortSignal.timeout(500) });
+153 |         if (response.ok) { ready = true; break; }
+154 |       } catch {}
+155 |       await Bun.sleep(100);
+156 |     }
+157 |     if (!ready) throw new Error("The local coordinator did not start");
+                                ^
+error: The local coordinator did not start
+      at localCoordinator (/home/runner/work/_temp/evidence/noop-budget-e2e-7Sa7RI/repo/src/local-coordinator.ts:157:27)
+      at async main (/home/runner/work/_temp/evidence/noop-budget-e2e-7Sa7RI/repo/src/cli.ts:1257:82)
+
+152 |         const response = await fetch("http://localhost/api/status", { unix: healthSocket, headers: { Authorization: `Bearer ${token}` }, signal: AbortSignal.timeout(500) });
+153 |         if (response.ok) { ready = true; break; }
+154 |       } catch {}
+155 |       await Bun.sleep(100);
+156 |     }
+157 |     if (!ready) throw new Error("The local coordinator did not start");
+                                ^
+error: The local coordinator did not start
+      at localCoordinator (/home/runner/work/_temp/evidence/noop-budget-e2e-7Sa7RI/repo/src/local-coordinator.ts:157:27)
+      at async main (/home/runner/work/_temp/evidence/noop-budget-e2e-7Sa7RI/repo/src/cli.ts:1257:82)
+
+Local coordinator candidate: http://127.0.0.1:35667

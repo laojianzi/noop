@@ -1,0 +1,17 @@
+{
+  "status": "failed",
+  "source": "/home/jeff/.codex/worktrees/noop-local-coordinator",
+  "revision": "af21ebcb17b9849f23dfbb78662e188ebdd1a181",
+  "changes": "M test/evidence/issue-27/README.md\n M test/evidence/issue-27/android-simulator/README.md\n M test/self-hosted-acceptance.md\n M test/self-hosted-mcp-e2e.ts\n M test/self-hosted-messages-e2e.ts",
+  "platform": "linux-x64",
+  "timestamp": "2026-11-17T03:38:54.319Z",
+  "bun": "1.4.4",
+  "workerdVersion": "workerd 2026-11-10",
+  "workerdSha256": "620d9f7e5eb461067e08af17316aaa087445b4232e0e98e3dd146763bd9ab394",
+  "webIndexSha256": "bd9ed72ccec6e59169751686b2383b27699b7b967b8fca5e85e55d33e3a16dfc",
+  "checks": [
+    "real Web assets and workerd are supplied",
+    "local coordinator starts"
+  ],
+  "error": "Error: TOTP setup failed: 失败：HTTP 403 {\"error\":\"ip_blocked\",\"ip\":\"\",\"message\":\"这个网络的出口 IP 未知 不在允许名单（HUB_ALLOW_IPS）里\"}\n    at /home/jeff/.codex/worktrees/noop-local-coordinator/test/self-hosted-mcp-e2e.ts:74:37"
+}

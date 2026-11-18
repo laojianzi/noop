@@ -1,0 +1,2 @@
+hub daemon on legacy caps=os:linux,host:legacy,arch:x64,cli:bun,cli:node tick=60s parallel≤cores/3
+sync: the hub moved, now syncing with https://advertised.invalid

@@ -1,0 +1,28 @@
+{
+  "status": "passed",
+  "source": "/home/runner/work/noop/noop",
+  "revision": "82017cff19579b790f3e94e3dfe9e7c6a37b67d2",
+  "changes": "",
+  "platform": "linux-arm64",
+  "timestamp": "2026-11-16T13:28:26.700Z",
+  "bun": "1.4.4",
+  "vm": "QEMU ARM64 TCG",
+  "debianImageSha256": "9bc031acc7b1058d0a4f50050af598314ca063969ab228514cef8f67945ebb81",
+  "workerdSha256": "9d557f449060e57feb17541092929801dd7f8df79be9424fd8b61b772c7237c0",
+  "webIndexSha256": "bd9ed72ccec6e59169751686b2383b27699b7b967b8fca5e85e55d33e3a16dfc",
+  "checks": [
+    "the VM host is Linux x86_64 or ARM64",
+    "Debian image, pinned workerd and real Web assets are supplied",
+    "coordinator installs with linger while the guest has no public network",
+    "owner binds TOTP on the offline VM",
+    "offline owner requests a login code",
+    "owner signs in to the offline VM",
+    "a host commits a file before reboot",
+    "after a new boot the service starts with linger and no user login session",
+    "machine credential still works after reboot",
+    "owner requests a login code after reboot",
+    "owner signs in after reboot with the original TOTP secret",
+    "a fresh host synchronizes the persisted file after reboot"
+  ],
+  "error": ""
+}

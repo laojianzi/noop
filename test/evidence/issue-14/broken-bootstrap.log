@@ -1,0 +1,16 @@
+37 |   for (const [s, kv] of Object.entries(patch)) cur[s] = { ...(cur[s] ?? {}), ...kv };
+38 |   const q = (v: unknown) => JSON.stringify(String(v));
+39 |   const text = "# machine-local Noop bootstrap (never synced): your Worker URL + this machine's token\n" +
+40 |     Object.entries(cur).map(([s, kv]) => `[${s}]\n${Object.entries(kv as object).map(([k, v]) => `${k} = ${q(v)}`).join("\n")}\n`).join("\n");
+41 |   mkdirSync(dirname(hubTomlPath()), { recursive: true });
+42 |   writeFileSync(hubTomlPath(), text);
+       ^
+EISDIR: illegal operation on a directory, open '/var/tmp/noop-self-hosted-1MY3RE/broken-bootstrap/noop.toml'
+    path: "/var/tmp/noop-self-hosted-1MY3RE/broken-bootstrap/noop.toml",
+ syscall: "open",
+   errno: -21,
+    code: "EISDIR"
+
+      at writeHubToml (/var/tmp/noop-self-hosted-1MY3RE/repo/src/sync.ts:42:3)
+      at localCoordinator (/var/tmp/noop-self-hosted-1MY3RE/repo/src/local-coordinator.ts:99:5)
+      at async main (/var/tmp/noop-self-hosted-1MY3RE/repo/src/cli.ts:1239:82)

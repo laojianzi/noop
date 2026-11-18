@@ -1,0 +1,61 @@
+name: Isolated ARM64 feature acceptance
+on:
+  push:
+    branches: [codex/noop-x64-reboot-20261117]
+permissions:
+  contents: read
+  actions: read
+jobs:
+  arm-features:
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 25
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: 65eab6b0907b3f7beefd0a2d1fc0ced3bea604a3
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.4
+      - name: Prepare verified candidate
+        run: |
+          mkdir -p "$RUNNER_TEMP/artifact" "$RUNNER_TEMP/release" "$RUNNER_TEMP/evidence"
+          gh run download 44061419526 -R "$GITHUB_REPOSITORY" -n noop-coordinator-linux-arm64 -D "$RUNNER_TEMP/artifact"
+          (cd "$RUNNER_TEMP/artifact" && sha256sum -c ./*.sha256)
+          tar -xzf "$RUNNER_TEMP/artifact/"*.tar.gz -C "$RUNNER_TEMP/release"
+          test "$(jq -r .sourceCommit "$RUNNER_TEMP/release/manifest.json")" = 65eab6b0907b3f7beefd0a2d1fc0ced3bea604a3
+      - name: Verify remaining features offline
+        run: |
+          cleanup() {
+            sudo iptables -D OUTPUT ! -o lo -j REJECT || true
+            sudo ip6tables -D OUTPUT ! -o lo -j REJECT || true
+          }
+          trap cleanup EXIT
+          sudo iptables -I OUTPUT 1 ! -o lo -j REJECT
+          sudo ip6tables -I OUTPUT 1 ! -o lo -j REJECT
+          if timeout 3 bash -c 'echo >/dev/tcp/1.1.1.1/443' 2>/dev/null; then exit 1; fi
+          export NOOP_E2E_WEB_ASSETS="$RUNNER_TEMP/release/repo/app/dist/web/noop"
+          export NOOP_E2E_WORKERD="$RUNNER_TEMP/release/bin/workerd"
+          export NOOP_E2E_WEB_VERSION=65eab6b0907b NOOP_E2E_OUT="$RUNNER_TEMP/evidence"
+          result=0
+          for test in self-hosted-guest-e2e self-hosted-mcp-e2e self-hosted-backup-e2e self-hosted-ingress-e2e self-hosted-budget-e2e; do
+            echo "START $test"; bun "test/$test.ts" || result=1; echo "END $test"
+          done
+          exit "$result"
+      - name: Collect reports
+        if: always()
+        run: |
+          mkdir -p "$RUNNER_TEMP/publish"
+          for dir in "$RUNNER_TEMP"/evidence/*; do
+            [ -d "$dir" ] || continue
+            target="$RUNNER_TEMP/publish/$(basename "$dir")"; mkdir -p "$target"
+            find "$dir" -maxdepth 1 -type f -exec cp -t "$target" {} +
+            (cd "$target" && sha256sum -c --quiet SHA256SUMS)
+          done
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: noop-acceptance-extra-arm64
+          path: ${{ runner.temp }}/publish/
+          if-no-files-found: warn

@@ -1,0 +1,17 @@
+{
+  "status": "failed",
+  "source": "/home/jeff/.codex/worktrees/noop-local-coordinator",
+  "revision": "db76b7d1b5d382c699676306899e96bbe11e20e8",
+  "changes": "M test/fixtures/https-proxy.ts\n M test/self-hosted-mcp-e2e.ts",
+  "platform": "linux-x64",
+  "timestamp": "2026-11-17T06:15:15.576Z",
+  "bun": "1.4.4",
+  "workerdVersion": "workerd 2026-11-10",
+  "workerdSha256": "620d9f7e5eb461067e08af17316aaa087445b4232e0e98e3dd146763bd9ab394",
+  "webIndexSha256": "bd9ed72ccec6e59169751686b2383b27699b7b967b8fca5e85e55d33e3a16dfc",
+  "checks": [
+    "real Web assets and workerd are supplied",
+    "local coordinator starts"
+  ],
+  "error": "Error: coordinator records a separate loopback dial address\n    at check (/home/jeff/.codex/worktrees/noop-local-coordinator/test/self-hosted-mcp-e2e.ts:18:79)\n    at /home/jeff/.codex/worktrees/noop-local-coordinator/test/self-hosted-mcp-e2e.ts:73:5"
+}

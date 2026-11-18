@@ -1,0 +1,19 @@
+{
+  "status": "failed",
+  "source": "/var/tmp/noop-upstream-sync-20261117/green-source",
+  "revision": "31a8d523e5d34656d34473bf149c8170a6b4c7b3",
+  "changes": "",
+  "platform": "linux-x64",
+  "timestamp": "2026-11-17T12:13:28.870Z",
+  "bun": "1.4.4",
+  "webVersion": "a74449a3604b",
+  "webIndexSha256": "c77717bcb0c38a769ffe4bbda46ce4b4794eb1e0e319c4fb151c485f757942a2",
+  "workerd": {
+    "version": "workerd 2026-11-10",
+    "sha256": "620d9f7e5eb461067e08af17316aaa087445b4232e0e98e3dd146763bd9ab394"
+  },
+  "checks": [
+    "Web assets and workerd are supplied"
+  ],
+  "error": "Error: coordinator exited: Socket \"health\": parseAddress: path must be shorter than SUN_LEN\n175 |         const response = await fetch(\"http://localhost/api/status\", { unix: healthSocket, headers: { Authorization: `Bearer ${token}` }, signal: AbortSignal.timeout(500) });\n176 |         if (response.ok) { ready = true; break; }\n177 |       } catch {}\n178 |       await Bun.sleep(100);\n179 |     }\n180 |     if (!ready) throw new Error(\"The local coordinator did not start; check its listener addresses and logs\");\n                                ^\nerror: The local coordinator did not start; check its listener addresses and logs\n      at localCoordinator (/var/tmp/noop-upstream-sync-20261117/final-results/noop-backup-e2e-ErbGhe/repo/src/local-coordinator.ts:180:27)\n      at async main (/var/tmp/noop-upstream-sync-20261117/final-results/noop-backup-e2e-ErbGhe/repo/src/cli.ts:1276:82)\n\n\n    at <anonymous> (/var/tmp/noop-upstream-sync-20261117/green-source/test/self-hosted-backup-e2e.ts:51:92)\n    at waitFor (/var/tmp/noop-upstream-sync-20261117/green-source/test/self-hosted-backup-e2e.ts:27:73)\n    at async <anonymous> (/var/tmp/noop-upstream-sync-20261117/green-source/test/self-hosted-backup-e2e.ts:50:11)"
+}

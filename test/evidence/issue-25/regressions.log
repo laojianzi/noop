@@ -1,0 +1,13 @@
+fleet day: 7595 requests (target 20000), ~15427 rows written (target 20000)
+test/cloud-auth/push.test.ts:
+(pass) RFC 8291 aes128gcm test vector [1.50ms]
+(pass) VAPID JWT is ES256-signed by the advertised key [0.85ms]
+
+1 tests skipped:
+(skip) staleDerivedData picks idle and orphaned project folders only
+
+ 290 pass
+ 1 skip
+ 0 fail
+ 5506 expect() calls
+Ran 291 tests across 49 files. [17.54s]

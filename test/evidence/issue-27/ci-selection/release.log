@@ -1,0 +1,61 @@
+time="2026-11-17T12:43:32+08:00" level=info msg="Using docker host 'unix:///var/run/docker.sock', and daemon socket 'unix:///var/run/docker.sock'"
+*DRYRUN* [release/package (windows)-2] ⭐ Run Set up job
+*DRYRUN* [release/package (ios)-4    ] ⭐ Run Set up job
+*DRYRUN* [release/package (macos)-3  ] ⭐ Run Set up job
+*DRYRUN* [release/package (linux)-1  ] ⭐ Run Set up job
+*DRYRUN* [release/package (ios)-4    ]   ✅  Success - Set up job
+*DRYRUN* [release/package (linux)-1  ]   ✅  Success - Set up job
+*DRYRUN* [release/package (ios)-4    ] 🧪  Matrix: map[asset:noop-ios-unsigned.ipa os:xcode-27 target:ios]
+*DRYRUN* [release/package (linux)-1  ] 🧪  Matrix: map[asset:noop-linux-x86_64.tar.gz installer:install-client.sh os:ubuntu-24.04 target:linux]
+*DRYRUN* [release/package (windows)-2]   ✅  Success - Set up job
+*DRYRUN* [release/package (windows)-2] 🧪  Matrix: map[asset:noop-windows-x86_64.zip installer:install-client.ps1 os:windows-latest target:windows]
+*DRYRUN* [release/package (ios)-4    ] ⭐ Run Main echo selected
+*DRYRUN* [release/package (linux)-1  ] ⭐ Run Main echo selected
+*DRYRUN* [release/package (macos)-3  ]   ✅  Success - Set up job
+*DRYRUN* [release/package (windows)-2] ⭐ Run Main echo selected
+*DRYRUN* [release/package (macos)-3  ] 🧪  Matrix: map[asset:noop-macos-arm64.zip installer:install-client.sh os:macos-15 target:macos]
+[release/package (ios)-4    ]   | selected
+*DRYRUN* [release/package (ios)-4    ]   ✅  Success - Main echo selected [7.715388ms]
+*DRYRUN* [release/package (ios)-4    ] ⭐ Run Complete job
+*DRYRUN* [release/package (ios)-4    ] Cleaning up container for job package (ios)
+[release/package (linux)-1  ]   | selected
+*DRYRUN* [release/package (linux)-1  ]   ✅  Success - Main echo selected [6.938375ms]
+*DRYRUN* [release/package (linux)-1  ] ⭐ Run Complete job
+*DRYRUN* [release/package (linux)-1  ] Cleaning up container for job package (linux)
+*DRYRUN* [release/package (ios)-4    ]   ✅  Success - Complete job
+*DRYRUN* [release/package (ios)-4    ] 🏁  Job succeeded
+*DRYRUN* [release/package (android)-5] ⭐ Run Set up job
+*DRYRUN* [release/package (linux)-1  ]   ✅  Success - Complete job
+*DRYRUN* [release/package (linux)-1  ] 🏁  Job succeeded
+*DRYRUN* [release/package (web)-6    ] ⭐ Run Set up job
+*DRYRUN* [release/package (macos)-3  ] ⭐ Run Main echo selected
+[release/package (windows)-2]   | selected
+*DRYRUN* [release/package (windows)-2]   ✅  Success - Main echo selected [8.502392ms]
+*DRYRUN* [release/package (windows)-2] ⭐ Run Complete job
+*DRYRUN* [release/package (windows)-2] Cleaning up container for job package (windows)
+*DRYRUN* [release/package (windows)-2]   ✅  Success - Complete job
+*DRYRUN* [release/package (windows)-2] 🏁  Job succeeded
+[release/package (macos)-3  ]   | selected
+*DRYRUN* [release/package (macos)-3  ]   ✅  Success - Main echo selected [5.93039ms]
+*DRYRUN* [release/package (macos)-3  ] ⭐ Run Complete job
+*DRYRUN* [release/package (macos)-3  ] Cleaning up container for job package (macos)
+*DRYRUN* [release/package (macos)-3  ]   ✅  Success - Complete job
+*DRYRUN* [release/package (macos)-3  ] 🏁  Job succeeded
+*DRYRUN* [release/package (android)-5]   ✅  Success - Set up job
+*DRYRUN* [release/package (android)-5] 🧪  Matrix: map[asset:noop-android.apk os:ubuntu-24.04 target:android]
+*DRYRUN* [release/package (web)-6    ]   ✅  Success - Set up job
+*DRYRUN* [release/package (web)-6    ] 🧪  Matrix: map[asset:noop-web.tar.gz os:ubuntu-24.04 target:web]
+*DRYRUN* [release/package (android)-5] ⭐ Run Main echo selected
+*DRYRUN* [release/package (web)-6    ] ⭐ Run Main echo selected
+[release/package (android)-5]   | selected
+*DRYRUN* [release/package (android)-5]   ✅  Success - Main echo selected [4.736597ms]
+*DRYRUN* [release/package (android)-5] ⭐ Run Complete job
+*DRYRUN* [release/package (android)-5] Cleaning up container for job package (android)
+*DRYRUN* [release/package (android)-5]   ✅  Success - Complete job
+*DRYRUN* [release/package (android)-5] 🏁  Job succeeded
+[release/package (web)-6    ]   | selected
+*DRYRUN* [release/package (web)-6    ]   ✅  Success - Main echo selected [5.270006ms]
+*DRYRUN* [release/package (web)-6    ] ⭐ Run Complete job
+*DRYRUN* [release/package (web)-6    ] Cleaning up container for job package (web)
+*DRYRUN* [release/package (web)-6    ]   ✅  Success - Complete job
+*DRYRUN* [release/package (web)-6    ] 🏁  Job succeeded

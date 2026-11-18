@@ -1,0 +1,25 @@
+{
+  "status": "failed",
+  "source": "/var/tmp/noop-acceptance-20261117/source",
+  "revision": "65eab6b0907b3f7beefd0a2d1fc0ced3bea604a3",
+  "changes": "",
+  "platform": "linux-x64",
+  "timestamp": "2026-11-17T10:06:45.538Z",
+  "bun": "1.4.4",
+  "desktop": {
+    "executableSha256": "5aa8d44ecbf84369519f74972dc0b877d4f895e533aa2fb1e5e8e70cdfd5d8c7",
+    "bundleSha256": "6671e1af36fd11a915fc56fa23b5aab7b83e516077c160ee7e7d72319b48654a",
+    "archiveSha256": "47ddd6af07b98a8313047beca33b05fef7dc3d16f3f5551e880377463094dbf2"
+  },
+  "workerd": {
+    "version": "workerd 2026-11-10",
+    "sha256": "620d9f7e5eb461067e08af17316aaa087445b4232e0e98e3dd146763bd9ab394"
+  },
+  "webIndexSha256": "6291026e12b5fbc7f6a3015ced704a1ba192b6a4c478bdd35897e92118a94785",
+  "checks": [
+    "Linux desktop, workerd, Web bundle and display tools are supplied",
+    "local coordinator starts",
+    "synthetic owner binds TOTP"
+  ],
+  "error": "Error: desktop input failed: mousemove\n    at gui (/var/tmp/noop-acceptance-20261117/source/test/self-hosted-desktop-e2e.ts:92:142)\n    at /var/tmp/noop-acceptance-20261117/source/test/self-hosted-desktop-e2e.ts:94:26"
+}

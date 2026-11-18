@@ -1,0 +1,37 @@
+{
+  "status": "passed",
+  "source": "/home/jeff/.codex/worktrees/noop-local-coordinator",
+  "revision": "fd2392aac6baaa9cc8808d20ac1751bb1d85d36c",
+  "changes": "",
+  "platform": "linux-x64",
+  "timestamp": "2026-11-16T12:00:55.679Z",
+  "bun": "1.4.4",
+  "webVersion": "v0.3.18",
+  "webIndexSha256": "bd9ed72ccec6e59169751686b2383b27699b7b967b8fca5e85e55d33e3a16dfc",
+  "workerd": {
+    "version": "workerd 2026-11-10",
+    "sha256": "620d9f7e5eb461067e08af17316aaa087445b4232e0e98e3dd146763bd9ab394"
+  },
+  "checks": [
+    "Web assets and workerd are supplied",
+    "owner binds TOTP",
+    "owner requests a CLI login code",
+    "owner signs in with CLI code and TOTP",
+    "local coordinator provides a VAPID key (HTTP 200)",
+    "VAPID keys are persisted with restricted permissions",
+    "machine and anonymous clients cannot subscribe",
+    "owner subscribes a controlled push endpoint",
+    "owner subscribes an expired endpoint",
+    "test notification has a valid VAPID signature and decryptable payload; HTTP 410 removes an expired subscription",
+    "VAPID keypair survives restart without rotation",
+    "machine publishes a decision event after restart",
+    "subscription survives restart and receives a signed, encrypted decision notification",
+    "owner subscribes a failing endpoint",
+    "failed push is logged while the other endpoint and core service remain available",
+    "owner subscribes an unreachable endpoint",
+    "unreachable push is logged without stopping other deliveries",
+    "owner unsubscribes all endpoints",
+    "no push subscriptions remain after unsubscribe"
+  ],
+  "error": ""
+}

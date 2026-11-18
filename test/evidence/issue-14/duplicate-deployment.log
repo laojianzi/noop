@@ -1,0 +1,10 @@
+29 |   const root = join(HOME_DIR, "coordinator"), bundle = join(root, "bundle"), storage = join(root, "storage");
+30 |   mkdirSync(root, { recursive: true, mode: 0o700 });
+31 |   using lock = new Database(join(root, "active.sqlite"), { create: true });
+32 |   try { lock.exec("BEGIN IMMEDIATE"); }
+33 |   catch (error) {
+34 |     if ((error as { code?: string }).code === "SQLITE_BUSY") throw new Error("A local coordinator is already running for this Noop home");
+                                                                            ^
+error: A local coordinator is already running for this Noop home
+      at localCoordinator (/var/tmp/noop-self-hosted-1MY3RE/repo/src/local-coordinator.ts:34:72)
+      at async main (/var/tmp/noop-self-hosted-1MY3RE/repo/src/cli.ts:1239:82)

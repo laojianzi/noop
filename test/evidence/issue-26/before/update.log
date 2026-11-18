@@ -1,0 +1,63 @@
+$ noop cloud service
+Coordinator service installed and running
+
+$ noop cloud service
+1238 |       const { revoked } = (await r.json()) as { revoked: number };
+1239 |       return void console.log(L(`✓ Revoked ${revoked} login(s) (phones, browsers, MCP connectors). Log in again with an email code.\n  If you suspect the mailbox is compromised, change its password first, then consider rotating the machine key.`, `✓ 已撤销 ${revoked} 个登录（手机、浏览器、MCP 连接器）。需要重新用邮箱验证码登录。\n  如果怀疑邮箱被盗，先改邮箱密码，再考虑轮换机器密钥。`));
+1240 |     }
+1241 |     case "cloud": {
+1242 |       if (rest[0] === "service") {
+1243 |         const { values, positionals } = parseArgs({ args: rest.slice(1), allowPositionals: true, options: { listen: { type: "string" } } });
+                                               ^
+TypeError: Unknown option '--source'. To specify a positional argument starting with a '-', place it at the end of the command after '--', as in '-- "--source"
+ code: "ERR_PARSE_ARGS_UNKNOWN_OPTION"
+
+      at main (/home/runner/work/_temp/evidence/noop-update-e2e-f5vU8E/repo/src/cli.ts:1243:41)
+      at /home/runner/work/_temp/evidence/noop-update-e2e-f5vU8E/repo/src/cli.ts:1264:15
+
+
+$ noop cloud service
+1238 |       const { revoked } = (await r.json()) as { revoked: number };
+1239 |       return void console.log(L(`✓ Revoked ${revoked} login(s) (phones, browsers, MCP connectors). Log in again with an email code.\n  If you suspect the mailbox is compromised, change its password first, then consider rotating the machine key.`, `✓ 已撤销 ${revoked} 个登录（手机、浏览器、MCP 连接器）。需要重新用邮箱验证码登录。\n  如果怀疑邮箱被盗，先改邮箱密码，再考虑轮换机器密钥。`));
+1240 |     }
+1241 |     case "cloud": {
+1242 |       if (rest[0] === "service") {
+1243 |         const { values, positionals } = parseArgs({ args: rest.slice(1), allowPositionals: true, options: { listen: { type: "string" } } });
+                                               ^
+TypeError: Unknown option '--source'. To specify a positional argument starting with a '-', place it at the end of the command after '--', as in '-- "--source"
+ code: "ERR_PARSE_ARGS_UNKNOWN_OPTION"
+
+      at main (/home/runner/work/_temp/evidence/noop-update-e2e-f5vU8E/repo/src/cli.ts:1243:41)
+      at /home/runner/work/_temp/evidence/noop-update-e2e-f5vU8E/repo/src/cli.ts:1264:15
+
+
+$ noop cloud service
+1238 |       const { revoked } = (await r.json()) as { revoked: number };
+1239 |       return void console.log(L(`✓ Revoked ${revoked} login(s) (phones, browsers, MCP connectors). Log in again with an email code.\n  If you suspect the mailbox is compromised, change its password first, then consider rotating the machine key.`, `✓ 已撤销 ${revoked} 个登录（手机、浏览器、MCP 连接器）。需要重新用邮箱验证码登录。\n  如果怀疑邮箱被盗，先改邮箱密码，再考虑轮换机器密钥。`));
+1240 |     }
+1241 |     case "cloud": {
+1242 |       if (rest[0] === "service") {
+1243 |         const { values, positionals } = parseArgs({ args: rest.slice(1), allowPositionals: true, options: { listen: { type: "string" } } });
+                                               ^
+TypeError: Unknown option '--source'. To specify a positional argument starting with a '-', place it at the end of the command after '--', as in '-- "--source"
+ code: "ERR_PARSE_ARGS_UNKNOWN_OPTION"
+
+      at main (/home/runner/work/_temp/evidence/noop-update-e2e-f5vU8E/repo/src/cli.ts:1243:41)
+      at /home/runner/work/_temp/evidence/noop-update-e2e-f5vU8E/repo/src/cli.ts:1264:15
+
+
+$ noop cloud service
+1238 |       const { revoked } = (await r.json()) as { revoked: number };
+1239 |       return void console.log(L(`✓ Revoked ${revoked} login(s) (phones, browsers, MCP connectors). Log in again with an email code.\n  If you suspect the mailbox is compromised, change its password first, then consider rotating the machine key.`, `✓ 已撤销 ${revoked} 个登录（手机、浏览器、MCP 连接器）。需要重新用邮箱验证码登录。\n  如果怀疑邮箱被盗，先改邮箱密码，再考虑轮换机器密钥。`));
+1240 |     }
+1241 |     case "cloud": {
+1242 |       if (rest[0] === "service") {
+1243 |         const { values, positionals } = parseArgs({ args: rest.slice(1), allowPositionals: true, options: { listen: { type: "string" } } });
+                                               ^
+TypeError: Unknown option '--source'. To specify a positional argument starting with a '-', place it at the end of the command after '--', as in '-- "--source"
+ code: "ERR_PARSE_ARGS_UNKNOWN_OPTION"
+
+      at main (/home/runner/work/_temp/evidence/noop-update-e2e-f5vU8E/repo/src/cli.ts:1243:41)
+      at /home/runner/work/_temp/evidence/noop-update-e2e-f5vU8E/repo/src/cli.ts:1264:15
+
+

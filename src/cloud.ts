@@ -10,11 +10,11 @@ import { type Jwk, newVapidKeys } from "../cloud/src/push";
 import { ipAllowed, parseAllowList } from "../cloud/src/ipallow";
 import { type Cfg, CODE, L, P, _commitPush, _pull, hostName, journal, locked, HOME_DIR } from "./core";
 import { updateChannel } from "./channels";
-import { writeHubToml } from "./sync";
+import { hubDialUrl, writeHubToml } from "./sync";
 import { ensureWebClient } from "./webclient";
 import { type Event, MEDIA, appendEvent, applyOp, handleOwnerMessage, saveSettings, setMirror, settingsView, status, cancelTask, updateFleet } from "./server";
 
-const base = (cfg: Cfg) => String(cfg.cloud?.url ?? "").replace(/\/$/, "");
+const base = (cfg: Cfg) => hubDialUrl(cfg.cloud?.url);
 const headers = (cfg: Cfg) => ({ Authorization: `Bearer ${cfg.server?.token}`, "Content-Type": "application/json" });
 
 async function call(cfg: Cfg, path: string, init: RequestInit = {}, timeoutMs = 15_000) {
@@ -172,7 +172,7 @@ export function startCloudBridge(cfg: Cfg) {
 }
 
 /** Web Push VAPID keypair: generated once, kept in ~/.noop/vapid.json (0600) so redeploys keep phones subscribed. */
-async function vapidKeys(): Promise<{ publicKey: string; privateJwk: Jwk }> {
+export async function vapidKeys(): Promise<{ publicKey: string; privateJwk: Jwk }> {
   const f = join(HOME_DIR, "vapid.json");
   if (existsSync(f)) return JSON.parse(readFileSync(f, "utf8"));
   const k = await newVapidKeys();

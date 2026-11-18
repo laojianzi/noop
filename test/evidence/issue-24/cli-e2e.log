@@ -1,0 +1,91 @@
+server: local (not connected to a hub)
+autonomy: onboarding   shadow judge: {"samples":0,"would_decide":0,"scored":0,"agreed":0,"accuracy":null}
+host pc  caps: os:linux, host:pc, arch:x64, cli:claude, cli:codex, cli:gh, cli:cargo, cli:bun, cli:node  primary: pc
+online: pc(busy 0, load 0.26, disk 150GB)
+accounts:
+  claude-default       ok
+  codex-default        ok
+this host: load 3.15/12  mem free 41%  disk free 150GB  → parallel 4
+
+proposed 0
+
+inbox    2
+  T-0003 [lead] windows only (needs os:windows)
+  T-0005 [reviewer] child task
+
+active   0
+
+blocked  1
+  T-0002 [release-manager] ASKME task @pc
+
+failed   0
+
+done     2
+
+open decisions
+  D-0001 (T-0002, release-manager) Ship it?  rec=A  [waiting on you]
+E2E OK
+# Journal 2026-11-16
+
+- 20:08 `pc` ＋ T-0001 by owner: plain task
+- 20:08 `pc` ＋ T-0002 by owner: ASKME task
+- 20:08 `pc` ＋ T-0003 by owner: windows only
+- 20:08 `pc` 🧭 supervisor ran: resumed 0 with merged PRs, 0 waiting/blocked, rerouted 0, resumed 0, requeued 0, cards 0
+- 20:08 `pc` 🅿️ T-0003 parked until a host with os:windows comes online
+- 20:08 `pc` 🧭 T-0001 planned: any host · claude
+- 20:08 `pc` 🧭 T-0002 planned: any host · claude
+- 20:08 `pc` 🧭 T-0003 planned: os:windows · claude
+- 20:08 `pc` ▶ T-0001 rust-maintainer/claude: plain task
+- 20:08 `pc` ▶ T-0002 release-manager/claude: ASKME task
+- 20:08 `pc`   ↳ T-0004 → reviewer: child task
+- 20:08 `pc` ✅ T-0001 did it
+- 20:08 `pc` ⏸ T-0002 → D-0001: Ship it?
+- 20:08 `pc` 🧭 supervisor ran: resumed 0 with merged PRs, 1 waiting/blocked, rerouted 0, resumed 0, requeued 0, cards 0
+- 20:08 `pc` 🧭 T-0004 planned: any host · claude
+- 20:08 `pc` 📨 D-0001 held for owner: Ship it?
+- 20:08 `pc` ▶ T-0004 reviewer/claude: child task
+- 20:08 `pc`   ↳ T-0005 → reviewer: child task
+- 20:08 `pc` ✅ T-0004 did it
+- 20:08 `pc` ✔ D-0001 owner answered via cli: A
+- 20:08 `pc` 🧭 supervisor ran: resumed 0 with merged PRs, 0 waiting/blocked, rerouted 0, resumed 0, requeued 0, cards 0
+- 20:08 `pc` 🧭 T-0005 planned: any host · claude
+- 20:08 `pc` ▶ T-0002 release-manager/claude: ASKME task
+- 20:08 `pc` ▶ T-0005 reviewer/claude: child task
+- 20:08 `pc` ✅ T-0002 followed owner decision
+- 20:08 `pc`   ↳ T-0006 → reviewer: child task
+- 20:08 `pc` ✅ T-0005 did it
+- 20:08 `pc` 🧭 supervisor ran: resumed 0 with merged PRs, 0 waiting/blocked, rerouted 0, resumed 0, requeued 0, cards 0
+- 20:08 `pc` P-0001 asked owner to approve 1 proposed tasks
+- 20:08 `pc` 🧭 T-0006 planned: any host · claude
+- 20:08 `pc` ▶ T-0006 reviewer/claude: child task
+- 20:08 `pc`   ↳ T-0008 → reviewer: child task
+- 20:08 `pc` ✅ T-0006 did it
+- 20:08 `pc` P-0001 owner approved via cli: all
+- 20:08 `pc` 🧭 supervisor ran: resumed 0 with merged PRs, 0 waiting/blocked, rerouted 0, resumed 0, requeued 0, cards 0
+- 20:09 `pc` 🧭 T-0007 planned: any host · claude
+- 20:09 `pc` 🧭 T-0008 planned: any host · claude
+- 20:09 `pc` ▶ T-0007 Tripitaka/claude: routine job
+- 20:09 `pc` ▶ T-0008 reviewer/claude: child task
+- 20:09 `pc`   ↳ T-0009 → reviewer: child task
+- 20:09 `pc` ✅ T-0007 did it
+- 20:09 `pc` ✅ T-0008 did it
+- 20:09 `pc` ＋ T-0010 by owner: SPLIT big job
+- 20:09 `pc` 🧭 supervisor ran: resumed 0 with merged PRs, 0 waiting/blocked, rerouted 0, resumed 0, requeued 0, cards 0
+- 20:09 `pc` P-0002 asked owner to approve 1 proposed tasks
+- 20:09 `pc` 🧭 T-0010 planned: any host · claude
+- 20:09 `pc` ▶ T-0010 Tripitaka/claude: SPLIT big job
+- 20:09 `pc`   ↳ T-0011 → reviewer: part one
+- 20:09 `pc`   ↳ T-0012 → rust-maintainer: part two
+- 20:09 `pc` 🧩 T-0010 delegated to T-0011, T-0012
+- 20:09 `pc` 🧭 supervisor ran: resumed 0 with merged PRs, 1 waiting/blocked, rerouted 0, resumed 0, requeued 0, cards 0
+- 20:09 `pc` 🧭 T-0011 planned: any host · claude
+- 20:09 `pc` 🧭 T-0012 planned: any host · claude
+- 20:09 `pc` ▶ T-0011 reviewer/claude: part one
+- 20:09 `pc` ▶ T-0012 rust-maintainer/claude: part two
+- 20:09 `pc` ✅ T-0011 part finished
+- 20:09 `pc` ✅ T-0012 part finished
+- 20:09 `pc` 🧩 T-0010 subtasks finished → consolidating
+- 20:09 `pc` 🧭 supervisor ran: resumed 0 with merged PRs, 0 waiting/blocked, rerouted 0, resumed 0, requeued 0, cards 0
+- 20:09 `pc` ▶ T-0010 Tripitaka/claude: SPLIT big job
+- 20:09 `pc`   ↳ T-0013 → reviewer: child task
+- 20:09 `pc` ✅ T-0010 did it

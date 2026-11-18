@@ -1,0 +1,27 @@
+{
+  "status": "passed",
+  "source": "/home/jeff/.codex/worktrees/noop-local-coordinator",
+  "revision": "4ca2c06c9cdffcebe25847ca9e88dd7e231c21f6",
+  "changes": "",
+  "platform": "linux-x64",
+  "timestamp": "2026-11-16T12:09:41.608Z",
+  "bun": "1.4.4",
+  "node": "v26.13.1",
+  "wrangler": "4.160.1",
+  "databaseBytes": 501690368,
+  "checks": [
+    "Web fixture, Wrangler and Node are supplied",
+    "cloud-mode owner binds TOTP",
+    "cloud-mode owner requests a CLI code",
+    "cloud-mode owner signs in",
+    "cloud-mode coordinator records two file versions",
+    "cloud-mode SQLite fixture exceeds 500 MB (501690368 bytes)",
+    "cloud mode reports actual usage and retains shed level",
+    "ordinary cloud-mode commit triggers history pruning",
+    "cloud mode retains only the newest file version above 500 MB",
+    "cloud mode still rate limits latest-only commits at the shed threshold",
+    "cloud mode still sheds routine events at the budget threshold",
+    "cloud mode still throttles repeated dashboard updates"
+  ],
+  "error": ""
+}

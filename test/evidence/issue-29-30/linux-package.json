@@ -1,0 +1,26 @@
+{
+  "status": "passed",
+  "source": "/home/jeff/.codex/worktrees/noop-local-coordinator",
+  "revision": "0101a190ff274ee57ae96a0dd7e6beb6fa82a50b",
+  "changes": "",
+  "platform": "linux-x64",
+  "timestamp": "2026-11-17T06:44:04.551Z",
+  "bun": "1.4.4",
+  "workerdSha256": "620d9f7e5eb461067e08af17316aaa087445b4232e0e98e3dd146763bd9ab394",
+  "webIndexSha256": "6291026e12b5fbc7f6a3015ced704a1ba192b6a4c478bdd35897e92118a94785",
+  "checks": [
+    "Web fixture and pinned workerd are supplied",
+    "the packaging source is an isolated committed checkout",
+    "a Web build from a different source commit cannot be published",
+    "a runtime with the wrong checksum cannot be published",
+    "Linux coordinator archive builds: Coordinator archive: /var/tmp/noop-blockers-evidence/noop-package-e2e-FEI9Vb/artifacts/noop-coordinator-linux-x86_64-6b2922b1f33d.tar.gz\n",
+    "the archive checksum verifies",
+    "the archive extracts",
+    "manifest identifies the source, Web build, runtime and architecture",
+    "the archive excludes Git metadata and machine data",
+    "the extracted archive starts and authenticates without a cloud deployment",
+    "the extracted archive serves the supplied Web bundle",
+    "uncommitted source cannot be labeled as the committed revision"
+  ],
+  "error": ""
+}

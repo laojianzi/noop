@@ -1,0 +1,29 @@
+Local coordinator candidate: http://127.0.0.1:49222
+workerd/jsg/util.c++:445: error: e = rust/cxx/kj-hyper/ffi.rs:270: failed: TLS handshake failed: invalid peer certificate: UnknownIssuer
+stack: 1030d8e10; sentryErrorContext = jsgInternalError; wdErrId = 3vvkkpnmmgfgrn9nkj093gtf
+workerd/jsg/util.c++:445: error: e = rust/cxx/kj-hyper/ffi.rs:270: failed: TLS handshake failed: invalid peer certificate: UnknownIssuer
+stack: 10422c0f0 1067fcee0 1067fe500 104247180 103f0ad30; sentryErrorContext = jsgInternalError; wdErrId = sagvu1en820cjn6mjv7iueli
+workerd/jsg/util.c++:445: error: e = rust/cxx/kj-hyper/ffi.rs:270: failed: TLS handshake failed: invalid peer certificate: UnknownIssuer
+stack: 10422c0f0 1067fcee0 1067fdc20 104217590 106866e70 1030d8e10; sentryErrorContext = jsgInternalError; wdErrId = cej2goiv60vg9hrtl9sp2qa4
+alert mail to owner@example.com: Error: internal error; reference = cej2goiv60vg9hrtl9sp2qa4
+workerd/jsg/util.c++:445: error: e = rust/cxx/kj-hyper/ffi.rs:270: failed: TLS handshake failed: invalid peer certificate: UnknownIssuer
+stack: 1030d8e10; sentryErrorContext = jsgInternalError; wdErrId = m081jpf9to796eurnon4vhle
+workerd/jsg/util.c++:445: error: e = rust/cxx/kj-hyper/ffi.rs:270: failed: TLS handshake failed: invalid peer certificate: UnknownIssuer
+stack: 10422c0f0 1067fcee0 1067fe500 104247180 103f0ad30; sentryErrorContext = jsgInternalError; wdErrId = ucl0b0t5nrsek1bumtt4k4q5
+workerd/jsg/util.c++:445: error: e = rust/cxx/kj-hyper/ffi.rs:270: failed: TLS handshake failed: invalid peer certificate: UnknownIssuer
+stack: 10422c0f0 1067fcee0 1067fdc20 104217590 106866e70 1030d8e10; sentryErrorContext = jsgInternalError; wdErrId = h9odmtp72cu576a7lv2p1mig
+alert mail to proxied@example.com: Error: internal error; reference = h9odmtp72cu576a7lv2p1mig
+workerd/jsg/util.c++:445: error: e = rust/cxx/kj-hyper/ffi.rs:270: failed: TLS handshake failed: invalid peer certificate: UnknownIssuer
+stack: 1030d8e10; sentryErrorContext = jsgInternalError; wdErrId = orrl53sha6nlhvotd9urd6sd
+workerd/jsg/util.c++:445: error: e = rust/cxx/kj-hyper/ffi.rs:270: failed: TLS handshake failed: invalid peer certificate: UnknownIssuer
+stack: 10422c0f0 1067fcee0 1067fe500 104247180 103f0ad30; sentryErrorContext = jsgInternalError; wdErrId = vvo6cpf177fn2q3vt7jtl5pl
+workerd/jsg/util.c++:445: error: e = rust/cxx/kj-hyper/ffi.rs:270: failed: TLS handshake failed: invalid peer certificate: UnknownIssuer
+stack: 10422c0f0 1067fcee0 1067fdc20 104217590 106866e70 1030d8e10; sentryErrorContext = jsgInternalError; wdErrId = up0l461qr7c4dhan0vf77uhk
+alert mail to fail@example.com: Error: internal error; reference = up0l461qr7c4dhan0vf77uhk
+workerd/jsg/util.c++:445: error: e = rust/cxx/kj-hyper/ffi.rs:270: failed: TLS handshake failed: invalid peer certificate: UnknownIssuer
+stack: 1030d8e10; sentryErrorContext = jsgInternalError; wdErrId = aduhk8tjes1gvdc5slle653f
+workerd/jsg/util.c++:445: error: e = rust/cxx/kj-hyper/ffi.rs:270: failed: TLS handshake failed: invalid peer certificate: UnknownIssuer
+stack: 10422c0f0 1067fcee0 1067fe500 104247180 103f0ad30; sentryErrorContext = jsgInternalError; wdErrId = pitrmlng44u08frjqbmm5ufj
+workerd/jsg/util.c++:445: error: e = rust/cxx/kj-hyper/ffi.rs:270: failed: TLS handshake failed: invalid peer certificate: UnknownIssuer
+stack: 10422c0f0 1067fcee0 1067fdc20 104217590 106866e70 1030d8e10; sentryErrorContext = jsgInternalError; wdErrId = 0q1j33qepkg51cot49pb5veb
+auth mail failed: Error: internal error; reference = 0q1j33qepkg51cot49pb5veb

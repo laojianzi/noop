@@ -1,0 +1,11 @@
+41 |   const allowed = allowIps(cfg) ?? "";
+42 |   const configuredProxies = cfg.cloud?.trusted_proxies;
+43 |   const proxies = (Array.isArray(configuredProxies) ? configuredProxies.map(String) : String(configuredProxies ?? "").split(/[\s,]+/)).filter(Boolean).join(",");
+44 |   const badAllowed = parseAllowList(allowed).bad, badProxies = parseAllowList(proxies).bad;
+45 |   if (badAllowed.length) throw new Error(`invalid IP allow-list: ${badAllowed.join(", ")}`);
+46 |   if (badProxies.length) throw new Error(`invalid trusted proxy: ${badProxies.join(", ")}`);
+                                        ^
+error: invalid trusted proxy: not-a-cidr
+      at localCoordinator (/home/runner/work/_temp/evidence/noop-ingress-e2e-G2lInB/repo/src/local-coordinator.ts:46:36)
+      at main (/home/runner/work/_temp/evidence/noop-ingress-e2e-G2lInB/repo/src/cli.ts:1257:82)
+

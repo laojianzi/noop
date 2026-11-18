@@ -1,0 +1,38 @@
+{
+  "status": "passed",
+  "source": "/home/jeff/.codex/worktrees/noop-local-coordinator",
+  "revision": "6acde27610b708fd40da7721351b0df2bf271149",
+  "changes": "",
+  "platform": "linux-x64",
+  "timestamp": "2026-11-17T12:48:56.332Z",
+  "bun": "1.4.4",
+  "desktop": {
+    "executableSha256": "5aa8d44ecbf84369519f74972dc0b877d4f895e533aa2fb1e5e8e70cdfd5d8c7",
+    "bundleSha256": "c89ee41e5557e0596377f01e4dd57bf526b2d3b247d575478b8e705d4c73a40f",
+    "archiveSha256": "6ce21a487fd38c5ba18156b7d1aecbda5648af354d128f1a2c63523a1b424517"
+  },
+  "workerd": {
+    "version": "workerd 2026-11-10",
+    "sha256": "620d9f7e5eb461067e08af17316aaa087445b4232e0e98e3dd146763bd9ab394"
+  },
+  "webIndexSha256": "c77717bcb0c38a769ffe4bbda46ce4b4794eb1e0e319c4fb151c485f757942a2",
+  "checks": [
+    "Linux desktop, workerd, Web bundle and display tools are supplied",
+    "local coordinator starts",
+    "synthetic owner binds TOTP",
+    "desktop requests a login code through local HTTP",
+    "owner retrieves the desktop login code from the CLI",
+    "desktop signs in with the CLI code and TOTP",
+    "desktop opens the live WebSocket",
+    "desktop sends a message to the local coordinator",
+    "independent peer starts sign-in",
+    "independent peer signs in",
+    "desktop works before the primary publishes a status snapshot",
+    "independent peer sends a message",
+    "desktop WebSocket receives the peer message",
+    "desktop renders the peer message and saves a screenshot",
+    "synthetic primary publishes a complete status snapshot",
+    "desktop renders the pushed status snapshot"
+  ],
+  "error": ""
+}
