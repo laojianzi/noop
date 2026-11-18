@@ -56,12 +56,14 @@ jobs:
           CGEvent(mouseEventSource: nil, mouseType: .mouseMoved, mouseCursorPosition: CGPoint(x: x, y: y), mouseButton: .left)!.post(tap: .cghidEventTap)
           SWIFT
           swiftc "$RUNNER_TEMP/move.swift" -o "$RUNNER_TEMP/move"
+          dscl /Search -authonly noopprobe synthetic-noop-probe-2026 >> "$RUNNER_TEMP/login-probe/user-create.txt" 2>&1 || true
           sudo defaults write /Library/Preferences/.GlobalPreferences MultipleSessionEnabled -bool true
           { defaults read /Library/Preferences/.GlobalPreferences MultipleSessionEnabled || true; find /System/Library/CoreServices /System/Library/PrivateFrameworks -iname '*CGSession*' -o -iname '*UserSwitch*' 2>/dev/null || true; } >> "$RUNNER_TEMP/login-probe/user-create.txt"
       - name: Inspect the disposable lock screen
         shell: bash
         run: |
           set -euo pipefail
+          /usr/bin/osascript -e 'tell application "System Events" to tell process "ControlCenter" to get entire contents of menu bar 1' > "$RUNNER_TEMP/login-probe/control-center.txt" 2>&1 || true
           screencapture -x "$RUNNER_TEMP/login-probe/before.png" || true
           /usr/bin/osascript -e 'tell application "System Events" to key code 12 using {control down, command down}'
           sleep 3
@@ -80,7 +82,12 @@ jobs:
           x=$(echo "$coords" | cut -d, -f1); y=$(echo "$coords" | cut -d, -f2)
           "$RUNNER_TEMP/move" "$((x + 80))" "$((y - 22))"
           sleep 3
-          screencapture -x "$RUNNER_TEMP/login-probe/hover.png" || true
+          screencapture -x -C "$RUNNER_TEMP/login-probe/hover.png" || true
+          /usr/bin/osascript -e 'tell application "System Events" to tell process "loginwindow" to get {position, size, enabled, actions} of button "show all users" of scroll area 1 of window "Login"' > "$RUNNER_TEMP/login-probe/button.txt" 2>&1 || true
+          /usr/bin/osascript -e 'tell application "System Events" to key code 123' || true
+          sleep 2
+          screencapture -x "$RUNNER_TEMP/login-probe/left-arrow.png" || true
+          /usr/bin/osascript -e 'tell application "System Events" to tell process "loginwindow" to get entire contents of window 1' > "$RUNNER_TEMP/login-probe/left-arrow.txt" 2>&1 || true
           /usr/bin/osascript -e 'tell application "System Events" to tell process "loginwindow" to get entire contents of window 1' > "$RUNNER_TEMP/login-probe/hover.txt" 2>&1 || true
           python3 - <<'PY3' | tee "$RUNNER_TEMP/login-probe/users.txt"
           import subprocess, time
