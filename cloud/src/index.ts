@@ -107,6 +107,12 @@ export default {
       if (!ipAllowed(ip, nets)) return ipBlocked(req, ip);
     }
     if (env.HUB_MOVED_TO) return fetch(new Request(env.HUB_MOVED_TO.replace(/\/$/, "") + url.pathname + url.search, req));
+    // NSH requests the signature and relative assets beside the channel manifest.
+    const direct = /^\/api\/updates\/direct\/(latest\.json(?:\.sig)?|noop-[a-z0-9_.-]+)$/.exec(url.pathname);
+    if (direct && (req.method === "GET" || req.method === "HEAD")) {
+      const name = direct[1].startsWith("latest.") ? "direct-" + direct[1] : direct[1];
+      return Response.redirect("https://github.com/huacnlee/noop/releases/latest/download/" + name, 302);
+    }
     const mcp = isMcpPath(url.pathname);
     if (mcp && trustedProxy) {
       const protoHeader = req.headers.get("x-forwarded-proto");
