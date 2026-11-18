@@ -56,7 +56,7 @@ try {
   const trusted = overlappingProxy ? "127.0.0.1" : "127.0.0.3";
   writeFileSync(join(home, "noop.toml"), `[cloud]\nallow_ips = "${allowed}"\ntrusted_proxies = "${trusted}"\n[server]\ntoken = "${token}"\n`);
   const env: NodeJS.ProcessEnv = { ...process.env, NOOP_HOME: home, HUB_NO_MEDIC: "1", PATH: `${bin}:${process.env.PATH || ""}` };
-  for (const key of ["HUB_CONF", "HUB_DATA", "HUB_SYNC", "HUB_SYNC_FAKE", "CLOUDFLARE_API_TOKEN", "CLOUDFLARE_ACCOUNT_ID"]) delete env[key];
+  for (const key of ["HUB_CONF", "HUB_DATA", "HUB_SYNC", "HUB_SYNC_FAKE", "HUB_HOST", "CLOUDFLARE_API_TOKEN", "CLOUDFLARE_ACCOUNT_ID"]) delete env[key];
   const listenPort = process.env.NOOP_E2E_LISTEN_PORT ? Number(process.env.NOOP_E2E_LISTEN_PORT) : await port(), fd = openSync(log, "a");
   service = spawn(process.execPath, [join(repo, "src", "cli.ts"), "cloud", "deploy", "--local", "--listen", `127.0.0.1:${listenPort}`],
     { cwd: repo, env, detached: true, stdio: ["ignore", fd, fd] }); closeSync(fd);
@@ -88,7 +88,7 @@ try {
   };
   const setup = cli(["2fa", "setup"]), secret = setup.out.match(/(?:key by hand:|手动输入密钥：)\s*([A-Z2-7 ]+)/i)?.[1]?.replace(/\s/g, "") || "";
   if (setup.status !== 0) throw new Error(`TOTP setup failed: ${setup.out.trim()}`);
-  check(setup.status === 0 && secret.length === 32 && cli(["2fa", "confirm", totp(secret, Math.floor(Date.now() / 30_000))]).status === 0, "owner binds TOTP with the real CLI");
+  check(setup.status === 0 && secret.length === 32 && cli(["2fa", "confirm", totp(secret, Math.floor(Date.now() / 30_000) - 1)]).status === 0, "owner binds TOTP with the real CLI");
   if (overlappingProxy) {
     const init = cli(["init", "--primary", "--local"]);
     check(init.status === 0 && !init.out.includes("could not") && existsSync(join(home, "data", "config.toml")), "primary initializes and synchronizes through the local dial address");
@@ -149,6 +149,38 @@ try {
   check(authMeta.issuer === external && authMeta.authorization_endpoint === `${external}/oauth/authorize` && authMeta.token_endpoint === `${external}/oauth/token`,
     "authorization server endpoints use the external HTTPS origin");
   const asJson = { "content-type": "application/json" }, asForm = { "content-type": "application/x-www-form-urlencoded" };
+
+  if (overlappingProxy) {
+    const probeEmail = "synthetic-secret-owner@example.test", probeValue = "synthetic-shared-secret-for-e2e";
+    const probeStart = await call("/api/auth/start", { method: "POST", headers: asJson, body: JSON.stringify({ email: probeEmail }) });
+    check(probeStart.status === 200, "owner starts authentication for shared MCP configuration");
+    const probeLogin = cli(["login"]), probeCode = probeLogin.out.match(/(?:验证码[：:]|Code for [^:]+:)\s*([A-HJ-NP-Z2-9]{8})/)?.[1] || "";
+    check(probeLogin.status === 0 && !!probeCode, "owner obtains the shared MCP configuration login code");
+    const probeVerify = await call("/api/auth/verify", { method: "POST", headers: asJson,
+      body: JSON.stringify({ email: probeEmail, code: probeCode, totp: totp(secret, Math.floor(Date.now() / 30_000)) }) });
+    const probeSession = JSON.parse(probeVerify.body).session;
+    check(probeVerify.status === 200 && !!probeSession, "owner signs in to configure shared MCP");
+    const putSecret = await call("/api/secrets", { method: "PUT", headers: { ...asJson, Authorization: `Bearer ${probeSession}` },
+      body: JSON.stringify({ name: "NOOP_E2E_SHARED_VALUE", value: probeValue }) });
+    check(putSecret.status === 200, "owner stores a shared MCP secret");
+    const configPath = join(home, "data", "config.local.toml");
+    writeFileSync(configPath, readFileSync(configPath, "utf8") + `\n[fleet]\nplan_wait_minutes = 0\n[resources]\nwork_dirs = []\ndisk_min_gb = 0.01\ndisk_hard_min_gb = 0.001\ndisk_min_pct = 0.01\nmem_min_pct = 0.01\nload_mid = 100\nload_high = 101\n[[mcp_servers]]\nname = "synthetic"\ntype = "http"\nurl = "https://mcp.example.invalid"\n[mcp_servers.headers]\nAuthorization = "Bearer ${"${NOOP_E2E_SHARED_VALUE}"}"\n`);
+    writeFileSync(join(bin, "codex"), `#!/bin/sh\nhas_mcp=0\nfor arg in "$@"; do case "$arg" in mcp_servers.synthetic=*) has_mcp=1;; esac; done\nif [ "$has_mcp" = 1 ] && [ "\${NOOP_E2E_SHARED_VALUE:-}" = "synthetic-shared-secret-for-e2e" ]; then\n  echo '{"status":"done","summary":"shared MCP available"}'\nelse\n  echo '{"status":"failed","summary":"shared MCP unavailable"}'\nfi\n`, { mode: 0o755 });
+    writeFileSync(join(bin, "gh"), "#!/bin/sh\nexit 1\n", { mode: 0o755 });
+    const added = cli(["add", "synthetic shared MCP task", "--cli", "codex"]);
+    const task = added.out.match(/\bT-[A-Z0-9-]+\b/)?.[0] || "";
+    check(added.status === 0 && !!task, "owner queues a task through the real CLI");
+    const workerEnv: NodeJS.ProcessEnv = { ...env, HUB_HOST: "noop-e2e-executor", PATH: `${bin}:/usr/bin:/bin` };
+    delete workerEnv.NOOP_E2E_SHARED_VALUE;
+    await Bun.sleep(100);
+    const tick = spawnSync(process.execPath, [join(repo, "src", "cli.ts"), "tick"], { cwd: repo, env: workerEnv, encoding: "utf8", timeout: 30_000 });
+    writeFileSync(join(out, "shared-mcp-tick.log"), `${tick.stdout || ""}${tick.stderr || ""}`);
+    check(tick.status === 0, "execution host finishes a real task tick");
+    const taskResponse = await call(`/api/tasks/get?id=${task}`, { headers: { Authorization: `Bearer ${probeSession}` } });
+    const taskResult = JSON.parse(taskResponse.body);
+    writeFileSync(join(out, "shared-mcp-task.json"), `${JSON.stringify({ status: taskResponse.status, state: taskResult.state }, null, 2)}\n`);
+    check(taskResponse.status === 200 && taskResult.state === "done", "task receives the shared MCP server and secret through the local coordinator");
+  }
   const redirect = "http://localhost:6274/oauth/callback";
   const registration = await call(authMeta.registration_endpoint, { method: "POST", headers: asJson, body: JSON.stringify({ client_name: "local-e2e", redirect_uris: [redirect], token_endpoint_auth_method: "none" }) });
   const client = JSON.parse(registration.body); check(registration.status === 201 && !!client.client_id, "MCP client registers through the proxy");
