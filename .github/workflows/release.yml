@@ -44,13 +44,7 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - { target: linux, os: ubuntu-24.04, asset: noop-linux-x86_64.tar.gz, installer: install-client.sh }
-          - { target: windows, os: windows-latest, asset: noop-windows-x86_64.zip, installer: install-client.ps1 }
           - { target: macos, os: macos-15, asset: noop-macos-arm64.zip, installer: install-client.sh }
-          - { target: ios, os: xcode-27, asset: noop-ios-unsigned.ipa }
-          - { target: ios, os: xcode-27, asset: noop-ios-store-unsigned.ipa, channel: store }
-          - { target: android, os: ubuntu-24.04, asset: noop-android.apk }
-          - { target: web, os: ubuntu-24.04, asset: noop-web.tar.gz }
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
@@ -172,6 +166,7 @@ jobs:
       - name: Package and verify Intel macOS
         if: matrix.target == 'macos'
         run: |
+          set -x
           args=(--build "$GITHUB_RUN_NUMBER")
           [ "$GITHUB_REF_TYPE" != tag ] || args+=(--app-version "${GITHUB_REF_NAME#v}")
           out="$RUNNER_TEMP/out-x86_64"
@@ -183,6 +178,8 @@ jobs:
           app="$RUNNER_TEMP/verify-x86_64/Noop.app"
           ditto -x -k assets-intel/noop-macos-x86_64.zip "$RUNNER_TEMP/verify-x86_64"
           executable=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleExecutable' "$app/Contents/Info.plist")
+          file "$app/Contents/MacOS/$executable"
+          lipo "$app/Contents/MacOS/$executable" -archs
           lipo "$app/Contents/MacOS/$executable" -verify_arch x86_64
           codesign --verify --deep --strict "$app"
 
