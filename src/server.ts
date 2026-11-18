@@ -7,7 +7,7 @@
 //   POST /api/messages {text, reply_to?, attachments?}  → owner message: answers D-/P-/L- ids, otherwise becomes a task for `lead`
 //   POST /api/uploads (multipart file)    → { url }   (the owner's images for a message: image/*, ≤ 10 MB)
 //   GET  /api/status                      → queue, decisions, hosts, accounts
-//   POST /api/fleet/update               → every machine updates; the local coordinator or designated cloud host also updates
+//   POST /api/fleet/update               → every machine updates to the latest code; the designated host redeploys the cloud
 //   POST /api/media (multipart file)      → { url }   (workers upload screenshots/recordings here)
 //   GET  /media/<file>                    → attachment
 //   GET  /api/files/list?prefix=  · GET /api/files/read?path=   → read-only rules & memory (same shape as the Worker)
@@ -343,11 +343,11 @@ export const setApplyOp = (fn: (op: any) => Promise<unknown>) => { opHook = fn; 
 export const applyOp = async (op: any) => (opHook ? opHook(op) : null);
 let updateHook: (() => Promise<number>) | null = null;
 export const setUpdateFleet = (fn: () => Promise<number>) => { updateHook = fn; };
-/** The owner asks every machine to update to the latest code. */
+/** The owner asks every machine to update to the latest code (the designated cloud host also redeploys the Worker and the web app). */
 export async function updateFleet(): Promise<string> {
   if (!updateHook) return "not available";
   const n = await updateHook();
-  appendEvent({ from: "hub", kind: "system", text: L(`Told ${n} machine(s) to update to the latest code: idle ones update now, busy ones wait for their tasks to finish; a local coordinator installed on the primary or the designated cloud host also updates.`, `已通知 ${n} 台机器更新到最新代码：空闲的马上更新，有任务在跑的等跑完再更新；主控机上安装的协调服务或指定的云端服务也会更新。`) });
+  appendEvent({ from: "hub", kind: "system", text: L(`Told ${n} machine(s) to update to the latest code: idle ones update now, busy ones restart after their tasks finish; the designated cloud host also redeploys.`, `已通知 ${n} 台机器更新到最新代码：空闲的马上更新，有任务在跑的等跑完再重启；指定的云端发布机器同时重新发布线上。`) });
   return "ok";
 }
 const AMEND_MS = 5 * 60_000;
