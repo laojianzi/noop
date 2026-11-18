@@ -5,7 +5,44 @@ on:
   workflow_dispatch:
 permissions:
   contents: read
+  actions: read
 jobs:
+  installer:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Diagnose Linux package installer
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/installer-diagnosis/assets" "$RUNNER_TEMP/installer-diagnosis/logs"
+          gh run download 44095906742 --repo laojianzi/noop --name noop-linux-x86_64.tar.gz --dir "$RUNNER_TEMP/installer-diagnosis/assets"
+          cd "$RUNNER_TEMP/installer-diagnosis/assets"
+          sha256sum noop-linux-x86_64.tar.gz > sha256sums
+          python3 -m http.server 8765 > /dev/null 2>&1 &
+          server=$!
+          trap 'kill "$server" 2>/dev/null || true' EXIT
+          sleep 2
+          export NOOP_CLIENT_BASE_URL=http://127.0.0.1:8765
+          timeout --kill-after=5s 100s bash -x "$GITHUB_WORKSPACE/install-client.sh" > "$RUNNER_TEMP/installer-diagnosis/logs/install.log" 2>&1 &
+          task=$!
+          for n in {1..12}; do
+            if ! kill -0 "$task" 2>/dev/null; then break; fi
+            { date -u; ps -eo pid,ppid,stat,args | grep -E '[i]nstall-client|[a]pt-get|[d]pkg|[c]url|[l]dd|[h]ttp.server' || true; tail -8 "$RUNNER_TEMP/installer-diagnosis/logs/install.log"; } >> "$RUNNER_TEMP/installer-diagnosis/logs/processes.log"
+            sleep 10
+          done
+          status=0
+          wait "$task" || status=$?
+          cat "$RUNNER_TEMP/installer-diagnosis/logs/install.log"
+          echo "Installer exit: $status"
+          exit "$status"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: installer-diagnosis
+          path: ${{ runner.temp }}/installer-diagnosis/logs/
   inspect:
     strategy:
       fail-fast: false
