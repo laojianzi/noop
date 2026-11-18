@@ -9,7 +9,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        variant: [candidate, without-cli, cli-only, baseline]
+        variant: [candidate, baseline]
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 60
     steps:
@@ -65,7 +65,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: noop-13-arm-ablation-${{ matrix.variant }}
+          name: noop-13-arm-no-git-${{ matrix.variant }}
           path: |
             ${{ runner.temp }}/evidence/**/report.json
             ${{ runner.temp }}/evidence/**/SHA256SUMS

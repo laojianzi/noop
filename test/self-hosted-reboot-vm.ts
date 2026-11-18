@@ -74,8 +74,6 @@ mount -L NOOPASSETS /mnt/noop-assets
 cp -a /mnt/noop-assets/repo /opt/noop
 cp /mnt/noop-assets/bin/bun /mnt/noop-assets/bin/workerd /usr/local/bin/
 chmod 755 /usr/local/bin/bun /usr/local/bin/workerd
-printf '#!/bin/sh\\nexit 0\\n' > /usr/local/bin/git
-chmod 755 /usr/local/bin/git
 install -d -o nooptest -g nooptest -m 700 /home/nooptest/.noop-test
 printf '[server]\\ntoken = "${token}"\\n' > /home/nooptest/.noop-test/noop.toml
 chown nooptest:nooptest /home/nooptest/.noop-test/noop.toml
