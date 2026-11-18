@@ -63,7 +63,7 @@ try {
   for (const name of ["package.json", "bunfig.toml", "tsconfig.json"]) cpSync(join(source, name), join(stage, "repo", name));
   mkdirSync(join(stage, "repo", "app", "dist", "web"), { recursive: true }); cpSync(assets, join(stage, "repo", "app", "dist", "web", "noop"), { recursive: true });
   mkdirSync(join(stage, "bin"), { recursive: true }); copyFileSync(process.execPath, join(stage, "bin", "bun")); copyFileSync(workerd, join(stage, "bin", "workerd"));
-  const proof = `#!/bin/bash\nTASK_TTY=/dev/ttyS0; if [ "$(uname -m)" = aarch64 ]; then TASK_TTY=/dev/ttyAMA0; fi\nfor n in $(seq 1 100); do loginctl show-user nooptest >/dev/null 2>&1 && break; sleep .2; done\nprintf 'NOOP_VM_BOOT %s\\n' "$(cat /proc/sys/kernel/random/boot_id)" > "$TASK_TTY"\nloginctl show-user nooptest -p Linger -p Sessions > "$TASK_TTY"\nTASK_UID=$(id -u nooptest)\nfor n in $(seq 1 100); do [ -S "/run/user/$TASK_UID/bus" ] && break; sleep .2; done\nrunuser -u nooptest -- env XDG_RUNTIME_DIR=/run/user/$TASK_UID DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/$TASK_UID/bus systemctl --user status noop-coordinator.service --no-pager > "$TASK_TTY" 2>&1 || true\nrunuser -u nooptest -- env XDG_RUNTIME_DIR=/run/user/$TASK_UID DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/$TASK_UID/bus systemctl --user show noop.service -p Environment --value > "$TASK_TTY" 2>&1 || true\nfor n in $(seq 1 100); do runuser -u nooptest -- env XDG_RUNTIME_DIR=/run/user/$TASK_UID DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/$TASK_UID/bus systemctl --user is-active --quiet noop.service && break; sleep .2; done\nrunuser -u nooptest -- env XDG_RUNTIME_DIR=/run/user/$TASK_UID DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/$TASK_UID/bus systemctl --user is-active --quiet noop.service && echo NOOP_VM_PRIMARY_ACTIVE > "$TASK_TTY" || true\njournalctl _UID=$TASK_UID -o cat --no-pager -n 100 > "$TASK_TTY" 2>&1 || true\nss -ltnp > "$TASK_TTY" 2>&1 || true\n`;
+  const proof = `#!/bin/bash\nTASK_TTY=/dev/ttyS0; if [ "$(uname -m)" = aarch64 ]; then TASK_TTY=/dev/ttyAMA0; fi\nfor n in $(seq 1 100); do loginctl show-user nooptest >/dev/null 2>&1 && break; sleep .2; done\nprintf 'NOOP_VM_BOOT %s\\n' "$(cat /proc/sys/kernel/random/boot_id)" > "$TASK_TTY"\nfor n in $(seq 1 120); do TASK_LOGIN_STATE=$(loginctl show-user nooptest -p Linger -p Sessions 2>&1); if printf '%s\\n' "$TASK_LOGIN_STATE" | grep -qx 'Linger=yes' && printf '%s\\n' "$TASK_LOGIN_STATE" | grep -qx 'Sessions='; then break; fi; sleep .5; done\nprintf '%s\\n' "$TASK_LOGIN_STATE" > "$TASK_TTY"\nTASK_UID=$(id -u nooptest)\nfor n in $(seq 1 100); do [ -S "/run/user/$TASK_UID/bus" ] && break; sleep .2; done\nrunuser -u nooptest -- env XDG_RUNTIME_DIR=/run/user/$TASK_UID DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/$TASK_UID/bus systemctl --user status noop-coordinator.service --no-pager > "$TASK_TTY" 2>&1 || true\nrunuser -u nooptest -- env XDG_RUNTIME_DIR=/run/user/$TASK_UID DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/$TASK_UID/bus systemctl --user show noop.service -p Environment --value > "$TASK_TTY" 2>&1 || true\nfor n in $(seq 1 100); do runuser -u nooptest -- env XDG_RUNTIME_DIR=/run/user/$TASK_UID DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/$TASK_UID/bus systemctl --user is-active --quiet noop.service && break; sleep .2; done\nrunuser -u nooptest -- env XDG_RUNTIME_DIR=/run/user/$TASK_UID DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/$TASK_UID/bus systemctl --user is-active --quiet noop.service && echo NOOP_VM_PRIMARY_ACTIVE > "$TASK_TTY" || true\njournalctl _UID=$TASK_UID -o cat --no-pager -n 100 > "$TASK_TTY" 2>&1 || true\nss -ltnp > "$TASK_TTY" 2>&1 || true\n`;
   const provision = `#!/bin/bash
 TASK_TTY=/dev/ttyS0; if [ "$(uname -m)" = aarch64 ]; then TASK_TTY=/dev/ttyAMA0; fi
 exec > /var/log/noop-provision.log 2>&1
@@ -117,6 +117,10 @@ fd = os.open('/home/nooptest/.noop-test/data', os.O_RDONLY)
 os.fsync(fd)
 os.close(fd)
 PY
+install -d -o nooptest -g nooptest -m 700 /home/nooptest/bootstrap
+cp /home/nooptest/.noop-test/noop.toml /home/nooptest/bootstrap/custom.toml
+chown nooptest:nooptest /home/nooptest/bootstrap/custom.toml
+runuser -u nooptest -- env XDG_RUNTIME_DIR=/run/user/$TASK_UID DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/$TASK_UID/bus systemctl --user set-environment HUB_CONF=/home/nooptest/bootstrap/custom.toml
 runuser -u nooptest -- env NOOP_HOME=/home/nooptest/.noop-test HUB_NO_MEDIC=1 PATH=/usr/local/bin:/usr/bin:/bin XDG_RUNTIME_DIR=/run/user/$TASK_UID DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/$TASK_UID/bus /usr/local/bin/bun /opt/noop/src/cli.ts install
 systemd-run --unit=noop-vm-log /bin/sh -c "journalctl -f -o cat _UID=$TASK_UID > $TASK_TTY 2>&1"
 systemctl enable --now noop-vm-proof.service
@@ -152,7 +156,8 @@ echo NOOP_VM_PROVISIONED > "$TASK_TTY"
   check((await request("/api/host/2fa/confirm", "POST", { totp: totp(setup.secret, Math.floor(Date.now() / 30_000) - 1) })).ok, "owner binds TOTP on the offline VM");
   check((await request("/api/auth/start", "POST", { email: "first@example.com" }, "")).ok, "offline owner requests a login code");
   const code = ((await (await request("/api/host/login-code")).json()) as any).code;
-  const logged = await request("/api/auth/verify", "POST", { email: "first@example.com", code, totp: totp(setup.secret, Math.floor(Date.now() / 30_000)) }, "");
+  const firstStep = Math.floor(Date.now() / 30_000);
+  const logged = await request("/api/auth/verify", "POST", { email: "first@example.com", code, totp: totp(setup.secret, firstStep) }, "");
   const ownerSession = ((await logged.json()) as any).session;
   check(logged.ok && !!ownerSession, "owner signs in to the offline VM");
   check((await request("/api/files/commit", "POST", { msg: "reboot", changes: [{ path: "reports/reboot.md", base_version: 0, content: Buffer.from("survives reboot").toString("base64") }] })).ok, "a host commits a file before reboot");
@@ -163,7 +168,7 @@ echo NOOP_VM_PROVISIONED > "$TASK_TTY"
   check((await request("/api/fleet/update", "POST", {}, ownerSession)).ok, "the owner requests an update through the real coordinator API");
   await waitFor(async () => {
     try { const r = await request("/api/status"); return r.ok && ((await r.json()) as any).release_marker === "owner-update-v2"; } catch { return false; }
-  }, "the owner request did not update the co-located coordinator", 45_000);
+  }, "the owner request did not update the co-located coordinator", process.arch === "arm64" ? 120_000 : 45_000);
   check(true, "the owner request updates the co-located coordinator");
   const updatedFiles = ((await (await request("/api/files/changes?since=0")).json()) as any).files as any[];
   check(updatedFiles.some((file) => file.path === "reports/reboot.md"), "the owner-requested update preserves committed data");
@@ -174,15 +179,16 @@ echo NOOP_VM_PROVISIONED > "$TASK_TTY"
   await waitFor(() => {
     const log = readFileSync(serial, "utf8");
     return log.slice(log.lastIndexOf("NOOP_VM_BOOT ")).includes("NOOP_VM_PRIMARY_ACTIVE");
-  }, "primary did not start after the VM reboot", 30_000);
+  }, "primary did not start after the VM reboot", process.arch === "arm64" ? 120_000 : 30_000);
   const rebootLog = readFileSync(serial, "utf8"), lastProof = rebootLog.slice(rebootLog.lastIndexOf("NOOP_VM_BOOT "));
   check(/Linger=yes/.test(lastProof) && /Sessions=\s*(?:\r?\n)/.test(lastProof), "after a new boot the service starts with linger and no user login session");
   check(lastProof.includes("NOOP_VM_PRIMARY_ACTIVE"), "the primary service also starts after the reboot");
   check((await request("/api/status")).ok, "machine credential still works after reboot");
+  await waitFor(() => Math.floor(Date.now() / 30_000) > firstStep, "the next TOTP period did not arrive", 35_000);
   check((await request("/api/auth/start", "POST", { email: "second@example.com" }, "")).ok, "owner requests a login code after reboot");
   const next = ((await (await request("/api/host/login-code")).json()) as any).code;
-  const after = await request("/api/auth/verify", "POST", { email: "second@example.com", code: next, totp: totp(setup.secret, Math.floor(Date.now() / 30_000) + 1) }, "");
-  check(after.ok, "owner signs in after reboot with the original TOTP secret");
+  const after = await request("/api/auth/verify", "POST", { email: "second@example.com", code: next, totp: totp(setup.secret, Math.floor(Date.now() / 30_000)) }, "");
+  check(after.ok, `owner signs in after reboot with the original TOTP secret${after.ok ? "" : `: ${await after.text()}`}`);
   const peer = join(out, "peer"), env = { ...process.env, NOOP_HOME: peer, HUB_NO_MEDIC: "1" };
   const joined = spawnSync(process.execPath, [join(source, "src", "cli.ts"), "init", "--local", base, "--token", token], { cwd: source, env, encoding: "utf8", timeout: 30_000 });
   check(joined.status === 0 && readFileSync(join(peer, "data", "reports", "reboot.md"), "utf8") === "survives reboot", "a fresh host synchronizes the persisted file after reboot");

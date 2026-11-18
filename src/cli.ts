@@ -5,7 +5,7 @@ import { $ } from "bun";
 import { existsSync, readFileSync, unlinkSync, writeFileSync, mkdirSync } from "node:fs";
 import { parseArgs } from "node:util";
 import {
-  type Cfg, P, ROOT, _commitPush, _pull, agentName, asText, chooseCli, claim, commitPush, guardMemory, heartbeat, hostCaps, hostName, journal,
+  type Cfg, HOME_DIR, P, ROOT, _commitPush, _pull, agentName, asText, chooseCli, claim, commitPush, guardMemory, heartbeat, hostCaps, hostName, journal,
   list, loadConfig, locked, newTask, now, onlineHosts, pickTask, pull, readDoc, remember, writeDoc,
 } from "./core";
 import { amendDecision, closeDecision, IGNORE, ignoreDecision, openDecision, overrideJudge, ownerPickedMenu, recentJudgeIds, routeDecision } from "./decisions";
@@ -28,7 +28,7 @@ import { ackInbound, answerFromChat, appendEvent, cancelTask, feed, handleOwnerM
 import { addFollowUp, reopenTask, routeWithoutModel, type BrainOut, ClaudeModel, systemPrompt, dataActs, localStore, logBrain, think } from "./brain";
 import { isWrite, runTool } from "../cloud/src/tools";
 import { cloudDeploy, startCloudBridge } from "./cloud";
-import { adoptCloudUrl, hubDialUrl, hubTomlPath, readHubToml } from "./sync";
+import { adoptCloudUrl, hubDialUrl, readHubToml } from "./sync";
 import { judgeAccuracy, level, needsApproval, noteStuckRoutine, proposeBatch, resolveProposals, routineParkedOnDecision, routineQueued, supersedeProposed } from "./autonomy";
 import { CODE, L, UPDATE_REQUEST, type UpdateState, setUpdateState, updateState, allowedClis, cliHintPatch, capOk, idTagFor, isPrimary, isCloudDeployHost, runningRev, setApprovalGate, setIdTag } from "./core";
 import { accountEnv, accountsStatus, classify, failoverAccount, pendingLoginIds, pickAccount, reportFailure, retryLogins, submitLoginCode } from "./accounts";
@@ -508,7 +508,8 @@ async function ownerUpdate(c: Cfg, host: string) {
   await report("updating", L("Pulling and testing the new code", "拉取并测试新代码"));
   const updated = await selfUpdate({ force: true, deploy: true }).catch(() => false);
   const now7 = Bun.which("git") ? Bun.spawnSync(["git", "-C", CODE, "rev-parse", "--short", "HEAD"], { stdout: "pipe", stderr: "ignore" }).stdout.toString().trim() || before : before;
-  const coordinatorHome = dirname(hubTomlPath()), coordinator = join(coordinatorHome, "coordinator");
+  const coordinatorHome = !process.env.NOOP_HOME && process.env.HUB_DATA && !existsSync(join(HOME_DIR, "coordinator", "namespace-key")) ? dirname(ROOT) : HOME_DIR;
+  const coordinator = join(coordinatorHome, "coordinator");
   let coordinatorUpdated = false;
   if (readHubToml().cloud?.mode === "local" && isPrimary(c, host) && existsSync(join(coordinator, "namespace-key"))) {
     if (!updated && now7 !== before) {

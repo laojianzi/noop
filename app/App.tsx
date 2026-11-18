@@ -3229,7 +3229,7 @@ function TeamSettings(props: { hub: Hub; push: Push; settings: Settings; wide: b
         </Group>
         </If>
         <If when={on("version")}>
-        <Group title={L("Version", "版本")} hint={L("The code each machine runs. Updating makes every machine pull the latest code, and the primary also redeploys the server.", "每台机器运行的代码。更新会让所有机器拉取最新代码，主控机同时重新发布线上。")}>
+        <Group title={L("Version", "版本")} hint={L("Updating pulls the latest code on each machine. A local coordinator installed on the primary or the designated cloud host also updates.", "更新会让所有机器拉取最新代码，并更新主控机上安装的协调服务或指定的云端服务。")}>
           <VersionRows hub={props.hub} />
         </Group>
         </If>
@@ -3322,11 +3322,11 @@ function RevLink(props: { host: HostInfo }) {
   );
 }
 
-/** Ask every machine to update to the latest code; the primary also redeploys the web app and the Worker. */
+/** Ask every machine to update to the latest code. */
 async function updateAllMachines(hub: Hub) {
   const r = await AlertDialog.show({
     title: L("Update all machines?", "更新所有机器？"),
-    description: L("Each machine pulls the latest code and restarts. Idle machines update now; busy ones restart when their tasks finish. The primary also redeploys the server.", "每台机器拉取最新代码后重启：空闲的马上更新，有任务在跑的等跑完再重启。主控机同时重新发布线上。"),
+    description: L("Each machine pulls the latest code and restarts. Busy machines wait for their tasks to finish. A local coordinator installed on the primary or the designated cloud host also updates.", "每台机器拉取最新代码后重启，有任务在跑的等跑完再更新。主控机上安装的协调服务或指定的云端服务也会更新。"),
     actions: [
       { id: "cancel", label: L("Cancel", "取消"), role: "cancel" },
       { id: "update", label: L("Update", "更新") },
@@ -3997,7 +3997,7 @@ function PhoneSettings(props: { hub: Hub; push: Push; settings: Settings; onOpen
       <Section title={L("Image retention", "图片保留")} hint={MEDIA_HINT()}>
         <MediaDaysChoices settings={props.settings} />
       </Section>
-      <Section title={L("Version", "版本")} hint={L("The code each machine runs. Updating makes every machine pull the latest code, and the primary also redeploys the server.", "每台机器运行的代码。更新会让所有机器拉取最新代码，主控机同时重新发布线上。")}>
+      <Section title={L("Version", "版本")} hint={L("Updating pulls the latest code on each machine. A local coordinator installed on the primary or the designated cloud host also updates.", "更新会让所有机器拉取最新代码，并更新主控机上安装的协调服务或指定的云端服务。")}>
         <VersionRows hub={props.hub} />
       </Section>
       <Section title={L("Account", "账号与连接")} hint={L("You stay signed in on this device and reconnect automatically next time.", "登录状态保存在这台设备上，下次打开自动连接。")}>
