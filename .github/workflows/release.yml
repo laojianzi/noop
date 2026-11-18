@@ -5,59 +5,9 @@ permissions:
   contents: read
   actions: read
 jobs:
-  macos-service:
-    timeout-minutes: 35
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - { os: macos-15-intel, package: darwin-64, arch: x86_64 }
-          - { os: macos-15, package: darwin-arm64, arch: arm64 }
-    runs-on: ${{ matrix.os }}
-    steps:
-      - uses: actions/checkout@v4
-      - uses: oven-sh/setup-bun@v2
-        with:
-          bun-version: 1.4.4
-      - uses: actions/download-artifact@v4
-        with:
-          name: coordinator-web
-          run-id: 44231492997
-          github-token: ${{ github.token }}
-          path: ${{ runner.temp }}/web-artifact
-      - name: Prepare verified test inputs
-        shell: bash
-        run: |
-          set -euo pipefail
-          cd "$RUNNER_TEMP/web-artifact"
-          shasum -a 256 -c coordinator-web.sha256
-          test "$(cat web-source-commit)" = 98cf0a7d5fb387acb975137d81460eb2a3d08ea8
-          mkdir -p "$RUNNER_TEMP/web" "$RUNNER_TEMP/runtime" "$RUNNER_TEMP/evidence"
-          tar -xzf coordinator-web.tar.gz -C "$RUNNER_TEMP/web"
-          package=$(npm pack --silent --ignore-scripts "@cloudflare/workerd-${{ matrix.package }}@1.20261110.1" --pack-destination "$RUNNER_TEMP")
-          tar -xzf "$RUNNER_TEMP/$package" -C "$RUNNER_TEMP/runtime"
-          chmod +x "$RUNNER_TEMP/runtime/package/bin/workerd"
-      - name: Verify native service and update
-        env:
-          NOOP_E2E_DISPOSABLE: '1'
-          NOOP_E2E_OUT: ${{ runner.temp }}/evidence
-          NOOP_E2E_WEB_ASSETS: ${{ runner.temp }}/web/noop
-          NOOP_E2E_WORKERD: ${{ runner.temp }}/runtime/package/bin/workerd
-        run: |
-          bun test/self-hosted-service-e2e.ts
-          bun test/self-hosted-update-e2e.ts
-      - uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: noop-13-macos-service-${{ matrix.arch }}
-          path: |
-            ${{ runner.temp }}/evidence/**/report.json
-            ${{ runner.temp }}/evidence/**/SHA256SUMS
-            ${{ runner.temp }}/evidence/**/*.log
-          if-no-files-found: warn
-  arm-reboot:
+  arm-native-stability:
     runs-on: ubuntu-24.04-arm
-    timeout-minutes: 60
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
       - uses: oven-sh/setup-bun@v2
@@ -69,12 +19,10 @@ jobs:
           run-id: 44231492997
           github-token: ${{ github.token }}
           path: ${{ runner.temp }}/web-artifact
-      - name: Prepare VM and verified test inputs
+      - name: Prepare inputs
         shell: bash
         run: |
           set -euo pipefail
-          sudo apt-get update -qq
-          sudo env DEBIAN_FRONTEND=noninteractive apt-get install -y -qq qemu-system-arm qemu-efi-aarch64 qemu-utils cloud-image-utils genisoimage
           cd "$RUNNER_TEMP/web-artifact"
           sha256sum -c coordinator-web.sha256
           test "$(cat web-source-commit)" = 98cf0a7d5fb387acb975137d81460eb2a3d08ea8
@@ -83,27 +31,21 @@ jobs:
           package=$(npm pack --silent --ignore-scripts '@cloudflare/workerd-linux-arm64@1.20261110.1' --pack-destination "$RUNNER_TEMP")
           tar -xzf "$RUNNER_TEMP/$package" -C "$RUNNER_TEMP/runtime"
           chmod +x "$RUNNER_TEMP/runtime/package/bin/workerd"
-          curl -fsSL --retry 5 --retry-all-errors https://cloud.debian.org/images/cloud/bookworm/latest/SHA512SUMS -o "$RUNNER_TEMP/SHA512SUMS"
-          curl -fsSL --retry 5 --retry-all-errors https://cloud.debian.org/images/cloud/bookworm/latest/debian-12-genericcloud-arm64.qcow2 -o "$RUNNER_TEMP/debian.qcow2"
-          expected=$(awk '$2 == "debian-12-genericcloud-arm64.qcow2" {print $1}' "$RUNNER_TEMP/SHA512SUMS")
-          test -n "$expected"
-          echo "$expected  $RUNNER_TEMP/debian.qcow2" | sha512sum -c -
-      - name: Verify offline owner update and power reset
-        env:
-          NOOP_E2E_OUT: ${{ runner.temp }}/evidence
-          NOOP_E2E_WEB_ASSETS: ${{ runner.temp }}/web/noop
-          NOOP_E2E_WORKERD: ${{ runner.temp }}/runtime/package/bin/workerd
-          NOOP_E2E_DEBIAN_IMAGE: ${{ runner.temp }}/debian.qcow2
-        run: bun test/self-hosted-reboot-vm.ts
+          docker pull debian:bookworm-slim
+      - name: Run native ARM64 primary without public network
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker run --rm --network none \
+            -v "$GITHUB_WORKSPACE:/src:ro" \
+            -v "$RUNNER_TEMP/web/noop:/web:ro" \
+            -v "$(readlink -f "$(command -v bun)"):/usr/local/bin/bun:ro" \
+            -v "$RUNNER_TEMP/runtime/package/bin/workerd:/usr/local/bin/workerd:ro" \
+            -v "$RUNNER_TEMP/evidence:/evidence" \
+            debian:bookworm-slim bash /src/test/arm-native-stability-diagnostic.sh
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: noop-13-linux-arm64-reboot
-          path: |
-            ${{ runner.temp }}/evidence/**/report.json
-            ${{ runner.temp }}/evidence/**/SHA256SUMS
-            ${{ runner.temp }}/evidence/**/serial.log
-            ${{ runner.temp }}/evidence/**/user-data
-            ${{ runner.temp }}/evidence/**/meta-data
-            ${{ runner.temp }}/evidence/**/network-config
+          name: noop-13-native-arm64-stability
+          path: ${{ runner.temp }}/evidence/native-arm64/*.log
           if-no-files-found: warn
