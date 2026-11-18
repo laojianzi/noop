@@ -1,0 +1,226 @@
+name: noop-16-login-probe
+on:
+  push:
+    branches: [codex/noop-16-session-preflight-20261118]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  inspect:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-15-intel, xcode-27]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Inspect disposable graphical login capabilities
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/login-probe"
+          {
+            printf 'system: '; sw_vers -productVersion
+            printf 'architecture: '; uname -m
+            printf 'user uid: '; id -u
+            printf 'console owner: '; stat -f '%Su' /dev/console
+            printf 'console sessions:\n'; who
+            if sudo -n true; then echo 'passwordless sudo: yes'; else echo 'passwordless sudo: no'; fi
+            if launchctl print "gui/$(id -u)" >/dev/null 2>&1; then echo 'runner GUI domain: present'; else echo 'runner GUI domain: absent'; fi
+            if test -x '/System/Library/CoreServices/Menu Extras/User.menu/Contents/Resources/CGSession'; then echo 'CGSession: present'; else echo 'CGSession: absent'; fi
+            if pgrep -x loginwindow >/dev/null; then echo 'loginwindow: present'; else echo 'loginwindow: absent'; fi
+            if pgrep -x WindowServer >/dev/null; then echo 'WindowServer: present'; else echo 'WindowServer: absent'; fi
+            printf 'runner processes:\n'
+            ps -axo pid,ppid,user,comm | awk '/[R]unner\.Listener|[R]unner\.Worker|[l]oginwindow|[W]indowServer/ {print}'
+            python3 - <<'PY'
+          import subprocess
+          try:
+              result = subprocess.run(['/usr/bin/osascript', '-e', 'tell application "System Events" to get UI elements enabled'], capture_output=True, text=True, timeout=8)
+              print('System Events accessibility:', result.returncode, result.stdout.strip(), result.stderr.strip()[:200])
+          except subprocess.TimeoutExpired:
+              print('System Events accessibility: timed out')
+          PY
+          } 2>&1 | tee "$RUNNER_TEMP/login-probe/inspection.txt"
+      - name: Create a disposable test user
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo sysadminctl -addUser noopprobe -fullName "Noop Probe" -password "synthetic-noop-probe-2026" -home /Users/noopprobe -shell /bin/bash > "$RUNNER_TEMP/login-probe/user-create.txt" 2>&1
+          id noopprobe >> "$RUNNER_TEMP/login-probe/user-create.txt"
+          sudo createhomedir -c -u noopprobe >> "$RUNNER_TEMP/login-probe/user-create.txt" 2>&1 || true
+          for key in DidSeeCloudSetup DidSeeSiriSetup DidSeePrivacy DidSeeAccessibility DidSeeAppearanceSetup DidSeeScreenTime DidSeeiCloudLoginForStorageServices; do
+            sudo -H -u noopprobe defaults write com.apple.SetupAssistant "$key" -bool true
+          done
+          for key in LastSeenCloudProductVersion LastPreLoginTasksPerformedVersion LastSeenIntelligenceProductVersion LastSeenDiagnosticsProductVersion LastSeenSiriProductVersion; do
+            sudo -H -u noopprobe defaults write com.apple.SetupAssistant "$key" -string "$(sw_vers -productVersion)"
+          done
+          for key in LastPreLoginTasksPerformedBuild LastSeenBuddyBuildVersion; do
+            sudo -H -u noopprobe defaults write com.apple.SetupAssistant "$key" -string "$(sw_vers -buildVersion)"
+          done
+          sudo -H -u noopprobe defaults write com.apple.SetupAssistant LastPrivacyBundleVersion -string 2
+          sudo -H -u noopprobe defaults write com.apple.SetupAssistant MiniBuddyLaunchReason -int 0
+          sudo -H -u noopprobe defaults read com.apple.SetupAssistant >> "$RUNNER_TEMP/login-probe/user-create.txt"
+          cat > "$RUNNER_TEMP/move.swift" <<'SWIFT'
+          import ApplicationServices
+          import Foundation
+          let x = Double(CommandLine.arguments[1])!
+          let y = Double(CommandLine.arguments[2])!
+          CGEvent(mouseEventSource: nil, mouseType: .mouseMoved, mouseCursorPosition: CGPoint(x: x, y: y), mouseButton: .left)!.post(tap: .cghidEventTap)
+          SWIFT
+          swiftc "$RUNNER_TEMP/move.swift" -o "$RUNNER_TEMP/move"
+          cat > "$RUNNER_TEMP/type.swift" <<'SWIFT'
+          import ApplicationServices
+          import Foundation
+          for char in "synthetic-noop-probe-2026".utf16 {
+              var value = char
+              for down in [true, false] {
+                  let event = CGEvent(keyboardEventSource: nil, virtualKey: 0, keyDown: down)!
+                  event.keyboardSetUnicodeString(stringLength: 1, unicodeString: &value)
+                  event.post(tap: .cghidEventTap)
+              }
+              usleep(20000)
+          }
+          CGEvent(keyboardEventSource: nil, virtualKey: 36, keyDown: true)!.post(tap: .cghidEventTap)
+          CGEvent(keyboardEventSource: nil, virtualKey: 36, keyDown: false)!.post(tap: .cghidEventTap)
+          SWIFT
+          swiftc "$RUNNER_TEMP/type.swift" -o "$RUNNER_TEMP/type"
+          cat > "$RUNNER_TEMP/key.swift" <<'SWIFT'
+          import ApplicationServices
+          import Foundation
+          let code: CGKeyCode = CommandLine.arguments[1] == "logout" ? 12 : 36
+          for down in [true, false] {
+              let event = CGEvent(keyboardEventSource: nil, virtualKey: code, keyDown: down)!
+              if code == 12 { event.flags = [.maskCommand, .maskShift, .maskAlternate] }
+              event.post(tap: .cghidEventTap)
+          }
+          SWIFT
+          swiftc "$RUNNER_TEMP/key.swift" -o "$RUNNER_TEMP/key"
+          dscl /Search -authonly noopprobe synthetic-noop-probe-2026 >> "$RUNNER_TEMP/login-probe/user-create.txt" 2>&1 || true
+          sudo defaults write /Library/Preferences/.GlobalPreferences MultipleSessionEnabled -bool true
+          { defaults read /Library/Preferences/.GlobalPreferences MultipleSessionEnabled || true; find /System/Library/CoreServices /System/Library/PrivateFrameworks -iname '*CGSession*' -o -iname '*UserSwitch*' 2>/dev/null || true; } >> "$RUNNER_TEMP/login-probe/user-create.txt"
+      - name: Inspect the disposable lock screen
+        shell: bash
+        run: |
+          set -euo pipefail
+          /usr/bin/osascript -e 'tell application "System Events" to tell process "ControlCenter" to get entire contents of menu bar 1' > "$RUNNER_TEMP/login-probe/control-center.txt" 2>&1 || true
+          screencapture -x "$RUNNER_TEMP/login-probe/before.png" || true
+          /usr/bin/osascript -e 'tell application "System Events" to key code 12 using {control down, command down}'
+          sleep 3
+          screencapture -x "$RUNNER_TEMP/login-probe/locked.png" || true
+          python3 - <<'PY2' | tee "$RUNNER_TEMP/login-probe/locked.txt"
+          import subprocess
+          for script in ['tell application "System Events" to get UI elements enabled', 'tell application "System Events" to tell process "loginwindow" to get name of every window', 'tell application "System Events" to tell process "loginwindow" to get entire contents of window 1']:
+              try:
+                  result = subprocess.run(['/usr/bin/osascript', '-e', script], capture_output=True, text=True, timeout=8)
+                  print('probe:', script, 'exit:', result.returncode, 'output:', result.stdout.strip(), 'error:', result.stderr.strip()[:200])
+              except subprocess.TimeoutExpired:
+                  print('probe:', script, 'timed out')
+          PY2
+          who | tee -a "$RUNNER_TEMP/login-probe/locked.txt"
+          coords=$(/usr/bin/osascript -e 'tell application "System Events" to tell process "loginwindow" to get position of text field 1 of window "Login"')
+          x=$(echo "$coords" | cut -d, -f1); y=$(echo "$coords" | cut -d, -f2)
+          "$RUNNER_TEMP/move" "$((x + 80))" "$((y - 22))"
+          sleep 3
+          screencapture -x -C "$RUNNER_TEMP/login-probe/hover.png" || true
+          /usr/bin/osascript -e 'tell application "System Events" to tell process "loginwindow" to get {position, size, enabled, actions} of button "show all users" of scroll area 1 of window "Login"' > "$RUNNER_TEMP/login-probe/button.txt" 2>&1 || true
+          /usr/bin/osascript -e 'tell application "System Events" to key code 123' || true
+          sleep 2
+          screencapture -x "$RUNNER_TEMP/login-probe/left-arrow.png" || true
+          /usr/bin/osascript -e 'tell application "System Events" to tell process "loginwindow" to get entire contents of window 1' > "$RUNNER_TEMP/login-probe/left-arrow.txt" 2>&1 || true
+          /usr/bin/osascript -e 'tell application "System Events" to tell process "loginwindow" to get entire contents of window 1' > "$RUNNER_TEMP/login-probe/hover.txt" 2>&1 || true
+          python3 - <<'PY3' | tee "$RUNNER_TEMP/login-probe/users.txt"
+          import subprocess, time
+          scripts = ['tell application "System Events" to tell process "loginwindow" to click button "show all users" of scroll area 1 of window "Login"',
+                     'tell application "System Events" to tell process "loginwindow" to get entire contents of window 1']
+          for script in scripts:
+              try:
+                  result = subprocess.run(['/usr/bin/osascript', '-e', script], capture_output=True, text=True, timeout=8)
+                  print('probe:', script, 'exit:', result.returncode, 'output:', result.stdout.strip(), 'error:', result.stderr.strip()[:200])
+              except subprocess.TimeoutExpired:
+                  print('probe:', script, 'timed out')
+              time.sleep(2)
+          PY3
+          screencapture -x "$RUNNER_TEMP/login-probe/users.png" || true
+          /usr/bin/osascript -e 'tell application "System Events" to tell process "loginwindow" to click button 1 of group 1 of list 1 of list 1 of scroll area 1 of window "Login"' > "$RUNNER_TEMP/login-probe/select.txt" 2>&1 || true
+          sleep 8
+          /usr/bin/osascript -e 'tell application "System Events" to tell process "loginwindow" to get entire contents of window 1' >> "$RUNNER_TEMP/login-probe/select.txt" 2>&1 || true
+          "$RUNNER_TEMP/type" >> "$RUNNER_TEMP/login-probe/select.txt" 2>&1 || true
+          for n in {1..60}; do
+            if sudo launchctl print "gui/$(id -u noopprobe)" >/dev/null 2>&1; then break; fi
+            sleep 1
+          done
+          for n in {1..120}; do
+            if pgrep -u noopprobe -x Finder >/dev/null && pgrep -u noopprobe -x Dock >/dev/null; then break; fi
+            if (( n % 15 == 0 )); then echo "Waiting for the test user's desktop: ${n}s"; fi
+            sleep 1
+          done
+          uid=$(id -u noopprobe)
+          {
+            printf 'console owner: '; stat -f '%Su' /dev/console
+            printf 'sessions:\n'; who
+            printf 'test GUI domain:\n'; sudo launchctl print "gui/$uid" 2>&1 || true
+            printf 'test user processes:\n'; ps -u noopprobe -o pid,ppid,user,command || true
+          } > "$RUNNER_TEMP/login-probe/switch.txt" 2>&1
+          sudo launchctl asuser "$uid" sudo -H -u noopprobe /usr/sbin/screencapture -x /Users/Shared/noop-test-desktop.png 2>/dev/null || true
+          cp /Users/Shared/noop-test-desktop.png "$RUNNER_TEMP/login-probe/test-desktop.png" 2>/dev/null || true
+          screencapture -x "$RUNNER_TEMP/login-probe/switched.png" || true
+          if ! pgrep -u noopprobe -x Finder >/dev/null || ! pgrep -u noopprobe -x Dock >/dev/null; then
+            echo "The synthetic user's Finder and Dock did not start" | tee "$RUNNER_TEMP/login-probe/desktop-not-ready.txt"
+            exit 1
+          fi
+          echo 'Synthetic desktop ready' | tee "$RUNNER_TEMP/login-probe/desktop-ready.txt"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: macos-login-before-logout-${{ matrix.os }}
+          path: ${{ runner.temp }}/login-probe/
+          if-no-files-found: warn
+          retention-days: 7
+      - name: Log out only the isolated user
+        shell: bash
+        run: |
+          set -euo pipefail
+          uid=$(id -u noopprobe)
+          sudo launchctl print "gui/$uid" > "$RUNNER_TEMP/login-probe/before-logout-domain.txt"
+          { printf 'console: '; stat -f '%Su' /dev/console; who; } | tee "$RUNNER_TEMP/login-probe/logout.txt"
+          sudo cp "$RUNNER_TEMP/key" /Users/Shared/noop-test-key
+          sudo chmod 755 /Users/Shared/noop-test-key
+          if [[ "$(stat -f '%Su' /dev/console)" != noopprobe ]]; then
+            echo 'The synthetic user is not the active console user' | tee -a "$RUNNER_TEMP/login-probe/logout.txt"
+            exit 1
+          fi
+          sudo launchctl asuser "$uid" sudo -H -u noopprobe /Users/Shared/noop-test-key logout > "$RUNNER_TEMP/login-probe/logout-command.txt" 2>&1
+          for n in {1..60}; do
+            if ! sudo launchctl print "gui/$uid" >/dev/null 2>&1; then break; fi
+            sleep 1
+          done
+          { printf 'after logout console: '; stat -f '%Su' /dev/console; who; } | tee -a "$RUNNER_TEMP/login-probe/logout.txt"
+          if sudo launchctl print "gui/$uid" >/dev/null 2>&1; then echo 'The isolated GUI domain is still active' | tee -a "$RUNNER_TEMP/login-probe/logout.txt"; exit 1; fi
+          if who | awk '{ print $1 }' | grep -Fxq noopprobe; then echo 'The isolated user still has a login session' | tee -a "$RUNNER_TEMP/login-probe/logout.txt"; exit 1; fi
+          "$RUNNER_TEMP/key" enter
+          sleep 3
+          /usr/bin/osascript -e 'tell application "System Events" to tell process "loginwindow" to get entire contents of window 1' > "$RUNNER_TEMP/login-probe/relogin-window.txt" 2>&1 || true
+          /usr/bin/osascript -e 'tell application "System Events" to tell process "loginwindow" to click button "show all users" of scroll area 1 of window "Login"' >> "$RUNNER_TEMP/login-probe/relogin-window.txt" 2>&1 || true
+          /usr/bin/osascript -e 'tell application "System Events" to tell process "loginwindow" to click button 1 of group 1 of list 1 of list 1 of scroll area 1 of window "Login"' >> "$RUNNER_TEMP/login-probe/relogin-window.txt" 2>&1 || true
+          sleep 3
+          "$RUNNER_TEMP/type"
+          for n in {1..60}; do
+            if sudo launchctl print "gui/$uid" >/dev/null 2>&1; then break; fi
+            sleep 1
+          done
+          { printf 'after login console: '; stat -f '%Su' /dev/console; who; sudo launchctl print "gui/$uid" 2>&1 || true; } > "$RUNNER_TEMP/login-probe/after-relogin.txt"
+          sudo launchctl print "gui/$uid" >/dev/null 2>&1
+          for n in {1..120}; do
+            if pgrep -u noopprobe -x Finder >/dev/null && pgrep -u noopprobe -x Dock >/dev/null; then break; fi
+            sleep 1
+          done
+          pgrep -u noopprobe -x Finder >/dev/null
+          pgrep -u noopprobe -x Dock >/dev/null
+          echo 'Synthetic user logged in again and desktop is ready' | tee "$RUNNER_TEMP/login-probe/relogin-ready.txt"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: macos-login-probe-${{ matrix.os }}
+          path: ${{ runner.temp }}/login-probe/
+          if-no-files-found: warn
+          retention-days: 7
