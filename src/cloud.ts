@@ -10,7 +10,7 @@ import { type Jwk, newVapidKeys } from "../cloud/src/push";
 import { ipAllowed, parseAllowList } from "../cloud/src/ipallow";
 import { type Cfg, CODE, L, P, _commitPush, _pull, hostName, journal, locked, HOME_DIR } from "./core";
 import { updateChannel } from "./channels";
-import { hubDialUrl, writeHubToml } from "./sync";
+import { hubDialUrl, readHubToml, writeHubToml } from "./sync";
 import { ensureWebClient } from "./webclient";
 import { type Event, MEDIA, appendEvent, applyOp, handleOwnerMessage, saveSettings, setMirror, settingsView, status, cancelTask, updateFleet } from "./server";
 
@@ -196,6 +196,8 @@ export let lastDeployError = "";
 /** Deploy the Worker into the owner's Cloudflare account; set the token secret; record the URL (noop.toml + shared config). */
 export async function cloudDeploy(cfg: Cfg) {
   lastDeployError = "";
+  if (readHubToml().cloud?.mode === "local")
+    throw new Error(L("This Noop home uses a local coordinator; use a separate NOOP_HOME for Cloudflare deployment", "这个 Noop 数据目录使用本地协调服务；请使用单独的 NOOP_HOME 部署到 Cloudflare"));
   const fail = (why: string) => { lastDeployError = why; console.log(why); return false as const; };
   const dir = join(CODE, "cloud");
   const wr = ["bunx", "wrangler"];

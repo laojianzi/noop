@@ -6,10 +6,26 @@ permissions:
   actions: read
 jobs:
   arm-reboot:
+    strategy:
+      fail-fast: false
+      matrix:
+        variant: [candidate, without-cli, cli-only, baseline]
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Select production variant
+        shell: bash
+        run: |
+          set -euo pipefail
+          case '${{ matrix.variant }}' in
+            candidate) ;;
+            without-cli) git restore --source=98cf0a7d5fb387acb975137d81460eb2a3d08ea8 -- src/cli.ts ;;
+            cli-only) git restore --source=98cf0a7d5fb387acb975137d81460eb2a3d08ea8 -- src; git restore --source=c331ed5 -- src/cli.ts ;;
+            baseline) git restore --source=98cf0a7d5fb387acb975137d81460eb2a3d08ea8 -- src ;;
+          esac
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: 1.4.4
@@ -49,7 +65,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: noop-13-linux-arm64-reboot
+          name: noop-13-arm-ablation-${{ matrix.variant }}
           path: |
             ${{ runner.temp }}/evidence/**/report.json
             ${{ runner.temp }}/evidence/**/SHA256SUMS
