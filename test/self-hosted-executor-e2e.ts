@@ -23,7 +23,7 @@ if (mode === "--real") {
   env.NOOP_E2E_REAL_CODEX = process.env.NOOP_E2E_REAL_CODEX;
   env.CODEX_HOME = process.env.NOOP_E2E_CODEX_HOME;
 }
-type Call = { cli: string; account: string; stage: string; task?: string; model?: string; pid: number; mcpDisabled: boolean };
+type Call = { cli: string; account: string; stage: string; task?: string; model?: string; sandbox?: string; pid: number; mcpDisabled: boolean };
 
 const check = (message: string) => { checks.push(message); console.log("PASS", message); };
 const calls = (): Call[] => readFileSync(join(out, "calls.jsonl"), "utf8").trim().split("\n").filter(Boolean).map(line => JSON.parse(line));
@@ -264,6 +264,14 @@ try {
     assert(calls().some(c => c.stage === "plan" && c.cli === "claude"));
     assert(calls().some(c => c.stage === "warm" && c.cli === "claude" && c.model === "legacy-claude-model"));
     check("legacy routing keeps the Claude planner and configured chat model");
+
+    symlinkSync(join(bin, "codex"), join(bin, "codex-wrapper"));
+    writeFileSync(configPath, fixtureConfig.replace('cli = "claude"', 'cli = "codex-wrapper"'));
+    const legacyWrapper = add("Plan with a custom legacy executable name");
+    await until("legacy planner wrapper did not run", async () => (await task(legacyWrapper)).state === "done");
+    assert(calls().some(c => c.stage === "plan" && c.cli === "codex" && c.sandbox === "read-only"));
+    writeFileSync(configPath, fixtureConfig);
+    check("legacy planning keeps the read-only sandbox for a custom executable name");
 
     const setSelection = async (list: string[]) => {
       const view = await save({ clis: { internal: list } });

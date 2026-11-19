@@ -7,8 +7,9 @@ const dir = process.env.NOOP_EXECUTOR_FIXTURE!;
 const accountDir = cli === "codex" ? process.env.CODEX_HOME : process.env.CLAUDE_CONFIG_DIR;
 const account = accountDir ? basename(accountDir) : "default";
 const modelIndex = args.findIndex(arg => arg === "--model" || arg === "-m");
+const sandbox = args.indexOf("--sandbox");
 const record = (stage: string, task?: string) => appendFileSync(join(dir, "calls.jsonl"),
-  JSON.stringify({ cli, account, stage, task, mcpDisabled: args.some(arg => arg.startsWith("mcp_servers={") && arg.includes('"noop_probe"={enabled=false}')), model: modelIndex < 0 ? undefined : args[modelIndex + 1], pid: process.pid }) + "\n");
+  JSON.stringify({ cli, account, stage, task, mcpDisabled: args.some(arg => arg.startsWith("mcp_servers={") && arg.includes('"noop_probe"={enabled=false}')), model: modelIndex < 0 ? undefined : args[modelIndex + 1], sandbox: sandbox < 0 ? undefined : args[sandbox + 1], pid: process.pid }) + "\n");
 const fault = (stage: string) => {
   if (!existsSync(join(dir, cli + "-" + stage + ".fault"))) return;
   console.error("not logged in");

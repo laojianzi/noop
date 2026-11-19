@@ -485,7 +485,7 @@ async function askStructured(role: "router" | "judge", prompt: string, cfg: Cfg,
     if (explicit && cli === "codex") {
       try { codexArgs = codexReadOnlyArgs(env); }
       catch (error) { console.error(`Codex ${role} configuration:`, error); return; }
-    } else if (routing && cli === "codex") {
+    } else if (routing && cli !== "claude") {
       codexArgs = ["--sandbox", "read-only"];
     }
     const cmd = cli === "claude"
