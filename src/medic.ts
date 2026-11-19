@@ -75,7 +75,7 @@ export async function medic(problem: string, opts: { auto?: boolean; kind?: stri
     const model = explicit ? cfg.clis[cli]?.model : undefined;
     const effort = reasoningEffortOptions(cli, cfg.clis?.[cli]?.reasoning_effort);
     const cmd = cli === "claude"
-      ? ["claude", "-p", "--output-format", explicit ? "stream-json" : "text", ...(explicit ? ["--verbose"] : []), "--permission-mode", "bypassPermissions", "--disallowedTools", "Bash(git push --force:*)", "Bash(git push -f:*)", "Bash(rm -rf /:*)", "Bash(rm -rf ~/:*)", ...(model ? ["--model", model] : [])]
+      ? ["claude", "-p", "--output-format", explicit ? "stream-json" : "text", ...(explicit ? ["--verbose"] : []), "--permission-mode", "bypassPermissions", "--disallowedTools", "Bash(git push --force:*)", "Bash(git push -f:*)", "Bash(rm -rf /:*)", "Bash(rm -rf ~/:*)", ...(model ? ["--model", model] : []), ...effort.args]
       : ["codex", "exec", "--skip-git-repo-check", "--approve-for-me", ...(explicit ? ["--json"] : []), "-c", "sandbox_workspace_write.network_access=true", ...(model ? ["-m", model] : []), ...effort.args, "-"];
     console.error(`🩺 medic (${cli}) is looking at: ${problem.split("\n")[0].slice(0, 120)}`);
     const result = await runInternalProcess(cmd, prompt, CODE, (cfg.medic?.timeout_minutes ?? 30) * 60_000, { ...env, ...effort.env, HUB_NO_MEDIC: "1" });

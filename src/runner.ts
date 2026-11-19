@@ -155,11 +155,14 @@ export function sharedMcp(cfg: Cfg, env: Record<string, string | undefined> = pr
   return usableMcp(withOAuth(mcpServers((cfg as { mcp_servers?: unknown }).mcp_servers), env), env).use;
 }
 
-export function reasoningEffortOptions(cli: Executor, effort?: string): { args: string[]; env: Record<string, string> } {
-  if (effort === undefined || effort === "default") return { args: [], env: {} };
-  return cli === "codex"
-    ? { args: ["-c", `model_reasoning_effort=${JSON.stringify(effort)}`], env: {} }
-    : { args: [], env: { CLAUDE_CODE_EFFORT_LEVEL: effort } };
+export function reasoningEffortOptions(cli: Executor, effort?: string, claudeSettings?: Record<string, unknown>):
+  { args: string[]; env: Record<string, string> } {
+  const explicit = effort !== undefined && effort !== "default";
+  if (cli === "codex") return { args: explicit ? ["-c", `model_reasoning_effort=${JSON.stringify(effort)}`] : [], env: {} };
+  const env: Record<string, string> = explicit ? { CLAUDE_CODE_EFFORT_LEVEL: effort } : {};
+  // Claude loads account and project env settings after spawn.
+  const settings = explicit ? { ...claudeSettings, env } : claudeSettings;
+  return { args: settings ? ["--settings", JSON.stringify(settings)] : [], env };
 }
 
 /** `mcpArgs`: the MCP flags of this run (see `mcpLaunch`); none when left out (status views, model lookups). */
@@ -170,7 +173,7 @@ export function cliCommand(cli: string, cfg: Cfg, gateOverride = false, mcpArgs:
     const cmd = ["claude", "-p", "--output-format", "stream-json", "--verbose", "--permission-mode", c.permission_mode ?? "bypassPermissions"];
     cmd.push("--model", c.model ?? "claude-opus-5-5");
     // the agent signature is the only attribution; drop Claude Code's own "Generated with" / co-author lines
-    cmd.push("--settings", JSON.stringify({ attribution: { commit: "", pr: "" }, includeCoAuthoredBy: false }));
+    cmd.push(...reasoningEffortOptions("claude", c.reasoning_effort, { attribution: { commit: "", pr: "" }, includeCoAuthoredBy: false }).args);
     const deny = claudeDisallowed(cfg, gateOverride);
     if (deny.length) cmd.push("--disallowedTools", ...deny);
     cmd.push(...mcpArgs);
@@ -506,7 +509,7 @@ async function askStructured(role: "router" | "judge", prompt: string, cfg: Cfg,
     const effort = reasoningEffortOptions(executor, cfg[role]?.reasoning_effort ?? defaultEffort);
     const cmd = cli === "claude"
       ? ["claude", "-p", "--output-format", "text", "--tools", "", ...(routing || explicit ? ["--strict-mcp-config"] : []),
-        ...(routing ? (model ? ["--model", model] : []) : ["--model", model ?? "claude-opus-5-5"])]
+        ...(routing ? (model ? ["--model", model] : []) : ["--model", model ?? "claude-opus-5-5"]), ...effort.args]
       : ["codex", "exec", "--skip-git-repo-check", ...codexArgs, ...(model ? ["-m", model] : []),
         ...effort.args, "-"];
     const { out, code } = await runInternalProcess(cmd, prompt, ROOT, timeout, { ...env, ...effort.env });

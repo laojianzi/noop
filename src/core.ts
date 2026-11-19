@@ -46,12 +46,16 @@ export function loadConfig(): Cfg {
   const bootstrap = sync.readHubToml();
   const cfg: Cfg = merge(merge(merge(bootstrap, read("config.toml")), ui), read("config.local.toml"));
   if (invalidInternalSelection(cfg.clis)) throw new Error(INTERNAL_SELECTION_ERROR);
-  for (const [section, settings] of [
-    ["clis.claude", cfg.clis?.claude], ["clis.codex", cfg.clis?.codex], ["router", cfg.router], ["judge", cfg.judge], ["chat", cfg.chat],
+  for (const [field, value] of [
+    ["clis.claude.reasoning_effort", cfg.clis?.claude?.reasoning_effort],
+    ["clis.codex.reasoning_effort", cfg.clis?.codex?.reasoning_effort],
+    ["router.reasoning_effort", cfg.router?.reasoning_effort],
+    ["judge.reasoning_effort", cfg.judge?.reasoning_effort],
+    ["chat.reasoning_effort", cfg.chat?.reasoning_effort],
+    ["chat.model", cfg.chat?.model],
   ]) {
-    const effort = settings?.reasoning_effort;
-    if (effort !== undefined && (typeof effort !== "string" || !effort.trim()))
-      throw new Error(`${section}.reasoning_effort must be a non-empty string`);
+    if (value !== undefined && (typeof value !== "string" || !value.trim()))
+      throw new Error(`${field} must be a non-empty string`);
   }
   // built-in routines (src/builtin-routines.ts) unless config.toml defines one of the same name
   cfg.routine = Array.isArray(cfg.routine) ? cfg.routine : [];

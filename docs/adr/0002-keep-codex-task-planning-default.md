@@ -6,7 +6,7 @@ Resolve `model` and `reasoning_effort` separately. Task runs and Medic use the s
 
 Use `[chat]` so the owner can configure conversation and task planning independently. A `[chat].model` applies to the first configured internal executor, or the existing chat executor in legacy mode. When `[chat].model` is absent or applies to another executor, use the existing model lookup, including `[router].model`. Executor selection follows the existing rules.
 
-Require a non-empty string for a configured effort. Pass an explicit level to Codex as `model_reasoning_effort`, or to Claude Code as `CLAUDE_CODE_EFFORT_LEVEL` in the child process. Each CLI and model defines its own supported levels. A full `command` override controls its own invocation.
+Require non-empty strings for configured effort and `[chat].model`. Pass an explicit level to Codex as `model_reasoning_effort`, or to Claude Code as `CLAUDE_CODE_EFFORT_LEVEL`. When Claude loads account and project settings, set the level in its inline launch settings too. This keeps an account default from replacing the selected level. Each CLI and model defines its own supported levels. A full `command` override controls its own invocation.
 
 Keep fixed-format queries on the existing read-only data paths. Natural-language questions use the owner conversation. Classification during task planning shares the planner's effort. A fleet member running a classification routine uses its normal task effort.
 

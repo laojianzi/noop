@@ -9,9 +9,13 @@ const account = accountDir ? basename(accountDir) : "default";
 const modelIndex = args.findIndex(arg => arg === "--model" || arg === "-m");
 const sandbox = args.indexOf("--sandbox");
 const effortArgs = args.filter((arg, i) => args[i - 1] === "-c" && arg.startsWith("model_reasoning_effort="));
+const settingsArgs = args.filter((arg, i) => args[i - 1] === "--settings" && arg.startsWith("{"));
+const settings = settingsArgs.length === 1 ? JSON.parse(settingsArgs[0]) : {};
 const record = (stage: string, task?: string) => appendFileSync(join(dir, "calls.jsonl"),
   JSON.stringify({ cli, account, stage, task, mcpDisabled: args.some(arg => arg.startsWith("mcp_servers={") && arg.includes('"noop_probe"={enabled=false}')),
     model: modelIndex < 0 ? undefined : args[modelIndex + 1], effortArgs, effortEnv: process.env.CLAUDE_CODE_EFFORT_LEVEL,
+    effortSettings: settings.env?.CLAUDE_CODE_EFFORT_LEVEL, attributionDisabled: settings.attribution?.commit === "" &&
+      settings.attribution?.pr === "" && settings.includeCoAuthoredBy === false,
     sandbox: sandbox < 0 ? undefined : args[sandbox + 1], pid: process.pid }) + "\n");
 const fault = (stage: string) => {
   if (!existsSync(join(dir, cli + "-" + stage + ".fault"))) return;

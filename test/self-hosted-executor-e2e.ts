@@ -24,17 +24,20 @@ if (mode === "--real") {
   env.CODEX_HOME = process.env.NOOP_E2E_CODEX_HOME;
 }
 type Call = { cli: string; account: string; stage: string; task?: string; model?: string; effortArgs: string[];
-  effortEnv?: string; sandbox?: string; pid: number; mcpDisabled: boolean };
+  effortEnv?: string; effortSettings?: string; attributionDisabled: boolean; sandbox?: string; pid: number; mcpDisabled: boolean };
 
 const check = (message: string) => { checks.push(message); console.log("PASS", message); };
 const calls = (): Call[] => readFileSync(join(out, "calls.jsonl"), "utf8").trim().split("\n").filter(Boolean).map(line => JSON.parse(line));
 
-function assertEffort(call: Call | undefined, executor: string, effort?: string) {
+function assertEffort(call: Call | undefined, executor: string, effort?: string, inlineEffort?: string) {
   assert(call, "expected an executor launch");
   assert.equal(call.cli, executor);
   assert.deepEqual(call.effortArgs,
     executor === "codex" && effort ? [`model_reasoning_effort=${JSON.stringify(effort)}`] : []);
-  if (executor === "claude") assert.equal(call.effortEnv, effort);
+  if (executor === "claude") {
+    assert.equal(call.effortEnv, effort);
+    assert.equal(call.effortSettings, inlineEffort, "Claude inline effort setting");
+  }
 }
 
 async function freePort() {
@@ -65,14 +68,14 @@ function cli(...args: string[]) {
   assert.equal(r.status, 0, r.stderr || r.stdout);
   return r.stdout.trim();
 }
-function assertInvalidEffort(section: string, value: string) {
-  const probeHome = join(out, "invalid-effort");
+function assertInvalidSetting(section: string, key: string, value: string) {
+  const probeHome = join(out, "invalid-setting");
   mkdirSync(join(probeHome, "data"), { recursive: true });
-  writeFileSync(join(probeHome, "data/config.local.toml"), `[${section}]\nreasoning_effort = ${value}\n`);
+  writeFileSync(join(probeHome, "data/config.local.toml"), `[${section}]\n${key} = ${value}\n`);
   const result = spawnSync(process.execPath, argsFor(["status", "--brief"]),
     { cwd: repo, env: { ...env, NOOP_HOME: probeHome }, encoding: "utf8", timeout: 15000 });
-  assert.notEqual(result.status, 0);
-  assert(result.stderr.includes(`${section}.reasoning_effort`), result.stderr);
+  assert.notEqual(result.status, 0, `expected invalid ${section}.${key} to fail`);
+  assert(result.stderr.includes(`${section}.${key}`), result.stderr);
 }
 async function until<T>(why: string, fn: () => Promise<T | false> | T | false, ms = 15_000): Promise<T> {
   const end = Date.now() + ms;
@@ -430,7 +433,9 @@ try {
     unlinkSync(join(out, "codex-chat.fault"));
     await setSelection(["codex"]);
     writeFileSync(configPath, fixtureConfig);
-    assertInvalidEffort("chat", '"  "');
+    assertInvalidSetting("chat", "reasoning_effort", '"  "');
+    assertInvalidSetting("chat", "model", "7");
+    assertInvalidSetting("chat", "model", '"  "');
     check("chat model and effort resolve separately and each fallback uses its own model settings");
 
     await save({ clis: { agents: { lead: ["claude"] } } });
@@ -539,7 +544,7 @@ try {
       await until("task planning did not complete", async () => (await task(id)).state === "done" && stage("plan").length > before);
       assert.deepEqual(stage("plan").slice(before), [executor]);
       const launch = lastLaunch("plan");
-      assertEffort(launch, executor, expected);
+      assertEffort(launch, executor, expected, executor === "claude" ? expected : undefined);
       if (executor === "codex") assert.equal(launch?.model, "gpt-6.2-sol");
     }
     check("Codex planning keeps low beside a max task default and both planners accept overrides and CLI defaults");
@@ -567,13 +572,13 @@ try {
       const id = add(`Ask fixture judgement with ${configured} effort`, "--cli", executor);
       await until("Judge did not try the configured settings", async () =>
         (await task(id)).state === "blocked" && stage("judge").length > before);
-      assertEffort(lastLaunch("judge"), executor, expected);
+      assertEffort(lastLaunch("judge"), executor, expected, expected);
     }
     cli("fix", "Run fixture Medic with Claude");
-    assertEffort(lastLaunch("medic"), "claude", "high");
+    assertEffort(lastLaunch("medic"), "claude", "high", "high");
     writeFileSync(configPath, enabledConfig);
-    assertInvalidEffort("router", "false");
-    assertInvalidEffort("judge", '""');
+    assertInvalidSetting("router", "reasoning_effort", "false");
+    assertInvalidSetting("judge", "reasoning_effort", '""');
     check("Judge uses its override or CLI default and Medic uses its selected executor's effort");
 
     await setSelection(["codex", "claude"]);
@@ -702,7 +707,10 @@ try {
       await until("task with effort settings did not finish", async () => (await task(id)).state === "done");
       const launches = calls().filter(call => call.stage === "task" && call.task === id);
       assert.equal(launches.length, 1);
-      assertEffort(launches[0], executor, effort);
+      if (executor === "claude") {
+        assertEffort(launches[0], executor, effort ?? "high", effort);
+        assert(launches[0].attributionDisabled, "one inline settings document must preserve attribution options");
+      } else assertEffort(launches[0], executor, effort);
       assert.equal(launches[0].model, model);
     };
     await observeTask("codex", "gpt-6.2-sol", '\n[clis.codex]\nmodel = "gpt-6.2-sol"\nreasoning_effort = "max"\n', "max");
@@ -712,7 +720,7 @@ try {
     await observeTask("codex", "gpt-6.2-sol", '\n[clis.codex]\nmodel = "gpt-6.2-sol"\n', undefined);
     check("Codex tasks use shared and local effort independently of model and defer to the CLI when requested");
 
-    for (const [setting, level] of [['reasoning_effort = "medium"', "medium"], ['reasoning_effort = "default"', "high"], ["", "high"]])
+    for (const [setting, level] of [['reasoning_effort = "medium"', "medium"], ['reasoning_effort = "default"', undefined], ["", undefined]] as const)
       await observeTask("claude", "claude-fixture", `\n[clis.claude]\nmodel = "claude-fixture"\n${setting}\n`, level);
     check("Claude tasks set explicit effort and preserve the inherited CLI environment for default or omission");
 
@@ -730,7 +738,7 @@ try {
     assert.deepEqual(taskCalls(missing), []);
     check("a missing single executor leaves the task queued");
 
-    assertInvalidEffort("clis.codex", "7");
+    assertInvalidSetting("clis.codex", "reasoning_effort", "7");
     check("invalid task effort identifies its configuration field");
   }
 } catch (err) {
