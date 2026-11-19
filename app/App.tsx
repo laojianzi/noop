@@ -263,6 +263,7 @@ const STALE_AFTER = 60_000;
 function createHub(cfg: Config) {
   const events = signal<HubEvent[]>([]);
   const status = signal<Status | null>(null);
+  const settingsAck = signal<SettingsView | null>(null);
   // Before the primary's first snapshot the Worker returns only hub connectivity.
   const setStatus = (snapshot: Partial<Status>) => status.set(Array.isArray(snapshot.decisions) ? snapshot as Status : null);
   const conn = signal<Conn>("connecting");
@@ -320,7 +321,8 @@ function createHub(cfg: Config) {
       if (ws === socket) lastFrame = Date.now();
       if (m.data === "pong") return;
       try {
-        const d = JSON.parse(String(m.data)) as HubEvent & { $status?: Status };
+        const d = JSON.parse(String(m.data)) as HubEvent & { $status?: Status; $settings?: SettingsView };
+        if (d.$settings) settingsAck.set(d.$settings);
         if (d.$status) setStatus(d.$status);
         else events.update((evs) => merge(evs, [d]));
       } catch {
@@ -436,7 +438,7 @@ function createHub(cfg: Config) {
     clearTimeout(retry);
     socket?.close();
   };
-  return { events, status, conn, blockedIp, loaded, send, settings, api, logout, dispose, cfg };
+  return { events, status, conn, blockedIp, loaded, send, settings, settingsAck, api, logout, dispose, cfg };
 }
 type Hub = ReturnType<typeof createHub>;
 
@@ -2964,6 +2966,7 @@ function createSettings(hub: Hub) {
   const saving = signal(0);
   let writes = Promise.resolve();
   let revision = 0;
+  let acknowledgements = 0;
   let confirmed: SettingsView | null = null;
   const pending: { patch: Record<string, unknown> }[] = [];
   function merge(base: Record<string, unknown>, patch: Record<string, unknown>): Record<string, unknown> {
@@ -2989,10 +2992,14 @@ function createSettings(hub: Hub) {
     const current = pending.reduce((state, item) => merge(state, item.patch), confirmed.current);
     view.set(displayed({ ...confirmed, current }));
   }
+  effect(() => {
+    const snapshot = hub.settingsAck();
+    if (snapshot) { acknowledgements++; confirmed = snapshot; refresh(); }
+  });
   const load = () => {
     error.set("");
-    const started = revision;
-    hub.settings().then((v) => { if (started === revision && !saving()) { confirmed = v; refresh(); } }, (e) => { if (started === revision && !saving()) error.set(String(e?.message ?? e)); });
+    const started = revision, accepted = acknowledgements;
+    hub.settings().then((v) => { if (started === revision && accepted === acknowledgements && !saving()) { confirmed = v; refresh(); } }, (e) => { if (started === revision && !saving()) error.set(String(e?.message ?? e)); });
   };
   async function save(patch: Record<string, unknown>) {
     revision++;
@@ -3003,9 +3010,13 @@ function createSettings(hub: Hub) {
     pending.push(item);
     refresh();
     try {
-      const request = writes.then(() => hub.settings(patch));
+      const request = writes.then(async () => {
+        const accepted = acknowledgements;
+        const snapshot = await hub.settings(patch);
+        if (accepted === acknowledgements) confirmed = snapshot;
+      });
       writes = request.then(() => {}, () => {});
-      confirmed = await request;
+      await request;
     } catch (e) {
       error.set(e instanceof Error ? e.message : String(e));
     } finally {
@@ -3126,6 +3137,17 @@ function TeamSettings(props: { hub: Hub; push: Push; settings: Settings; wide: b
           {(e) => (
             <View style={{ gap: 28 }}>
               <If when={on("members")}>
+              <If when={e().internalClis !== undefined}>
+                <Group title={L("Internal AI", "内部 AI")}>
+                  <SettingsItem first style={{ alignItems: "flex-start" }}>
+                    <Dropdown testID="internal-executor" label={L("Model", "模型")}
+                      value={e().internalClis ? cliLabel(e().internalClis!) : L("Default", "默认")}
+                      selected={cliKey(e().internalClis ?? [])}
+                      options={view()!.options.clis.map((c) => ({ id: cliKey(c), label: cliLabel(c), detail: cliDetail(c), testID: `internal-executor-${cliKey(c)}` }))}
+                      onPick={(id) => { const choice = view()!.options.clis.find((c) => cliKey(c) === id); if (choice) save(patches.internalClis(choice)); }} />
+                  </SettingsItem>
+                </Group>
+              </If>
               <Group title={L("Members", "成员")} hint={L("Each role on the team. The model decides who does the work; autonomy decides how big a decision needs your input first.", "团队里的每个角色。模型决定由谁来干活，自主程度决定多大的事要先问你。")}>
                 <Each of={e().agents} key={(a) => a.id}>
                   {(a, i) => (
@@ -3948,6 +3970,14 @@ function PhoneSettings(props: { hub: Hub; push: Push; settings: Settings; onOpen
       <If when={eff()} else={<Text style={{ paddingHorizontal: 32, fontSize: 14, color: colors.faint }}>{error() ? L("Couldn’t load settings", "设置读取失败") : L("Loading…", "读取中…")}</Text>}>
         {(e) => (
           <View style={{ gap: 28 }}>
+            <If when={e().internalClis !== undefined}>
+              <Section title={L("Internal AI", "内部 AI")}>
+                <Choices label={L("Model", "模型")}
+                  choices={view()!.options.clis.map((c) => ({ id: cliKey(c), label: cliLabel(c), testID: `internal-executor-${cliKey(c)}` }))}
+                  selected={cliKey(e().internalClis ?? [])}
+                  onPick={(id) => { const choice = view()!.options.clis.find((c) => cliKey(c) === id); if (choice) save(patches.internalClis(choice)); }} />
+              </Section>
+            </If>
             <Section title={L("Members", "成员")} hint={L("Model: which to use first, and which to switch to on failure or when out of quota. Autonomy: how big a decision needs your input first.", "模型：先用哪个、失败或额度用尽时换哪个；自主程度：多大的事需要先问你。")}>
               <Each of={e().agents} key={(a) => a.id}>
                 {(a, i) => (

@@ -16,6 +16,7 @@
 // Guest workers (low-trust shared machines): /api/guest/* and /api/guests/* — see guests.ts.
 // MCP (Claude / ChatGPT connectors): /mcp + OAuth 2.1 at /oauth/* and /.well-known/oauth-* — see mcp.ts and docs/mcp.md.
 // Every other /api/* and /media/* needs Bearer <HUB_TOKEN|session> (or ?token= for WebSocket / <img>).
+import { INTERNAL_SELECTION_ERROR, invalidInternalSelection } from "../../app/executor-choices";
 import { DurableObject } from "cloudflare:workers";
 import { b64dec, b64enc, handleFiles, handleReadFiles, initFilesSchema } from "./files";
 import { FREE, LEAN, SHED, TARGET, latestOnly } from "./budget";
@@ -528,8 +529,8 @@ export class Hub extends DurableObject<Env> {
     for (const ws of this.ctx.getWebSockets("host")) try { ws.send(JSON.stringify({ type: "watchers", n })); } catch {}
   }
   /** Owner clients that asked for status frames (?v=2) get the dashboard pushed instead of polling for it. */
-  pushStatus() {
-    const s = JSON.stringify({ $status: this.statusView() });
+  pushStatus(settings?: unknown) {
+    const s = JSON.stringify({ $status: this.statusView(), $settings: settings });
     for (const ws of this.ctx.getWebSockets("v2")) try { ws.send(s); } catch {}
   }
 
@@ -945,7 +946,8 @@ export class Hub extends DurableObject<Env> {
       return json({ ok: true });
     }
     if (p === "/api/settings" && m === "PUT") {
-      const patch = await req.json();
+      const patch = await req.json() as { clis?: { internal?: unknown } } | null;
+      if (invalidInternalSelection(patch?.clis)) return json({ error: INTERNAL_SELECTION_ERROR }, 400);
       this.toInbox({ type: "settings", patch });
       const view = this.get("settings") ?? { current: {} };
       const deep = (a: any, b: any): any => { const o = { ...a }; for (const [k, v] of Object.entries(b ?? {})) o[k] = v && typeof v === "object" && !Array.isArray(v) ? deep(o[k] ?? {}, v) : v; return o; };
@@ -991,7 +993,10 @@ export class Hub extends DurableObject<Env> {
       // over budget the dashboard refreshes at most every 10 minutes
       const shed = this.level() === "shed" && Date.now() - (this.flushed.get("status_at") ?? 0) < 10 * 60_000;
       if (status && !shed) { this.flushed.set("status_at", Date.now()); this.set("status", status); this.mcp.onChanged(["noop://status"]); this.pushStatus(); }
-      if (settings) this.set("settings", settings);
+      if (settings) {
+        this.set("settings", settings);
+        if (!status) this.pushStatus(settings);
+      }
       this.touchHost();
       // watchers: owner clients connected right now. With none, the primary skips live-activity-only refreshes.
       return json({ ok: true, watchers: this.ctx.getWebSockets("owner").length, level: this.level() });

@@ -2,6 +2,7 @@
 // Accounts are per machine (credentials never enter the shared data repo):
 //   ~/.noop/accounts/<cli>-<name>/   → CLAUDE_CONFIG_DIR or CODEX_HOME for that account
 //   ~/.noop/accounts/state.json      → cooldowns, auth status, pending logins
+import type { Executor } from "../app/executor-choices";
 import { existsSync, statSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
@@ -96,6 +97,17 @@ export function usable(a: Account): boolean {
 export function pickAccount(cfg: Cfg, clis: string[]): Account | null {
   for (const cli of clis) for (const a of accounts(cfg, cli)) if (usable(a)) return a;
   return null;
+}
+
+export async function tryInternalExecutors<T>(cfg: Cfg, attempt: (cli: Executor, env: Record<string, string>) => Promise<T | undefined>): Promise<T | undefined> {
+  for (const cli of cfg.clis.internal as Executor[]) {
+    if (!Bun.which(cli)) continue;
+    for (const account of accounts(cfg, cli)) {
+      if (!usable(account)) continue;
+      const result = await attempt(cli, accountEnv(account));
+      if (result !== undefined) return result;
+    }
+  }
 }
 
 const OTHER_CLI: Record<string, string> = { claude: "codex", codex: "claude" };

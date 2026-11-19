@@ -285,6 +285,7 @@ export type Autonomy = "onboarding" | "assisted" | "autonomous" | (string & {});
 export type SettingsView = {
   current: Record<string, unknown>;
   effective: {
+    internalClis?: string[] | null;
     agents: { id: string; title?: string; about?: string; clis: string[]; autonomy: Autonomy }[];
     autonomy: Autonomy;
     routines: { name: string; desc?: string; every: string; agent: string; enabled: boolean }[];
@@ -331,6 +332,7 @@ export const mediaDaysOf = (v: SettingsView | null | undefined): number => {
 };
 
 export const patches = {
+  internalClis: (clis: string[]) => ({ clis: { internal: clis } }),
   clis: (agent: string, clis: string[]) => ({ clis: { agents: { [agent]: clis } } }),
   autonomy: (agent: string, level: string) => ({ autonomy: { agents: { [agent]: level } } }),
   routine: (name: string, change: { enabled?: boolean; every?: string }) => ({ routines: { [name]: change } }),

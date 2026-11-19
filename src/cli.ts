@@ -10,7 +10,7 @@ import {
 } from "./core";
 import { amendDecision, closeDecision, IGNORE, ignoreDecision, openDecision, overrideJudge, ownerPickedMenu, recentJudgeIds, routeDecision } from "./decisions";
 import { notify, openDecisionIds, pollReplies } from "./notify";
-import { RUN_LIMIT, STALLED, type Result, agentProcs, ask, buildPrompt, parseResult, quickAsk, runAgent, runLimits } from "./runner";
+import { RUN_LIMIT, STALLED, type Result, agentProcs, ask, buildPrompt, internalModel, parseResult, quickAsk, runAgent, runLimits } from "./runner";
 import { writeRules } from "./rules";
 import { backoffMinutes, CHECKED_FALLBACK_MIN, isNoChangeRoutine, MAX_WAKES, tooManyWakes, waitMeta } from "./waits";
 import { allowedParallel, budget, canRunHeavy, ensureDisk, pressureOf, sample } from "./resources";
@@ -25,13 +25,13 @@ import { medic } from "./medic";
 import { githubStarved } from "./github";
 import { doctor, visual } from "./visual";
 import { ackInbound, answerFromChat, appendEvent, cancelTask, feed, handleOwnerMessage, mediaDays, pendingInbound, pruneMedia, recentChat, setApplyOp, setCancelTask, setUpdateFleet, onSettingsSaved, startServer, status as hubStatus } from "./server";
-import { addFollowUp, reopenTask, routeWithoutModel, type BrainOut, ClaudeModel, systemPrompt, dataActs, localStore, logBrain, think } from "./brain";
+import { addFollowUp, reopenTask, routeWithoutModel, type BrainOut, ClaudeModel, CodexModel, ModelCallError, systemPrompt, dataActs, localStore, logBrain, think } from "./brain";
 import { isWrite, runTool } from "../cloud/src/tools";
 import { cloudDeploy, startCloudBridge } from "./cloud";
 import { adoptCloudUrl, hubDialUrl, readHubToml } from "./sync";
 import { judgeAccuracy, level, needsApproval, noteStuckRoutine, proposeBatch, resolveProposals, routineParkedOnDecision, routineQueued, supersedeProposed } from "./autonomy";
 import { CODE, L, UPDATE_REQUEST, type UpdateState, setUpdateState, updateState, allowedClis, explicitTaskClis, cliHintPatch, capOk, idTagFor, isPrimary, isCloudDeployHost, runningRev, setApprovalGate, setIdTag } from "./core";
-import { accountEnv, accountsStatus, classify, failoverAccount, pendingLoginIds, pickAccount, reportFailure, retryLogins, submitLoginCode } from "./accounts";
+import { accountEnv, accountsStatus, classify, failoverAccount, pendingLoginIds, pickAccount, reportFailure, retryLogins, submitLoginCode, tryInternalExecutors } from "./accounts";
 import { channelPrompt, channels, resolveChannels, updateChannel } from "./channels";
 import { shellBash } from "./shell";
 
@@ -907,6 +907,7 @@ async function daemon(cfg: Cfg) {
   console.log(`hub daemon on ${host} caps=${hostCaps(cfg).join(",")} tick=${every / 1000}s parallel≤${cfg.host?.max_parallel ?? "cores/3"}`);
   onSettingsSaved((summary) => locked(async () => {
     await _pull();
+    if (loadConfig().clis?.internal) legacyModel.stopWarming();
     journal(host, `⚙️ owner changed settings: ${summary}`);
     await _commitPush(`[${host}] settings: ${summary.slice(0, 60)}`);
   }));
@@ -926,7 +927,7 @@ async function daemon(cfg: Cfg) {
         reopenTask(f, text);
         journal(host, `💬 ${tid} reopened by owner: ${text.slice(0, 80)}`);
         await _commitPush(`[${host}] reopen ${tid}`);
-        queueMicrotask(() => void planInbox(cfg, host).then(wakeDaemon).catch(() => {}));
+        queueMicrotask(() => void planInbox(loadConfig(), host).then(wakeDaemon).catch(() => {}));
         return String(meta.title ?? tid);
       }
       addFollowUp(f, text, dir === "waiting"); // a waiting one is acted on now, not when its wait ends
@@ -998,7 +999,7 @@ async function daemon(cfg: Cfg) {
     journal(host, `💬 ${id} from owner ${m ? "chat" : "MCP"}${prevFile ? ` (follows ${prev})` : ""}: ${op.title.slice(0, 80)}`);
     await _commitPush(`[${host}] chat ${id}`);
     // plan it now and wake the loop, so an idle machine starts it within seconds instead of after the next tick or two
-    queueMicrotask(() => void planInbox(cfg, host).then(wakeDaemon).catch(() => {}));
+    queueMicrotask(() => void planInbox(loadConfig(), host).then(wakeDaemon).catch(() => {}));
     return { ok: true, id, ...(prevFile ? { follows: prev } : {}) };
   });
   const store = localStore({
@@ -1022,23 +1023,50 @@ async function daemon(cfg: Cfg) {
     },
   });
   setApplyOp((op) => runTool(store, op?.tool, op));
-  const model = new ClaudeModel(String(cfg.router?.model ?? "claude-haiku-5-5"), String(cfg.router?.cli ?? "claude"), (cfg.router?.timeout_seconds ?? 45) * 1000);
-  if (isPrimary(cfg, host) && Bun.which(String(cfg.router?.cli ?? "claude"))) model.warm(systemPrompt());
+  const legacyModel = new ClaudeModel(String(cfg.router?.model ?? "claude-haiku-5-5"), String(cfg.router?.cli ?? "claude"), (cfg.router?.timeout_seconds ?? 45) * 1000);
+  if (isPrimary(cfg, host) && !cfg.clis?.internal && Bun.which(String(cfg.router?.cli ?? "claude"))) legacyModel.warm(systemPrompt());
   if (isPrimary(cfg, host)) startServer(cfg, async (text, { reply, answered, sentAt, thread, channel }) => {
     const got = Date.now();
     const room = channel ? channels().find((c) => c.slug === channel) : undefined;
     const m = { text, replyTo: reply, answered, chat: recentChat(text, { channel }), sentAt, ...(room ? { channel: { slug: room.slug, name: room.name, goal: room.goal } } : {}) };
     chatNow = { text, chat: m.chat, reply, thread, channel: room?.slug };
     const post = (r: string, ref?: string) => appendEvent({ from: "hub", kind: "system", text: r.slice(0, 2000), ...(ref ? { ref } : {}), ...(thread ? { thread } : {}), ...(room ? { channel: room.slug } : {}) });
+    const current = loadConfig(), selected = current.clis?.internal;
     let out: BrainOut;
     try {
-      out = await think(m, store, model, post);
+      if (selected) {
+        legacyModel.stopWarming();
+        let reason = L("None of the selected executors is available", "没有可用的所选执行器");
+        const timeout = (current.router?.timeout_seconds ?? 45) * 1000;
+        const result = await tryInternalExecutors(current, async (executor, env) => {
+          const version = internalModel(current, "router", executor);
+          const model = executor === "codex" ? new CodexModel(version, timeout, env) : new ClaudeModel(version, "claude", timeout, false, env);
+          try {
+            const answer = await think(m, store, model, post);
+            if (answer.reply || answer.rounds < 4 || answer.calls.some((c) => isWrite(c.tool) && c.ok)) return { ...answer, executor };
+            reason = L(`${executor} did not answer`, `${executor} 没有返回回复`);
+          } catch (error) {
+            if (!(error instanceof ModelCallError)) throw error;
+            reason = `${executor} ${error.message.replace(/^Error: /, "").split("\n")[0].slice(0, 120)}`;
+          }
+          console.error(`chat executor unavailable: ${reason}`);
+        });
+        if (!result) throw new Error(reason);
+        out = result;
+      } else out = await think(m, store, legacyModel, post);
       // out of rounds with no reply and nothing done (only lookups): the message would vanish, so it becomes work
       if (!out.reply && out.rounds >= 4 && !out.calls.some((c) => isWrite(c.tool) && c.ok)) throw new Error("no answer");
     } catch (err) {
       // no model (CLI missing, logged out, quota, timeout): the message still becomes work, never lost, never guessed onto some
       // other task. The owner is told where it went; the reason goes to the journal and brain.jsonl (stderr is not visible)
       console.error(`chat brain: ${err}`);
+      if (selected) {
+        const why = String(err).replace(/^Error: /, "").split("\n")[0].slice(0, 160);
+        const note = L(`Chat could not finish (${why}). Please try again manually.`, `主会话未能完成（${why}），请手动重试。`);
+        post(note);
+        logBrain(m, { reply: note, calls: [], rounds: 0, ms: { model: [], total: Date.now() - got }, fallback: true }, got);
+        return;
+      }
       const routed = await routeWithoutModel(store, { text, reply, why: err });
       post(routed.note, routed.id);
       await locked(async () => {
@@ -1072,6 +1100,7 @@ async function daemon(cfg: Cfg) {
   let lastUpdate = 0, failures = 0;
   for (;;) {
     const c = loadConfig();
+    if (c.clis?.internal) legacyModel.stopWarming();
     if (adoptCloudUrl(c.cloud?.url)) journal(host, `☁️ hub moved: now syncing with ${c.cloud.url}`);
     if (existsSync(RESTART_FLAG())) { // `hub restart` (throttled) / `hub restart --force`
       const force = readFileSync(RESTART_FLAG(), "utf8").includes("force");

@@ -9,6 +9,8 @@ import { claudeDisallowed } from "./gates";
 import { channelPrompt } from "./channels";
 import { claudeMcpConfig, codexMcpLaunch, mcpServers, usableMcp, withOAuth } from "../app/mcp-servers";
 import { sharedSecrets } from "./secrets";
+import { tryInternalExecutors } from "./accounts";
+import type { Executor } from "../app/executor-choices";
 
 export type Result = {
   status: "done" | "needs_decision" | "failed" | "delegated" | "waiting";
@@ -412,40 +414,93 @@ function repairJson(json: string): string {
  * `[router] cli/model` in config.toml puts one first; the others are fallbacks when its CLI is missing or fails. */
 const ROUTERS = [{ cli: "claude", model: "claude-haiku-5-5" }, { cli: "codex", model: "gpt-6-luna" }];
 
-/** One quick structured call for routing (the fastest model available); null when none answered. */
+export function internalModel(cfg: Cfg, role: "router" | "judge", cli: Executor): string | undefined {
+  const entry = cfg[role];
+  return ((entry?.cli ?? "claude") === cli ? entry?.model : undefined) ?? cfg.clis?.[cli]?.model;
+}
+
+export async function runInternalProcess(cmd: string[], prompt: string, cwd: string, timeout: number, env: Record<string, string> = {}) {
+  let proc;
+  try {
+    proc = Bun.spawn(cmd, { cwd, stdin: new Blob([prompt]), stdout: "pipe", stderr: "pipe", env: { ...process.env, ...env } });
+  } catch (error) {
+    return { out: "", err: String(error), code: 127, timedOut: false };
+  }
+  let timedOut = false;
+  const timer = setTimeout(() => { timedOut = true; proc.kill("SIGKILL"); }, timeout);
+  try {
+    const [out, err, code] = await Promise.all([new Response(proc.stdout).text(), new Response(proc.stderr).text(), proc.exited]);
+    return { out, err, code, timedOut };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+export function internalStream(out: string, cli: Executor) {
+  let reply = "", completed = false, usedTools = false;
+  for (const line of out.split("\n")) {
+    if (!line.trim()) continue;
+    let event: any;
+    try { event = JSON.parse(line); } catch { usedTools = true; continue; }
+    if (!event || typeof event !== "object") { usedTools = true; continue; }
+    if (cli === "codex") {
+      if (event.type === "turn.completed") completed = true;
+      if (event.type !== "item.started" && event.type !== "item.completed") continue;
+      const item = event.item;
+      if (item?.type === "agent_message") {
+        if (event.type === "item.completed" && typeof item.text === "string") reply = item.text;
+      } else if (item?.type !== "reasoning" && item?.type !== "error") usedTools = true;
+    } else {
+      if (event.type === "result" && !event.is_error) { completed = true; reply = String(event.result ?? ""); }
+      if ((event.type === "assistant" || event.type === "user") &&
+        event.message?.content?.some((item: { type: string }) => item.type === "tool_use" || item.type === "tool_result")) usedTools = true;
+    }
+  }
+  return { reply, completed, usedTools };
+}
+
+function structuredAnswer(out: string) {
+  const m = [...out.matchAll(/```json\s*(\{[\s\S]*?\})\s*```/g)].pop() ?? out.match(/(\{[\s\S]*\})/);
+  try { return JSON.parse(m![1]); } catch { return undefined; }
+}
+
+/** One quick structured call for routing. */
 export async function quickAsk(prompt: string, cfg: Cfg, logFile: string): Promise<any> {
+  const explicit = !!cfg.clis?.internal;
+  const attempt = async (cli: string, model?: string, env?: Record<string, string>) => {
+    const cmd = cli === "claude"
+      ? ["claude", "-p", "--output-format", "text", "--tools", "", "--strict-mcp-config", ...(model ? ["--model", model] : [])]
+      : ["codex", "exec", "--skip-git-repo-check", "--sandbox", "read-only", ...(model ? ["-m", model] : []), "-c", 'model_reasoning_effort="low"', "-"];
+    const { out, code } = await runInternalProcess(cmd, prompt, ROOT, (cfg.router?.timeout_seconds ?? 45) * 1000, env);
+    mkdirSync(P("logs", "runs"), { recursive: true });
+    if (explicit) appendFileSync(logFile, `${cli} ${model ?? ""} (exit ${code})\n${out}\n`);
+    else writeFileSync(logFile, `${cli} ${model}\n${out}`);
+    return explicit && code ? undefined : structuredAnswer(out);
+  };
+  if (explicit) return await tryInternalExecutors(cfg, (cli, env) => attempt(cli, internalModel(cfg, "router", cli), env)) ?? null;
   const own = cfg.router?.cli ? [{ cli: String(cfg.router.cli), model: String(cfg.router.model ?? "") }] : [];
   for (const r of [...own, ...ROUTERS.filter((x) => x.cli !== own[0]?.cli)]) {
     if (!Bun.which(r.cli)) continue;
-    const cmd = r.cli === "claude"
-      ? ["claude", "-p", "--output-format", "text", "--tools", "", "--strict-mcp-config", ...(r.model ? ["--model", r.model] : [])]
-      : ["codex", "exec", "--skip-git-repo-check", "--sandbox", "read-only", ...(r.model ? ["-m", r.model] : []), "-c", 'model_reasoning_effort="low"', "-"];
-    const proc = Bun.spawn(cmd, { cwd: ROOT, stdin: new Blob([prompt]), stdout: "pipe", stderr: "pipe" });
-    const timer = setTimeout(() => proc.kill("SIGKILL"), (cfg.router?.timeout_seconds ?? 45) * 1000);
-    const out = await new Response(proc.stdout).text();
-    await proc.exited;
-    clearTimeout(timer);
-    mkdirSync(P("logs", "runs"), { recursive: true });
-    writeFileSync(logFile, `${r.cli} ${r.model}\n${out}`);
-    const m = [...out.matchAll(/```json\s*(\{[\s\S]*?\})\s*```/g)].pop() ?? out.match(/(\{[\s\S]*\})/);
-    try { return JSON.parse(m![1]); } catch {}
+    const answer = await attempt(r.cli, r.model);
+    if (answer !== undefined) return answer;
   }
   return null;
 }
 
-/** One-shot structured call (used by the judge). */
+/** One-shot structured call used by the judge. */
 export async function ask(prompt: string, cfg: Cfg, logFile: string): Promise<any> {
+  const explicit = !!cfg.clis?.internal;
+  const attempt = async (cli: string, model?: string, env?: Record<string, string>) => {
+    const cmd = cli === "claude"
+      ? ["claude", "-p", "--output-format", "text", "--model", model ?? "claude-opus-5-5", "--tools", ""]
+      : ["codex", "exec", "--skip-git-repo-check", ...(explicit ? ["--sandbox", "read-only"] : []), ...(model ? ["-m", model] : []), "-"];
+    const { out, code } = await runInternalProcess(cmd, prompt, ROOT, (cfg.judge?.timeout_minutes ?? 10) * 60_000, env);
+    mkdirSync(P("logs", "runs"), { recursive: true });
+    if (explicit) appendFileSync(logFile, `${cli} ${model ?? ""} (exit ${code})\n${out}\n`);
+    else writeFileSync(logFile, out);
+    return explicit && code ? undefined : structuredAnswer(out);
+  };
+  if (explicit) return await tryInternalExecutors(cfg, (cli, env) => attempt(cli, internalModel(cfg, "judge", cli), env)) ?? null;
   const cli = cfg.judge?.cli ?? "claude";
-  const cmd = cli === "claude"
-    ? ["claude", "-p", "--output-format", "text", "--model", cfg.judge?.model ?? "claude-opus-5-5", "--tools", ""]
-    : ["codex", "exec", "--skip-git-repo-check", "-"];
-  const proc = Bun.spawn(cmd, { cwd: ROOT, stdin: new Blob([prompt]), stdout: "pipe", stderr: "pipe" });
-  const timer = setTimeout(() => proc.kill("SIGKILL"), (cfg.judge?.timeout_minutes ?? 10) * 60_000); // runs inside locked()
-  const out = await new Response(proc.stdout).text();
-  await proc.exited;
-  clearTimeout(timer);
-  mkdirSync(P("logs", "runs"), { recursive: true });
-  writeFileSync(logFile, out);
-  const m = [...out.matchAll(/```json\s*(\{[\s\S]*?\})\s*```/g)].pop() ?? out.match(/(\{[\s\S]*\})/);
-  try { return JSON.parse(m![1]); } catch { return null; }
+  return await attempt(cli, cli === "claude" ? cfg.judge?.model : undefined) ?? null;
 }

@@ -100,6 +100,8 @@ jobs:
         run: |
           bash test/self-hosted-install-home-e2e.sh
           bun test/self-hosted-owner-update-e2e.ts
+          bun test/self-hosted-executor-e2e.ts --tasks
+          bun test/self-hosted-executor-e2e.ts --internal
           bun test/self-hosted-ingress-e2e.ts
           NOOP_E2E_OVERLAP=1 bun test/self-hosted-mcp-e2e.ts
           bun test/self-hosted-guest-e2e.ts

@@ -9,6 +9,8 @@
 // reply goes back as a normal feed event.
 import { appendFileSync, existsSync, mkdirSync, readFileSync, readdirSync, statSync, unlinkSync, writeFileSync } from "node:fs";
 import { channelPrompt } from "./channels";
+import { classify } from "./accounts";
+import { internalStream, runInternalProcess } from "./runner";
 import { homedir } from "node:os";
 import { join, relative } from "node:path";
 import { DATA, HOME_DIR, L, P, loadConfig, _commitPush, _pull, journal, locked, now, readDoc, writeDoc } from "./core";
@@ -126,12 +128,20 @@ const BRAIN_DIR = join(HOME_DIR, "brain"); // empty cwd: no project CLAUDE.md, n
  * CLI start (~2 s). One process per conversation (no history carries over); the next one is spawned as this one is used. */
 export class ClaudeModel implements Model {
   private next: { proc: ReturnType<typeof Bun.spawn>; system: string } | null = null;
-  constructor(private model = "claude-haiku-5-5", private cli = "claude", private timeoutMs = 45_000) {}
+  private warmTimer: ReturnType<typeof setTimeout> | undefined;
+  constructor(private model = "claude-haiku-5-5", private cli = "claude", private timeoutMs = 45_000,
+    private warmNext = true, private env: Record<string, string> = {}) {}
+
+  stopWarming() {
+    clearTimeout(this.warmTimer);
+    this.next?.proc.kill();
+    this.next = null;
+  }
   private spawn(system: string) {
     mkdirSync(BRAIN_DIR, { recursive: true });
     const proc = Bun.spawn([this.cli, "-p", "--input-format", "stream-json", "--output-format", "stream-json", "--verbose",
       "--model", this.model, "--tools", "", "--strict-mcp-config", "--setting-sources", "", "--disable-slash-commands",
-      "--no-session-persistence", "--system-prompt", system], { cwd: BRAIN_DIR, stdin: "pipe", stdout: "pipe", stderr: "ignore", env: { ...process.env, ...userSettingsEnv() } });
+      "--no-session-persistence", "--system-prompt", system], { cwd: BRAIN_DIR, stdin: "pipe", stdout: "pipe", stderr: "ignore", env: { ...process.env, ...userSettingsEnv(claudeSettingsPath({ ...process.env, ...this.env })), ...this.env } });
     return { proc, system };
   }
   /** Spawn the next process now (the daemon calls this at start), so the first message is fast too. */
@@ -140,7 +150,7 @@ export class ClaudeModel implements Model {
     this.warm(system);
     const { proc } = this.next!;
     this.next = null;
-    setTimeout(() => this.warm(system), 0); // the one after
+    if (this.warmNext) this.warmTimer = setTimeout(() => this.warm(system), 0);
     const stdin = proc.stdin as import("bun").FileSink;
     const reader = (proc.stdout as ReadableStream<Uint8Array>).getReader();
     const dec = new TextDecoder();
@@ -169,6 +179,39 @@ export class ClaudeModel implements Model {
         } finally { clearTimeout(timer); }
       },
       close: () => { try { stdin.end(); } catch {} proc.kill(); },
+    };
+  }
+}
+
+export class ModelCallError extends Error {}
+
+export class CodexModel implements Model {
+  constructor(private model: string | undefined, private timeoutMs: number, private env: Record<string, string>) {}
+
+  async open(system: string) {
+    mkdirSync(BRAIN_DIR, { recursive: true });
+    const transcript: { role: "user" | "assistant"; content: string }[] = [];
+    const cmd = ["codex", "exec", "--ephemeral", "--json", "--skip-git-repo-check", "--sandbox", "read-only",
+      "--disable", "shell_tool", "--disable", "unified_exec", "--disable", "apps", "--disable", "plugins", "--disable", "multi_agent_v2",
+      "-c", 'web_search="disabled"', "-c", "mcp_servers={}", ...(this.model ? ["--model", this.model] : []), "-"];
+    return {
+      send: async (text: string) => {
+        transcript.push({ role: "user", content: text });
+        const protocol = 'Noop executes the tools listed above when your final JSON requests them. ' +
+          'For example, to read the task list, return {"calls":[{"tool":"list_tasks","args":{}}],"reply":""}. ' +
+          'The next turn supplies the tool result. Use these JSON requests for every Noop tool.';
+        const prompt = `${system}\n\n${protocol}\n\nConversation turns (JSON):\n${JSON.stringify(transcript)}\nRespond to the last user turn.`;
+        const result = await runInternalProcess(cmd, prompt, BRAIN_DIR, this.timeoutMs, this.env);
+        if (result.timedOut) throw new Error("Codex timed out");
+        const failure = classify(result.err + "\n" + result.out);
+        if (result.code) throw new Error(failure === "auth" ? "Codex needs login" : failure === "quota" ? "Codex is out of quota" : `Codex exited with code ${result.code}`);
+        const { reply, completed, usedTools } = internalStream(result.out, "codex");
+        if (usedTools) throw new Error("Codex used a tool outside the Noop conversation");
+        if (!completed || !reply) throw new Error("Codex ended without a completed reply");
+        transcript.push({ role: "assistant", content: reply });
+        return reply;
+      },
+      close: () => { transcript.length = 0; },
     };
   }
 }
@@ -232,7 +275,7 @@ export type BrainIn = {
   /** Said inside a channel: the discussion and the work it starts stay there. */
   channel?: { slug: string; name: string; goal: string };
 };
-export type BrainOut = { reply: string; calls: { tool: string; args: any; ok: boolean; result?: any; error?: string }[]; rounds: number; ms: { first_reply?: number; model: number[]; total: number }; fallback?: boolean };
+export type BrainOut = { reply: string; calls: { tool: string; args: any; ok: boolean; result?: any; error?: string }[]; rounds: number; ms: { first_reply?: number; model: number[]; total: number }; fallback?: boolean; executor?: string };
 
 /** The context block: what the brain sees before deciding (open work, decisions, relevant memory, the channel). */
 export function context(st: ToolStore, m: BrainIn): string {
@@ -286,14 +329,14 @@ export function parseTurn(out: string): { calls: { tool: string; args: any }[]; 
 export async function think(m: BrainIn, st: ToolStore, model: Model, post: (reply: string, ref?: string) => void): Promise<BrainOut> {
   const t0 = Date.now();
   const res: BrainOut = { reply: "", calls: [], rounds: 0, ms: { model: [], total: 0 } };
-  const conv = await model.open(systemPrompt());
+  const conv = await model.open(systemPrompt()).catch((error) => { throw new ModelCallError(error instanceof Error ? error.message : String(error)); });
   try {
     let input = context(st, m);
     for (let round = 0; round < MAX_ROUNDS; round++) {
       res.rounds++;
       const last = round === MAX_ROUNDS - 1;
       const tm = Date.now();
-      const out = await conv.send(input);
+      const out = await conv.send(input).catch((error) => { throw new ModelCallError(error instanceof Error ? error.message : String(error)); });
       res.ms.model.push(Date.now() - tm);
       const turn = parseTurn(out);
       if (!turn) { input = `That was not one JSON object. Answer again with exactly {"calls": [...], "reply": "..."}.`; continue; }
@@ -359,7 +402,7 @@ export function logBrain(m: BrainIn, out: BrainOut, receivedAt: number) {
       // owner pressed send → daemon has it (the Worker→daemon hop), and → reply posted
       transport_ms: Number.isFinite(sent) ? receivedAt - sent : undefined,
       first_reply_ms: out.ms.first_reply, end_to_end_ms: Number.isFinite(sent) && out.ms.first_reply ? receivedAt - sent + out.ms.first_reply : undefined,
-      model_ms: out.ms.model, total_ms: out.ms.total, rounds: out.rounds, fallback: out.fallback,
+      model_ms: out.ms.model, total_ms: out.ms.total, rounds: out.rounds, fallback: out.fallback, executor: out.executor,
       calls: out.calls.map((c) => ({ tool: c.tool, ok: c.ok, ...(c.error ? { error: c.error } : {}) })),
     }) + "\n");
   } catch {}

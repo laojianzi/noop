@@ -120,8 +120,8 @@ export function startCloudBridge(cfg: Cfg) {
     } else if (it.type === "update") {
       await updateFleet();
     } else if (it.type === "settings") {
-      await saveSettings(it.patch);
-      await call(cfg, "/api/host/state", { method: "PUT", body: JSON.stringify({ settings: settingsView() }) });
+      const settings = await saveSettings(it.patch);
+      await call(cfg, "/api/host/state", { method: "PUT", body: JSON.stringify({ settings: "error" in settings ? settingsView() : settings }) });
     }
     after = it.seq; saveCursor();
   };

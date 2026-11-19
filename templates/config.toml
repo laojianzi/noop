@@ -31,6 +31,8 @@ heavy_max_load = 0.5                  # heavy tasks (bench/full build) start onl
 stale_repo_days = 7                   # target/ of repos (and, on macOS, Xcode DerivedData / ccache entries) untouched this long may be removed
 
 [clis]
+# Internal AI uses the same ordered choices as members. Omit this setting to use existing router/Judge/Medic defaults.
+# internal = ["codex"]
 # Which CLI runs a task, strongest first: a `cli` pinned on the task (`noop add --cli …`, a routine's cli) > the
 # owner's per-member config below (Settings → Members) > the planner's per-task suggestion > either, Claude first.
 # Claude Opus = challenging work (development, debugging, architecture, UI, judge, learning, evolution).

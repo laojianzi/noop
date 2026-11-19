@@ -1,4 +1,5 @@
 // noop core — shared files as the world (stigmergy; synced via the owner's Worker, src/sync.ts), task queue, agent runner, journal, memory.
+import { INTERNAL_SELECTION_ERROR, invalidInternalSelection } from "../app/executor-choices";
 import { OFFLINE_AFTER_MINUTES } from "../cloud/src/budget";
 import { existsSync, mkdirSync, readdirSync, readFileSync, unlinkSync, writeFileSync, appendFileSync } from "node:fs";
 import { homedir, hostname } from "node:os";
@@ -44,6 +45,7 @@ export function loadConfig(): Cfg {
   const ui = existsSync(P("settings.json")) ? JSON.parse(readFileSync(P("settings.json"), "utf8")) : {};
   const bootstrap = sync.readHubToml();
   const cfg: Cfg = merge(merge(merge(bootstrap, read("config.toml")), ui), read("config.local.toml"));
+  if (invalidInternalSelection(cfg.clis)) throw new Error(INTERNAL_SELECTION_ERROR);
   // built-in routines (src/builtin-routines.ts) unless config.toml defines one of the same name
   cfg.routine = Array.isArray(cfg.routine) ? cfg.routine : [];
   for (const b of BUILTIN_ROUTINES) if (!cfg.routine.some((r: any) => r.name === b.name)) {
