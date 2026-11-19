@@ -501,12 +501,15 @@ async function askStructured(role: "router" | "judge", prompt: string, cfg: Cfg,
     } else if (routing && cli !== "claude") {
       codexArgs = ["--sandbox", "read-only"];
     }
+    const executor = cli === "claude" ? "claude" : "codex";
+    const defaultEffort = routing && executor === "codex" ? "low" : cfg.clis?.[executor]?.reasoning_effort;
+    const effort = reasoningEffortOptions(executor, cfg[role]?.reasoning_effort ?? defaultEffort);
     const cmd = cli === "claude"
       ? ["claude", "-p", "--output-format", "text", "--tools", "", ...(routing || explicit ? ["--strict-mcp-config"] : []),
         ...(routing ? (model ? ["--model", model] : []) : ["--model", model ?? "claude-opus-5-5"])]
       : ["codex", "exec", "--skip-git-repo-check", ...codexArgs, ...(model ? ["-m", model] : []),
-        ...(routing ? ["-c", 'model_reasoning_effort="low"'] : []), "-"];
-    const { out, code } = await runInternalProcess(cmd, prompt, ROOT, timeout, env);
+        ...effort.args, "-"];
+    const { out, code } = await runInternalProcess(cmd, prompt, ROOT, timeout, { ...env, ...effort.env });
     mkdirSync(P("logs", "runs"), { recursive: true });
     if (explicit) appendFileSync(logFile, `${cli} ${model ?? ""} (exit ${code})\n${out}\n`);
     else writeFileSync(logFile, routing ? `${cli} ${model}\n${out}` : out);

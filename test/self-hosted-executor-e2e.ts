@@ -29,6 +29,14 @@ type Call = { cli: string; account: string; stage: string; task?: string; model?
 const check = (message: string) => { checks.push(message); console.log("PASS", message); };
 const calls = (): Call[] => readFileSync(join(out, "calls.jsonl"), "utf8").trim().split("\n").filter(Boolean).map(line => JSON.parse(line));
 
+function assertEffort(call: Call | undefined, executor: string, effort?: string) {
+  assert(call, "expected an executor launch");
+  assert.equal(call.cli, executor);
+  assert.deepEqual(call.effortArgs,
+    executor === "codex" && effort ? [`model_reasoning_effort=${JSON.stringify(effort)}`] : []);
+  if (executor === "claude") assert.equal(call.effortEnv, effort);
+}
+
 async function freePort() {
   const socket = createServer();
   await new Promise<void>((ok, fail) => socket.once("error", fail).listen(0, "127.0.0.1", ok));
@@ -56,6 +64,15 @@ function cli(...args: string[]) {
   const r = spawnSync(process.execPath, argsFor(args), { cwd: repo, env, encoding: "utf8", timeout: 15000 });
   assert.equal(r.status, 0, r.stderr || r.stdout);
   return r.stdout.trim();
+}
+function assertInvalidEffort(section: string, value: string) {
+  const probeHome = join(out, "invalid-effort");
+  mkdirSync(join(probeHome, "data"), { recursive: true });
+  writeFileSync(join(probeHome, "data/config.local.toml"), `[${section}]\nreasoning_effort = ${value}\n`);
+  const result = spawnSync(process.execPath, argsFor(["status", "--brief"]),
+    { cwd: repo, env: { ...env, NOOP_HOME: probeHome }, encoding: "utf8", timeout: 15000 });
+  assert.notEqual(result.status, 0);
+  assert(result.stderr.includes(`${section}.reasoning_effort`), result.stderr);
 }
 async function until<T>(why: string, fn: () => Promise<T | false> | T | false, ms = 15_000): Promise<T> {
   const end = Date.now() + ms;
@@ -346,6 +363,7 @@ try {
       assert.equal(r.status, 200, await r.clone().text());
     };
     const stage = (name: string) => calls().filter(c => c.stage === name).map(c => c.cli);
+    const lastLaunch = (name: string) => calls().findLast(c => c.stage === name);
     await save({ clis: { internal: ["codex"], agents: { lead: ["claude"] } } });
     add("Hold the planner during a settings change", "--cli", "codex");
     await until("planner did not pause", () => stage("planner-held").length > 0);
@@ -464,15 +482,57 @@ try {
     assert.deepEqual(stage("plan").slice(planBefore), ["codex"]);
     check("settings apply to new work and spare the current conversation");
 
-    writeFileSync(configPath, fixtureConfig.replace('[judge]\nenabled = false', '[judge]\nenabled = true')
-      .replace('[medic]\nenabled = false', '[medic]\nenabled = true'));
+    const effortConfig = fixtureConfig + '\n[clis.codex]\nmodel = "gpt-6.2-sol"\nreasoning_effort = "max"\n' +
+      '\n[clis.claude]\nreasoning_effort = "high"\n';
+    for (const [executor, configured, expected] of [
+      ["codex", "", "low"], ["codex", "medium", "medium"], ["codex", "default", undefined],
+      ["claude", "", "high"], ["claude", "low", "low"], ["claude", "default", undefined],
+    ] as const) {
+      await setSelection([executor]);
+      const planningConfig = configured
+        ? effortConfig.replace("[router]\n", `[router]\nreasoning_effort = "${configured}"\n`) : effortConfig;
+      writeFileSync(configPath, planningConfig);
+      const before = stage("plan").length;
+      const id = add(`Plan with ${executor} effort ${configured || "omitted"}`, "--cli", executor);
+      await until("task planning did not complete", async () => (await task(id)).state === "done" && stage("plan").length > before);
+      assert.deepEqual(stage("plan").slice(before), [executor]);
+      const launch = lastLaunch("plan");
+      assertEffort(launch, executor, expected);
+      if (executor === "codex") assert.equal(launch?.model, "gpt-6.2-sol");
+    }
+    check("Codex planning keeps low beside a max task default and both planners accept overrides and CLI defaults");
+
+    await setSelection(["codex"]);
+    const enabledConfig = effortConfig.replace('[judge]\nenabled = false', '[judge]\nenabled = true')
+      .replace('[medic]\nenabled = false', '[medic]\nenabled = true');
+    writeFileSync(configPath, enabledConfig);
     const judgeBefore = stage("judge").length;
     const judging = add("Ask fixture judgement", "--cli", "codex");
     await until("Judge did not apply the shared selection", async () => (await task(judging)).state === "blocked" && stage("judge").length > judgeBefore);
     assert.deepEqual(stage("judge").slice(judgeBefore), ["codex"]);
+    assertEffort(lastLaunch("judge"), "codex", "max");
+    assert.equal(lastLaunch("judge")?.model, "gpt-6.2-sol");
     cli("fix", "Run fixture Medic");
     assert.deepEqual(stage("medic"), ["codex"]);
+    assertEffort(lastLaunch("medic"), "codex", "max");
+    assert.equal(lastLaunch("medic")?.model, "gpt-6.2-sol");
     check("Judge and Medic use the same selection as planning and chat");
+
+    for (const [executor, configured, expected] of [["claude", "low", "low"], ["claude", "default", undefined]] as const) {
+      await setSelection([executor]);
+      writeFileSync(configPath, enabledConfig.replace("[judge]\n", `[judge]\nreasoning_effort = "${configured}"\n`));
+      const before = stage("judge").length;
+      const id = add(`Ask fixture judgement with ${configured} effort`, "--cli", executor);
+      await until("Judge did not try the configured settings", async () =>
+        (await task(id)).state === "blocked" && stage("judge").length > before);
+      assertEffort(lastLaunch("judge"), executor, expected);
+    }
+    cli("fix", "Run fixture Medic with Claude");
+    assertEffort(lastLaunch("medic"), "claude", "high");
+    writeFileSync(configPath, enabledConfig);
+    assertInvalidEffort("router", "false");
+    assertInvalidEffort("judge", '""');
+    check("Judge uses its override or CLI default and Medic uses its selected executor's effort");
 
     await setSelection(["codex", "claude"]);
     const codexConfig = join(home, ".codex/config.toml");
@@ -598,11 +658,8 @@ try {
       await until("task with effort settings did not finish", async () => (await task(id)).state === "done");
       const launches = calls().filter(call => call.stage === "task" && call.task === id);
       assert.equal(launches.length, 1);
-      assert.equal(launches[0].cli, executor);
+      assertEffort(launches[0], executor, effort);
       assert.equal(launches[0].model, model);
-      assert.deepEqual(launches[0].effortArgs,
-        executor === "codex" && effort ? [`model_reasoning_effort=${JSON.stringify(effort)}`] : []);
-      if (executor === "claude") assert.equal(launches[0].effortEnv, effort);
     };
     await observeTask("codex", "gpt-6.2-sol", '\n[clis.codex]\nmodel = "gpt-6.2-sol"\nreasoning_effort = "max"\n', "max");
     await observeTask("codex", "changed-model", '\n[clis.codex]\nmodel = "changed-model"\n', "high");
@@ -629,10 +686,7 @@ try {
     assert.deepEqual(taskCalls(missing), []);
     check("a missing single executor leaves the task queued");
 
-    writeFileSync(configPath, fixtureConfig + '\n[clis.codex]\nreasoning_effort = 7\n');
-    const invalid = spawnSync(process.execPath, argsFor(["status", "--brief"]), { cwd: repo, env, encoding: "utf8", timeout: 15000 });
-    assert.notEqual(invalid.status, 0);
-    assert.match(invalid.stderr, /clis\.codex\.reasoning_effort/);
+    assertInvalidEffort("clis.codex", "7");
     check("invalid task effort identifies its configuration field");
   }
 } catch (err) {
