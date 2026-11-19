@@ -23,7 +23,8 @@ if (mode === "--real") {
   env.NOOP_E2E_REAL_CODEX = process.env.NOOP_E2E_REAL_CODEX;
   env.CODEX_HOME = process.env.NOOP_E2E_CODEX_HOME;
 }
-type Call = { cli: string; account: string; stage: string; task?: string; model?: string; sandbox?: string; pid: number; mcpDisabled: boolean };
+type Call = { cli: string; account: string; stage: string; task?: string; model?: string; effortArgs: string[];
+  effortEnv?: string; sandbox?: string; pid: number; mcpDisabled: boolean };
 
 const check = (message: string) => { checks.push(message); console.log("PASS", message); };
 const calls = (): Call[] => readFileSync(join(out, "calls.jsonl"), "utf8").trim().split("\n").filter(Boolean).map(line => JSON.parse(line));
@@ -532,6 +533,7 @@ try {
     assert.deepEqual(stage("chat").slice(beforeAccount), ["claude"]);
     check("an unusable account directory does not stop the next selected executor");
   } else {
+    env.CLAUDE_CODE_EFFORT_LEVEL = "high";
     accounts(["codex", "codex-limited", quota], ["claude", "claude-available"]);
     start("primary", "daemon");
     await until("primary did not start", () => ready(local));
@@ -585,6 +587,40 @@ try {
       } finally { chmodSync(readOnly, 0o755); }
     }
 
+    accounts();
+    const sharedPath = join(noopHome, "data/config.toml");
+    const sharedConfig = readFileSync(sharedPath, "utf8");
+    assert(sharedConfig.includes("[clis.codex]"));
+    writeFileSync(sharedPath, sharedConfig.replace("[clis.codex]", '[clis.codex]\nreasoning_effort = "high"'));
+    const observeTask = async (executor: string, model: string, localSettings: string, effort: string | undefined) => {
+      writeFileSync(configPath, fixtureConfig + localSettings);
+      const id = add(`Check ${executor} task settings ${model} ${effort}`, "--cli", executor);
+      await until("task with effort settings did not finish", async () => (await task(id)).state === "done");
+      const launches = calls().filter(call => call.stage === "task" && call.task === id);
+      assert.equal(launches.length, 1);
+      assert.equal(launches[0].cli, executor);
+      assert.equal(launches[0].model, model);
+      assert.deepEqual(launches[0].effortArgs,
+        executor === "codex" && effort ? [`model_reasoning_effort=${JSON.stringify(effort)}`] : []);
+      if (executor === "claude") assert.equal(launches[0].effortEnv, effort);
+    };
+    await observeTask("codex", "gpt-6.2-sol", '\n[clis.codex]\nmodel = "gpt-6.2-sol"\nreasoning_effort = "max"\n', "max");
+    await observeTask("codex", "changed-model", '\n[clis.codex]\nmodel = "changed-model"\n', "high");
+    await observeTask("codex", "gpt-6.2-sol", '\n[clis.codex]\nmodel = "gpt-6.2-sol"\nreasoning_effort = "default"\n', undefined);
+    writeFileSync(sharedPath, sharedConfig);
+    await observeTask("codex", "gpt-6.2-sol", '\n[clis.codex]\nmodel = "gpt-6.2-sol"\n', undefined);
+    check("Codex tasks use shared and local effort independently of model and defer to the CLI when requested");
+
+    for (const [setting, level] of [['reasoning_effort = "medium"', "medium"], ['reasoning_effort = "default"', "high"], ["", "high"]])
+      await observeTask("claude", "claude-fixture", `\n[clis.claude]\nmodel = "claude-fixture"\n${setting}\n`, level);
+    check("Claude tasks set explicit effort and preserve the inherited CLI environment for default or omission");
+
+    const custom = [join(bin, "codex"), "exec", "--sandbox", "workspace-write", "-m", "custom-model",
+      "-c", 'model_reasoning_effort="medium"', "-"];
+    await observeTask("codex", "custom-model", `\n[clis.codex]\ncommand = ${JSON.stringify(custom)}\nreasoning_effort = "max"\n`, "medium");
+    check("a complete command keeps its own task effort");
+    accounts();
+
     unlinkSync(join(bin, "codex"));
     await save({ clis: { agents: { lead: ["codex"] } } });
     const missing = add("Wait for missing Codex");
@@ -592,6 +628,12 @@ try {
     assert.equal((await task(missing)).state, "inbox");
     assert.deepEqual(taskCalls(missing), []);
     check("a missing single executor leaves the task queued");
+
+    writeFileSync(configPath, fixtureConfig + '\n[clis.codex]\nreasoning_effort = 7\n');
+    const invalid = spawnSync(process.execPath, argsFor(["status", "--brief"]), { cwd: repo, env, encoding: "utf8", timeout: 15000 });
+    assert.notEqual(invalid.status, 0);
+    assert.match(invalid.stderr, /clis\.codex\.reasoning_effort/);
+    check("invalid task effort identifies its configuration field");
   }
 } catch (err) {
   error = err instanceof Error ? err.stack || err.message : String(err);
@@ -611,7 +653,7 @@ try {
     ...(mode === "--web" ? { playwright: playwrightVersion, chromium: browserVersion, diagnostics } : {}),
   }, null, 2) + "\n";
   writeFileSync(join(out, "report.json"), report);
-  const evidence = ["report.json", ...diagnostics].map(name =>
+  const evidence = ["report.json", ...["calls.jsonl", "real-codex.jsonl"].filter(name => existsSync(join(out, name))), ...diagnostics].map(name =>
     `${createHash("sha256").update(readFileSync(join(out, name))).digest("hex")}  ${name}`).join("\n");
   writeFileSync(join(out, "SHA256SUMS"), evidence + "\n");
   console.log("Evidence:", out);

@@ -155,6 +155,13 @@ export function sharedMcp(cfg: Cfg, env: Record<string, string | undefined> = pr
   return usableMcp(withOAuth(mcpServers((cfg as { mcp_servers?: unknown }).mcp_servers), env), env).use;
 }
 
+export function reasoningEffortOptions(cli: Executor, effort?: string): { args: string[]; env: Record<string, string> } {
+  if (effort === undefined || effort === "default") return { args: [], env: {} };
+  return cli === "codex"
+    ? { args: ["-c", `model_reasoning_effort=${JSON.stringify(effort)}`], env: {} }
+    : { args: [], env: { CLAUDE_CODE_EFFORT_LEVEL: effort } };
+}
+
 /** `mcpArgs`: the MCP flags of this run (see `mcpLaunch`); none when left out (status views, model lookups). */
 export function cliCommand(cli: string, cfg: Cfg, gateOverride = false, mcpArgs: string[] = []): string[] {
   const c = cfg.clis?.[cli] ?? {};
@@ -175,7 +182,7 @@ export function cliCommand(cli: string, cfg: Cfg, gateOverride = false, mcpArgs:
       "-c", 'approval_policy="never"', "-c", "sandbox_workspace_write.network_access=true"];
     for (const dir of codexWritableDirs(homedir(), cfg.resources?.work_dirs)) cmd.push("--add-dir", dir);
     if (c.model) cmd.push("-m", c.model);
-    cmd.push(...mcpArgs);
+    cmd.push(...reasoningEffortOptions("codex", c.reasoning_effort).args, ...mcpArgs);
     return [...cmd, "-"];
   }
   throw new Error(`unknown cli ${cli}`);
@@ -249,6 +256,9 @@ export async function runAgent(cli: string, prompt: string, cwd: string, cfg: Cf
   extraEnv: Record<string, string> = {}, retryEmpty = true): Promise<string> {
   const mcp = await mcpLaunch(cli, cfg).catch(() => ({ args: [] as string[], env: {} as Record<string, string>, file: undefined }));
   const cmd = cliCommand(cli, cfg, gateOverride, mcp.args);
+  const claude = cfg.clis?.claude;
+  const effortEnv = cli === "claude" && !Array.isArray(claude?.command)
+    ? reasoningEffortOptions("claude", claude?.reasoning_effort).env : {};
   const timeoutMs = (cfg.clis?.timeout_minutes ?? 60) * 60_000;
   const stallMs = (cfg.clis?.stall_minutes ?? 20) * 60_000;
   const dir = cwd.replace(/^~/, homedir());
@@ -257,7 +267,7 @@ export async function runAgent(cli: string, prompt: string, cwd: string, cfg: Cf
   const proc = Bun.spawn(cmd, {
     cwd: existsSync(dir) ? dir : ROOT, stdin: new Blob([prompt]), stdout: "pipe", stderr: "pipe",
     // Claude -p stops background subagents 10 min after the last turn; our own run limit bounds the run instead
-    env: { ...process.env, CLAUDE_CODE_PRINT_BG_WAIT_CEILING_MS: "0", ...mcp.env, ...extraEnv, HUB_DATA: ROOT },
+    env: { ...process.env, CLAUDE_CODE_PRINT_BG_WAIT_CEILING_MS: "0", ...mcp.env, ...extraEnv, ...effortEnv, HUB_DATA: ROOT },
   });
   if (mcp.file) void proc.exited.finally(() => { try { rmSync(mcp.file!, { force: true }); } catch {} });
   const tid = logFile.split("/").pop()!.match(/^([A-Z]-[\w]*?\d{4})-\d{10,}/)?.[1];
