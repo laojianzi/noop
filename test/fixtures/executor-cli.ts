@@ -25,7 +25,7 @@ const answer = (input: string) => {
 
 if (cli === "codex" && process.env.NOOP_E2E_REAL_CODEX) {
   if (args[0] !== "exec") process.exit(2);
-  const stage = args.includes("--ephemeral") ? "chat" : "exec";
+  const stage = args.includes("--ephemeral") ? "chat" : args.includes("workspace-write") ? "task" : "plan";
   record(stage);
   const started = Date.now();
   const proc = Bun.spawn([process.env.NOOP_E2E_REAL_CODEX, "exec", "-c", 'model_reasoning_effort="low"', ...args.slice(1)],

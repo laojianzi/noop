@@ -1,6 +1,7 @@
 // The real local coordinator and primary run against executable test doubles.
 import assert from "node:assert/strict";
 import { spawn, spawnSync, type ChildProcess } from "node:child_process";
+import { createHash } from "node:crypto";
 import { closeSync, cpSync, existsSync, mkdirSync, mkdtempSync, openSync, readFileSync, readdirSync, symlinkSync, unlinkSync, writeFileSync } from "node:fs";
 import { BUILTIN_ROUTINES } from "../src/builtin-routines";
 import { b32decode, hotp, stepAt } from "../cloud/src/totp";
@@ -199,15 +200,26 @@ try {
       await page.getByText("NOOP-REAL-CODEX-READ", { exact: true }).waitFor({ timeout: 60_000 });
       const brain = readFileSync(join(noopHome, "brain.jsonl"), "utf8").trim().split("\n").map(line => JSON.parse(line));
       assert(brain.some(row => row.executor === "codex" && row.rounds >= 2 && row.calls.some((c: any) => c.tool === "list_tasks" && c.ok)));
+      assert(calls().filter(c => c.stage === "chat").every(c => c.mcpDisabled), "the profile must define the noop_probe MCP server");
       assert(!existsSync(join(env.CODEX_HOME!, "noop-mcp-probe-started")), "Codex did not launch an MCP server in the Web conversation");
-      const id = add("Real Codex acceptance", "--cli", "codex", "--body",
-        'Read only. Reply with JSON {"status":"done","summary":"NOOP-REAL-CODEX-TASK-OK"}.');
+      const project = join(out, "acceptance-project");
+      mkdirSync(project);
+      writeFileSync(join(project, "sum.ts"), "export const sum = (a: number, b: number) => a - b;\n");
+      const verifySum = () => spawnSync(process.execPath, ["-e",
+        'import { sum } from "./sum.ts"; if (sum(2, 3) !== 5 || sum(-2, 1) !== -1) process.exit(1);',
+      ], { cwd: project, encoding: "utf8" });
+      assert.equal(verifySum().status, 1, "the fixture must fail before the repair");
+      const id = add("Fix the addition helper", "--cli", "codex", "--repo", project, "--body",
+        'In this directory, fix sum.ts so sum(a, b) adds the two numbers. Edit only that file and finish with a JSON result with status "done".');
       await until("real Codex task did not finish", async () => (await task(id)).state === "done", 120_000);
       assert.equal((await task(id)).cli, "codex");
+      const verified = verifySum();
+      assert.equal(verified.status, 0, verified.stderr);
       const measurements = readFileSync(join(out, "real-codex.jsonl"), "utf8").trim().split("\n").map(line => JSON.parse(line));
       const turns = measurements.filter(m => m.stage === "chat");
       assert(turns.length >= 2 && turns.every(m => m.code === 0 && m.tools.length === 0 && m.usage));
-      check("real Codex replied, used the Noop read tool and completed a task");
+      assert(calls().some(c => c.stage === "task" && c.cli === "codex" && c.model === "gpt-6-luna"));
+      check("real Codex replied, used the Noop read tool and fixed the task's code");
     } else {
       await say("Read a task first");
       await page.getByText("Fixture used task data", { exact: true }).waitFor({ timeout: 20_000 });
@@ -397,6 +409,8 @@ try {
     try { process.kill(-child.pid, "SIGKILL"); } catch {}
   }
   const revision = spawnSync("git", ["rev-parse", "HEAD"], { cwd: source, encoding: "utf8" }).stdout.trim();
-  writeFileSync(join(out, "report.json"), JSON.stringify({ revision, checks, error, calls: readdirSync(out).includes("calls.jsonl") ? calls() : [] }, null, 2) + "\n");
+  const report = JSON.stringify({ revision, checks, error, calls: readdirSync(out).includes("calls.jsonl") ? calls() : [] }, null, 2) + "\n";
+  writeFileSync(join(out, "report.json"), report);
+  writeFileSync(join(out, "SHA256SUMS"), createHash("sha256").update(report).digest("hex") + "  report.json\n");
   console.log("Evidence:", out);
 }
