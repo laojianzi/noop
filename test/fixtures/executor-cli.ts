@@ -1,6 +1,7 @@
 import { appendFileSync, existsSync, readFileSync, writeFileSync } from "node:fs";
 import { basename, join } from "node:path";
 import { createInterface } from "node:readline";
+import { checkCodexMcp, codexMcpProofFile } from "./codex-mcp-probe";
 
 const [cli, ...args] = Bun.argv.slice(2);
 const dir = process.env.NOOP_EXECUTOR_FIXTURE!;
@@ -37,33 +38,28 @@ const answer = (input: string) => {
 if (cli === "codex" && process.env.NOOP_E2E_REAL_CODEX) {
   if (args[0] !== "exec") process.exit(2);
   const stage = args.includes("--ephemeral") ? "chat" : args.includes("workspace-write") ? "task" : "plan";
-  record(stage);
+  const probeOnly = process.env.NOOP_E2E_CODEX_PROBE_ONLY === "1";
   const trust = stage === "chat" ? process.env.NOOP_E2E_CODEX_PROJECT_TRUST : undefined;
   const projectArgs = trust ? ["-c", trust] : [];
-  const configProof = join(dir, "codex-mcp-probe.json");
-  if (trust && !existsSync(configProof)) {
-    const flags = args.filter((arg, i) => arg === "-c" || arg === "--disable" ||
-      args[i - 1] === "-c" || args[i - 1] === "--disable");
-    const list = Bun.spawnSync([process.env.NOOP_E2E_REAL_CODEX, "mcp", "list", "--json", ...projectArgs, ...flags]);
-    if (list.exitCode !== 0) throw new Error(list.stderr.toString());
-    const servers = JSON.parse(list.stdout.toString()) as { name: string; enabled: boolean }[];
-    const probes = servers.filter(s => ["noop_probe", "parent_probe", "cwd_probe"].includes(s.name))
-      .map(({ name, enabled }) => ({ name, enabled }));
-    writeFileSync(configProof, JSON.stringify(probes) + "\n");
-    if (!probes.some(s => s.name === "noop_probe" && !s.enabled) ||
-      probes.some(s => s.name !== "noop_probe")) throw new Error("Codex inherited project MCP configuration");
+  if (probeOnly && stage !== "chat") throw new Error("The login-free probe must run from a Noop chat session");
+  const configProof = join(dir, codexMcpProofFile);
+  if (probeOnly || (trust && !existsSync(configProof))) {
+    checkCodexMcp(process.env.NOOP_E2E_REAL_CODEX, args, projectArgs, configProof, probeOnly);
   }
-  const started = Date.now();
-  const proc = Bun.spawn([process.env.NOOP_E2E_REAL_CODEX, "exec", ...projectArgs, ...args.slice(1)],
-    { stdin: "inherit", stdout: "pipe", stderr: "inherit" });
-  const out = await new Response(proc.stdout).text();
-  process.stdout.write(out);
-  const code = await proc.exited;
-  const events = stage === "chat" ? out.split("\n").filter(Boolean).map(line => { try { return JSON.parse(line); } catch { return {}; } }) : [];
-  const usage = events.find(e => e.type === "turn.completed")?.usage;
-  const tools = events.filter(e => e.type === "item.completed" && /command_execution|mcp_tool_call|file_change|web_search|collab_tool_call/.test(e.item?.type ?? "")).map(e => e.item.type);
-  appendFileSync(join(dir, "real-codex.jsonl"), JSON.stringify({ stage, code, elapsedMs: Date.now() - started, usage, tools }) + "\n");
-  process.exit(code);
+  if (!probeOnly) {
+    record(stage);
+    const started = Date.now();
+    const proc = Bun.spawn([process.env.NOOP_E2E_REAL_CODEX, "exec", ...projectArgs, ...args.slice(1)],
+      { stdin: "inherit", stdout: "pipe", stderr: "inherit" });
+    const out = await new Response(proc.stdout).text();
+    process.stdout.write(out);
+    const code = await proc.exited;
+    const events = stage === "chat" ? out.split("\n").filter(Boolean).map(line => { try { return JSON.parse(line); } catch { return {}; } }) : [];
+    const usage = events.find(e => e.type === "turn.completed")?.usage;
+    const tools = events.filter(e => e.type === "item.completed" && /command_execution|mcp_tool_call|file_change|web_search|collab_tool_call/.test(e.item?.type ?? "")).map(e => e.item.type);
+    appendFileSync(join(dir, "real-codex.jsonl"), JSON.stringify({ stage, code, elapsedMs: Date.now() - started, usage, tools }) + "\n");
+    process.exit(code);
+  }
 }
 if (args.includes("setup-token") || args[0] === "login") {
   record("login");

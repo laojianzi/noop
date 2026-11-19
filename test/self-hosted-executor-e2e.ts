@@ -8,11 +8,13 @@ import { b32decode, hotp, stepAt } from "../cloud/src/totp";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
+import { codexMcpProofFile, configureCodexProbeProjects } from "./fixtures/codex-mcp-probe";
 
 const source = resolve(import.meta.dir, "..");
 const out = mkdtempSync(join(process.env.NOOP_E2E_OUT || tmpdir(), "noop-executors-"));
 const repo = join(out, "repo"), home = join(out, "home"), bin = join(out, "bin"), noopHome = join(home, ".noop");
 const mode = Bun.argv[2] ?? "--tasks";
+const probeOnly = mode === "--codex-mcp";
 const assets = process.env.NOOP_E2E_WEB_ASSETS, workerd = process.env.NOOP_E2E_WORKERD;
 const token = "synthetic-executor-e2e-machine-token";
 const children: ChildProcess[] = [], checks: string[] = [];
@@ -49,7 +51,7 @@ async function freePort() {
   return address.port;
 }
 
-const coordinator = await freePort(), primary = await freePort();
+const [coordinator, primary] = probeOnly ? [0, 0] : [await freePort(), await freePort()];
 const hub = "http://127.0.0.1:" + coordinator, local = "http://127.0.0.1:" + primary;
 const request = (base: string, route: string, method = "GET", body?: unknown) => fetch(base + route, {
   method, headers: { authorization: "Bearer " + token, "content-type": "application/json" },
@@ -146,8 +148,49 @@ function accounts(...entries: [string, string, string?][]) {
 }
 const quota = '{"status":"failed","summary":"rate limit, try again in 1h"}';
 const auth = '{"status":"failed","summary":"not logged in"}';
-let error = "", browser: any, playwrightVersion: string | undefined, browserVersion: string | undefined;
-try {
+let error = "", browser: any, playwrightVersion: string | undefined, browserVersion: string | undefined, codexVersion: string | undefined;
+
+function installExecutor(executor: string) {
+  const command = [process.execPath, join(source, "test/fixtures/executor-cli.ts"), executor]
+    .map(arg => "'" + arg.replaceAll("'", "'\\''") + "'").join(" ");
+  writeFileSync(join(bin, executor), `#!/bin/sh\nexec ${command} "$@"\n`, { mode: 0o755 });
+}
+
+function codexMcpAcceptance() {
+  const binary = process.env.NOOP_E2E_REAL_CODEX;
+  assert(binary, "Set NOOP_E2E_REAL_CODEX to the path of the real Codex CLI");
+  env.NOOP_E2E_REAL_CODEX = resolve(binary);
+  env.NOOP_E2E_CODEX_PROBE_ONLY = "1";
+  env.CODEX_HOME = join(out, "codex-account");
+  mkdirSync(bin, { recursive: true });
+  mkdirSync(env.CODEX_HOME, { recursive: true });
+  const trust = configureCodexProbeProjects(home, join(noopHome, "brain"));
+  // Keep the initial trust in the account layer. A second CLI projects override replaces the first table.
+  writeFileSync(join(env.CODEX_HOME, "config.toml"), `${trust}\n[mcp_servers.noop_probe]\ncommand = "/usr/bin/true"\n`);
+  installExecutor("codex");
+
+  const version = spawnSync(env.NOOP_E2E_REAL_CODEX, ["--version"], { cwd: home, env, encoding: "utf8", timeout: 5000 });
+  assert.equal(version.status, 0, "Could not run the real Codex CLI");
+  assert.match(version.stdout.trim(), /^codex-cli \S+$/);
+  codexVersion = version.stdout.trim();
+
+  // Start the production chat session in a fresh process so Noop resolves its home from the fixture environment.
+  const launched = spawnSync(process.execPath, ["-e", `
+    import { CodexModel } from "./src/brain";
+    const session = await new CodexModel(undefined, 30_000, {}).open("MCP config acceptance");
+    try { console.log(await session.send("Check MCP configuration")); }
+    finally { session.close(); }
+  `], { cwd: source, env, encoding: "utf8", timeout: 35_000 });
+  assert.equal(launched.status, 0, launched.stderr || String(launched.error ?? "Codex chat session failed"));
+  assert.deepEqual(JSON.parse(launched.stdout), { calls: [], reply: "codex fixture reply" });
+  assert(existsSync(join(out, codexMcpProofFile)), "the session did not produce a real Codex MCP list");
+  check("removing the project root marker override exposes the trusted parent MCP probe");
+  check("removing the current directory trust override exposes the cwd MCP probe");
+  check("restoring the actual chat overrides disables account MCP and excludes both project MCP probes");
+}
+
+async function runAcceptance() {
+  if (probeOnly) { codexMcpAcceptance(); return; }
   assert(assets && workerd, "Set NOOP_E2E_WEB_ASSETS and NOOP_E2E_WORKERD");
   for (const name of ["src", "cloud", "app", "templates", "presets"])
     cpSync(join(source, name), join(repo, name), { recursive: true, filter: p => !/\/(node_modules|dist)(\/|$)/.test(p) });
@@ -159,8 +202,7 @@ try {
   symlinkSync(resolve(workerd), join(bin, "workerd"));
   writeFileSync(join(out, "calls.jsonl"), "");
   writeFileSync(join(bin, "gh"), "#!/bin/sh\nexit 1\n", { mode: 0o755 });
-  for (const executor of ["codex", "claude"])
-    writeFileSync(join(bin, executor), `#!/bin/sh\nexec ${JSON.stringify(process.execPath)} ${JSON.stringify(join(source, "test/fixtures/executor-cli.ts"))} ${executor} "$@"\n`, { mode: 0o755 });
+  for (const executor of ["codex", "claude"]) installExecutor(executor);
   writeFileSync(join(noopHome, "noop.toml"), `[server]\ntoken = "${token}"\n`);
   start("coordinator", "cloud", "deploy", "--local", "--listen", "127.0.0.1:" + coordinator);
   await until("coordinator did not start", () => ready(hub));
@@ -172,16 +214,7 @@ try {
     accounts();
     if (mode === "--real") {
       writeFileSync(configPath, fixtureConfig + '\n[clis.codex]\nmodel = "gpt-6-luna"\nreasoning_effort = "low"\n');
-      const git = spawnSync("git", ["init", "-q", home], { encoding: "utf8" });
-      assert.equal(git.status, 0, git.stderr);
-      const brain = join(noopHome, "brain");
-      for (const [dir, name] of [[home, "parent_probe"], [brain, "cwd_probe"]]) {
-        mkdirSync(join(dir, ".codex"), { recursive: true });
-        writeFileSync(join(dir, ".codex/config.toml"),
-          `[mcp_servers.${name}]\ncommand = "/usr/bin/touch"\nargs = [${JSON.stringify(join(out, name + "-started"))}]\n`);
-      }
-      const projectEntries = [home, brain].map(dir => `${JSON.stringify(dir)}={trust_level="trusted"}`).join(",");
-      env.NOOP_E2E_CODEX_PROJECT_TRUST = `projects={${projectEntries}}`;
+      env.NOOP_E2E_CODEX_PROJECT_TRUST = configureCodexProbeProjects(home, join(noopHome, "brain"), out);
     }
     start("primary", "daemon");
     await until("primary did not start", () => ready(local));
@@ -305,7 +338,7 @@ try {
       assert(brain.some(row => row.executor === "codex" && row.rounds >= 2 && row.calls.some((c: any) => c.tool === "list_tasks" && c.ok)));
       assert(calls().filter(c => c.stage === "chat").every(c => c.mcpDisabled), "the profile must define the noop_probe MCP server");
       assert(!existsSync(join(env.CODEX_HOME!, "noop-mcp-probe-started")), "Codex did not launch an MCP server in the Web conversation");
-      assert.deepEqual(JSON.parse(readFileSync(join(out, "codex-mcp-probe.json"), "utf8")), [{ name: "noop_probe", enabled: false }]);
+      assert(existsSync(join(out, codexMcpProofFile)));
       assert(!existsSync(join(out, "parent_probe-started")) && !existsSync(join(out, "cwd_probe-started")));
       check("Codex ignores trusted project MCP layers and disables the account MCP probe");
       const project = join(out, "acceptance-project");
@@ -741,6 +774,10 @@ try {
     assertInvalidSetting("clis.codex", "reasoning_effort", "7");
     check("invalid task effort identifies its configuration field");
   }
+}
+
+try {
+  await runAcceptance();
 } catch (err) {
   error = err instanceof Error ? err.stack || err.message : String(err);
   console.error(error);
@@ -754,9 +791,11 @@ try {
   const diagnostics = mode === "--web"
     ? readdirSync(out).filter(name => name.endsWith(".log") || name === "settings.png" || name === "chat.png").sort()
     : [];
+  const proof = join(out, codexMcpProofFile);
   const report = JSON.stringify({
     revision, checks, error, calls: readdirSync(out).includes("calls.jsonl") ? calls() : [],
     ...(mode === "--web" ? { playwright: playwrightVersion, chromium: browserVersion, diagnostics } : {}),
+    ...(probeOnly ? { codex: codexVersion, mcpLists: existsSync(proof) ? JSON.parse(readFileSync(proof, "utf8")) : {} } : {}),
   }, null, 2) + "\n";
   writeFileSync(join(out, "report.json"), report);
   const evidence = ["report.json", ...diagnostics].map(name =>

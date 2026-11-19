@@ -133,6 +133,14 @@ jobs:
           test -x "$browser"
           NOOP_E2E_PLAYWRIGHT="$RUNNER_TEMP/playwright-core/package/index.mjs" \
             NOOP_E2E_BROWSER="$browser" bun test/self-hosted-executor-e2e.ts --web
+      - name: Run x86_64 Codex MCP config acceptance
+        if: matrix.arch == 'x86_64'
+        run: |
+          package=$(npm pack --silent --ignore-scripts @openai/codex@0.170.0-linux-x64 --pack-destination "$RUNNER_TEMP")
+          mkdir -p "$RUNNER_TEMP/codex-cli"
+          tar -xzf "$RUNNER_TEMP/$package" -C "$RUNNER_TEMP/codex-cli"
+          NOOP_E2E_REAL_CODEX="$RUNNER_TEMP/codex-cli/package/vendor/x86_64-unknown-linux-musl/bin/codex" \
+            bun test/self-hosted-executor-e2e.ts --codex-mcp
       - name: Build and verify the coordinator archive
         run: |
           bun scripts/package-local-coordinator.ts --workerd "$NOOP_E2E_WORKERD" --output "$RUNNER_TEMP/coordinator-artifacts" \
