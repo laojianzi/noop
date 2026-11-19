@@ -10,7 +10,7 @@
 import { appendFileSync, existsSync, mkdirSync, readFileSync, readdirSync, statSync, unlinkSync, writeFileSync } from "node:fs";
 import { channelPrompt } from "./channels";
 import { classify } from "./accounts";
-import { CODEX_READ_ONLY_ARGS, internalStream, runInternalProcess } from "./runner";
+import { codexReadOnlyArgs, internalStream, runInternalProcess } from "./runner";
 import { homedir } from "node:os";
 import { join, relative } from "node:path";
 import { DATA, HOME_DIR, L, P, loadConfig, _commitPush, _pull, journal, locked, now, readDoc, writeDoc } from "./core";
@@ -200,7 +200,7 @@ export class CodexModel implements Model {
     const protocol = 'Noop executes the tools listed above when your final JSON requests them. ' +
       'For example, to read the task list, return {"calls":[{"tool":"list_tasks","args":{}}],"reply":""}. ' +
       'The next turn supplies the result. Use these JSON requests for every Noop tool.';
-    const cmd = ["codex", "exec", "--ephemeral", "--json", "--skip-git-repo-check", ...CODEX_READ_ONLY_ARGS,
+    const cmd = ["codex", "exec", "--ephemeral", "--json", "--skip-git-repo-check", ...codexReadOnlyArgs(this.env),
       "-c", `developer_instructions=${JSON.stringify(system + "\n\n" + protocol)}`,
       ...(this.model ? ["--model", this.model] : []), "-"];
     return {

@@ -414,9 +414,22 @@ function repairJson(json: string): string {
  * `[router] cli/model` in config.toml puts one first; the others are fallbacks when its CLI is missing or fails. */
 const ROUTERS = [{ cli: "claude", model: "claude-haiku-5-5" }, { cli: "codex", model: "gpt-6-luna" }];
 
-export const CODEX_READ_ONLY_ARGS = ["--sandbox", "read-only",
-  "--disable", "shell_tool", "--disable", "unified_exec", "--disable", "apps", "--disable", "plugins", "--disable", "multi_agent_v2",
-  "-c", 'web_search="disabled"', "-c", "mcp_servers={}"];
+export function codexReadOnlyArgs(env: Record<string, string> = {}): string[] {
+  const home = env.CODEX_HOME ?? process.env.CODEX_HOME ?? join(homedir(), ".codex");
+  const config = join(home, "config.toml");
+  const parsed = Bun.TOML.parse(existsSync(config) ? readFileSync(config, "utf8") : "") as {
+    profile?: string;
+    mcp_servers?: Record<string, unknown>;
+    profiles?: Record<string, { mcp_servers?: Record<string, unknown> }>;
+  };
+  const profile = parsed.profile ? parsed.profiles?.[parsed.profile] : undefined;
+  // Codex merges the server table with lower layers. An empty override leaves their servers enabled.
+  const servers = Object.keys({ ...parsed.mcp_servers, ...profile?.mcp_servers });
+  const disabled = servers.map((name) => `${JSON.stringify(name)}={enabled=false}`).join(",");
+  return ["--sandbox", "read-only",
+    "--disable", "shell_tool", "--disable", "unified_exec", "--disable", "apps", "--disable", "plugins", "--disable", "multi_agent_v2",
+    "-c", 'web_search="disabled"', "-c", `mcp_servers={${disabled}}`];
+}
 
 export function internalModel(cfg: Cfg, role: "router" | "judge", cli: Executor): string | undefined {
   const entry = cfg[role];
@@ -474,7 +487,7 @@ export async function quickAsk(prompt: string, cfg: Cfg, logFile: string): Promi
   const attempt = async (cli: string, model?: string, env?: Record<string, string>) => {
     const cmd = cli === "claude"
       ? ["claude", "-p", "--output-format", "text", "--tools", "", "--strict-mcp-config", ...(model ? ["--model", model] : [])]
-      : ["codex", "exec", "--skip-git-repo-check", ...(explicit ? CODEX_READ_ONLY_ARGS : ["--sandbox", "read-only"]), ...(model ? ["-m", model] : []), "-c", 'model_reasoning_effort="low"', "-"];
+      : ["codex", "exec", "--skip-git-repo-check", ...(explicit ? codexReadOnlyArgs(env) : ["--sandbox", "read-only"]), ...(model ? ["-m", model] : []), "-c", 'model_reasoning_effort="low"', "-"];
     const { out, code } = await runInternalProcess(cmd, prompt, ROOT, (cfg.router?.timeout_seconds ?? 45) * 1000, env);
     mkdirSync(P("logs", "runs"), { recursive: true });
     if (explicit) appendFileSync(logFile, `${cli} ${model ?? ""} (exit ${code})\n${out}\n`);
@@ -497,7 +510,7 @@ export async function ask(prompt: string, cfg: Cfg, logFile: string): Promise<an
   const attempt = async (cli: string, model?: string, env?: Record<string, string>) => {
     const cmd = cli === "claude"
       ? ["claude", "-p", "--output-format", "text", "--model", model ?? "claude-opus-5-5", "--tools", ""]
-      : ["codex", "exec", "--skip-git-repo-check", ...(explicit ? CODEX_READ_ONLY_ARGS : []), ...(model ? ["-m", model] : []), "-"];
+      : ["codex", "exec", "--skip-git-repo-check", ...(explicit ? codexReadOnlyArgs(env) : []), ...(model ? ["-m", model] : []), "-"];
     const { out, code } = await runInternalProcess(cmd, prompt, ROOT, (cfg.judge?.timeout_minutes ?? 10) * 60_000, env);
     mkdirSync(P("logs", "runs"), { recursive: true });
     if (explicit) appendFileSync(logFile, `${cli} ${model ?? ""} (exit ${code})\n${out}\n`);

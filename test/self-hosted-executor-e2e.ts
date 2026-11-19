@@ -1,7 +1,7 @@
 // The real local coordinator and primary run against executable test doubles.
 import assert from "node:assert/strict";
 import { spawn, spawnSync, type ChildProcess } from "node:child_process";
-import { closeSync, cpSync, mkdirSync, mkdtempSync, openSync, readFileSync, readdirSync, symlinkSync, unlinkSync, writeFileSync } from "node:fs";
+import { closeSync, cpSync, existsSync, mkdirSync, mkdtempSync, openSync, readFileSync, readdirSync, symlinkSync, unlinkSync, writeFileSync } from "node:fs";
 import { BUILTIN_ROUTINES } from "../src/builtin-routines";
 import { b32decode, hotp, stepAt } from "../cloud/src/totp";
 import { createServer } from "node:net";
@@ -22,7 +22,7 @@ if (mode === "--real") {
   env.NOOP_E2E_REAL_CODEX = process.env.NOOP_E2E_REAL_CODEX;
   env.CODEX_HOME = process.env.NOOP_E2E_CODEX_HOME;
 }
-type Call = { cli: string; account: string; stage: string; task?: string; model?: string; pid: number };
+type Call = { cli: string; account: string; stage: string; task?: string; model?: string; pid: number; mcpDisabled: boolean };
 
 const check = (message: string) => { checks.push(message); console.log("PASS", message); };
 const calls = (): Call[] => readFileSync(join(out, "calls.jsonl"), "utf8").trim().split("\n").filter(Boolean).map(line => JSON.parse(line));
@@ -199,6 +199,7 @@ try {
       await page.getByText("NOOP-REAL-CODEX-READ", { exact: true }).waitFor({ timeout: 60_000 });
       const brain = readFileSync(join(noopHome, "brain.jsonl"), "utf8").trim().split("\n").map(line => JSON.parse(line));
       assert(brain.some(row => row.executor === "codex" && row.rounds >= 2 && row.calls.some((c: any) => c.tool === "list_tasks" && c.ok)));
+      assert(!existsSync(join(env.CODEX_HOME!, "noop-mcp-probe-started")), "Codex did not launch an MCP server in the Web conversation");
       const id = add("Real Codex acceptance", "--cli", "codex", "--body",
         'Read only. Reply with JSON {"status":"done","summary":"NOOP-REAL-CODEX-TASK-OK"}.');
       await until("real Codex task did not finish", async () => (await task(id)).state === "done", 120_000);
@@ -218,6 +219,8 @@ try {
     }
     await page.screenshot({ path: join(out, "chat.png") });
   } else if (mode === "--internal") {
+    mkdirSync(join(home, ".codex"), { recursive: true });
+    writeFileSync(join(home, ".codex/config.toml"), '[mcp_servers.noop_probe]\ncommand = "/usr/bin/false"\n');
     accounts();
     start("primary", "daemon");
     await until("primary did not start", () => ready(local));
@@ -247,6 +250,7 @@ try {
     const count = stage("chat").length;
     await say("Read a task first");
     assert.deepEqual(stage("chat").slice(count), ["codex", "codex"]);
+    assert(calls().filter(c => c.stage === "chat").every(c => c.mcpDisabled), "Noop chat disables locally configured Codex MCP servers");
     assert((await feed()).events.some(e => e.text === "Fixture used task data"));
     check("Codex handles a multi-turn Web chat and returns the tool-informed reply");
 
