@@ -10,7 +10,7 @@ import {
 } from "./core";
 import { amendDecision, closeDecision, IGNORE, ignoreDecision, openDecision, overrideJudge, ownerPickedMenu, recentJudgeIds, routeDecision } from "./decisions";
 import { notify, openDecisionIds, pollReplies } from "./notify";
-import { RUN_LIMIT, STALLED, type Result, agentProcs, ask, buildPrompt, internalModel, parseResult, quickAsk, runAgent, runLimits } from "./runner";
+import { RUN_LIMIT, STALLED, type Result, agentProcs, ask, buildPrompt, internalModel, parseResult, quickAsk, reasoningEffortOptions, runAgent, runLimits } from "./runner";
 import { writeRules } from "./rules";
 import { backoffMinutes, CHECKED_FALLBACK_MIN, isNoChangeRoutine, MAX_WAKES, tooManyWakes, waitMeta } from "./waits";
 import { allowedParallel, budget, canRunHeavy, ensureDisk, pressureOf, sample } from "./resources";
@@ -904,7 +904,10 @@ Reply with exactly one fenced json block: {"<task id>": {"requires": "", "cli": 
 }
 
 async function daemon(cfg: Cfg) {
-  const legacyModel = new ClaudeModel(String(cfg.router?.model ?? "claude-haiku-5-5"), String(cfg.router?.cli ?? "claude"), (cfg.router?.timeout_seconds ?? 45) * 1000);
+  const legacyCli = String(cfg.router?.cli ?? "claude");
+  const legacyEffort = cfg.chat?.reasoning_effort ?? cfg.clis?.claude?.reasoning_effort;
+  const legacyModel = new ClaudeModel(String(cfg.chat?.model ?? cfg.router?.model ?? "claude-haiku-5-5"),
+    legacyCli, (cfg.router?.timeout_seconds ?? 45) * 1000, true, reasoningEffortOptions("claude", legacyEffort).env);
   const host = hostName(cfg);
   const every = (cfg.host?.tick_seconds ?? 60) * 1000;
   console.log(`hub daemon on ${host} caps=${hostCaps(cfg).join(",")} tick=${every / 1000}s parallel≤${cfg.host?.max_parallel ?? "cores/3"}`);
@@ -1026,7 +1029,7 @@ async function daemon(cfg: Cfg) {
     },
   });
   setApplyOp((op) => runTool(store, op?.tool, op));
-  if (isPrimary(cfg, host) && !cfg.clis?.internal && Bun.which(String(cfg.router?.cli ?? "claude"))) legacyModel.warm(systemPrompt());
+  if (isPrimary(cfg, host) && !cfg.clis?.internal && Bun.which(legacyCli)) legacyModel.warm(systemPrompt());
   if (isPrimary(cfg, host)) startServer(cfg, async (text, { reply, answered, sentAt, thread, channel }) => {
     const got = Date.now();
     const room = channel ? channels().find((c) => c.slug === channel) : undefined;
@@ -1043,8 +1046,10 @@ async function daemon(cfg: Cfg) {
         const timeout = (current.router?.timeout_seconds ?? 45) * 1000;
         const result = await tryInternalExecutors(current, async (executor, env) => {
           const name = executor === "codex" ? "Codex" : "Claude";
-          const version = internalModel(current, "router", executor);
-          const model = executor === "codex" ? new CodexModel(version, timeout, env) : new ClaudeModel(version, "claude", timeout, false, env);
+          const version = (executor === selected[0] ? current.chat?.model : undefined) ?? internalModel(current, "router", executor);
+          const effort = current.chat?.reasoning_effort ?? current.clis?.[executor]?.reasoning_effort;
+          const model = executor === "codex" ? new CodexModel(version, timeout, env, effort)
+            : new ClaudeModel(version, "claude", timeout, false, { ...env, ...reasoningEffortOptions("claude", effort).env });
           try {
             const answer = await think(m, store, model, post);
             if (answer.reply || answer.calls.some((c) => isWrite(c.tool) && c.ok && c.result?.ok !== false)) return { ...answer, executor };

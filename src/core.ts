@@ -46,6 +46,17 @@ export function loadConfig(): Cfg {
   const bootstrap = sync.readHubToml();
   const cfg: Cfg = merge(merge(merge(bootstrap, read("config.toml")), ui), read("config.local.toml"));
   if (invalidInternalSelection(cfg.clis)) throw new Error(INTERNAL_SELECTION_ERROR);
+  for (const [field, value] of [
+    ["clis.claude.reasoning_effort", cfg.clis?.claude?.reasoning_effort],
+    ["clis.codex.reasoning_effort", cfg.clis?.codex?.reasoning_effort],
+    ["router.reasoning_effort", cfg.router?.reasoning_effort],
+    ["judge.reasoning_effort", cfg.judge?.reasoning_effort],
+    ["chat.reasoning_effort", cfg.chat?.reasoning_effort],
+    ["chat.model", cfg.chat?.model],
+  ]) {
+    if (value !== undefined && (typeof value !== "string" || !value.trim()))
+      throw new Error(`${field} must be a non-empty string`);
+  }
   // built-in routines (src/builtin-routines.ts) unless config.toml defines one of the same name
   cfg.routine = Array.isArray(cfg.routine) ? cfg.routine : [];
   for (const b of BUILTIN_ROUTINES) if (!cfg.routine.some((r: any) => r.name === b.name)) {

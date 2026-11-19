@@ -9,7 +9,7 @@ import { join } from "node:path";
 import { CODE, L, DATA, hostName, HOME_DIR, loadConfig } from "./core";
 
 import { tryInternalExecutors } from "./accounts";
-import { internalStream, runInternalProcess } from "./runner";
+import { internalStream, reasoningEffortOptions, runInternalProcess } from "./runner";
 import type { Executor } from "../app/executor-choices";
 
 const STATE = join(HOME_DIR, "medic.json");
@@ -73,11 +73,12 @@ export async function medic(problem: string, opts: { auto?: boolean; kind?: stri
   const log = join(LOGDIR, `${new Date().toISOString().replace(/[:.]/g, "-")}-${kind}.log`);
   const attempt = async (cli: Executor, env?: Record<string, string>) => {
     const model = explicit ? cfg.clis[cli]?.model : undefined;
+    const effort = reasoningEffortOptions(cli, cfg.clis?.[cli]?.reasoning_effort);
     const cmd = cli === "claude"
-      ? ["claude", "-p", "--output-format", explicit ? "stream-json" : "text", ...(explicit ? ["--verbose"] : []), "--permission-mode", "bypassPermissions", "--disallowedTools", "Bash(git push --force:*)", "Bash(git push -f:*)", "Bash(rm -rf /:*)", "Bash(rm -rf ~/:*)", ...(model ? ["--model", model] : [])]
-      : ["codex", "exec", "--skip-git-repo-check", "--approve-for-me", ...(explicit ? ["--json"] : []), "-c", "sandbox_workspace_write.network_access=true", ...(model ? ["-m", model] : []), "-"];
+      ? ["claude", "-p", "--output-format", explicit ? "stream-json" : "text", ...(explicit ? ["--verbose"] : []), "--permission-mode", "bypassPermissions", "--disallowedTools", "Bash(git push --force:*)", "Bash(git push -f:*)", "Bash(rm -rf /:*)", "Bash(rm -rf ~/:*)", ...(model ? ["--model", model] : []), ...effort.args]
+      : ["codex", "exec", "--skip-git-repo-check", "--approve-for-me", ...(explicit ? ["--json"] : []), "-c", "sandbox_workspace_write.network_access=true", ...(model ? ["-m", model] : []), ...effort.args, "-"];
     console.error(`🩺 medic (${cli}) is looking at: ${problem.split("\n")[0].slice(0, 120)}`);
-    const result = await runInternalProcess(cmd, prompt, CODE, (cfg.medic?.timeout_minutes ?? 30) * 60_000, { ...env, HUB_NO_MEDIC: "1" });
+    const result = await runInternalProcess(cmd, prompt, CODE, (cfg.medic?.timeout_minutes ?? 30) * 60_000, { ...env, ...effort.env, HUB_NO_MEDIC: "1" });
     writeFileSync(log, `${problem}\n\n${cli} (exit ${result.code})\n${result.out}\n${result.err}\n`, { flag: "a" });
     const stream = explicit ? internalStream(result.out, cli) : undefined;
     const out = stream ? (stream.completed && !result.code ? stream.reply : "") : result.out;

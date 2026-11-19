@@ -155,6 +155,16 @@ export function sharedMcp(cfg: Cfg, env: Record<string, string | undefined> = pr
   return usableMcp(withOAuth(mcpServers((cfg as { mcp_servers?: unknown }).mcp_servers), env), env).use;
 }
 
+export function reasoningEffortOptions(cli: Executor, effort?: string, claudeSettings?: Record<string, unknown>):
+  { args: string[]; env: Record<string, string> } {
+  const explicit = effort !== undefined && effort !== "default";
+  if (cli === "codex") return { args: explicit ? ["-c", `model_reasoning_effort=${JSON.stringify(effort)}`] : [], env: {} };
+  const env: Record<string, string> = explicit ? { CLAUDE_CODE_EFFORT_LEVEL: effort } : {};
+  // Claude loads account and project env settings after spawn.
+  const settings = explicit ? { ...claudeSettings, env } : claudeSettings;
+  return { args: settings ? ["--settings", JSON.stringify(settings)] : [], env };
+}
+
 /** `mcpArgs`: the MCP flags of this run (see `mcpLaunch`); none when left out (status views, model lookups). */
 export function cliCommand(cli: string, cfg: Cfg, gateOverride = false, mcpArgs: string[] = []): string[] {
   const c = cfg.clis?.[cli] ?? {};
@@ -163,7 +173,7 @@ export function cliCommand(cli: string, cfg: Cfg, gateOverride = false, mcpArgs:
     const cmd = ["claude", "-p", "--output-format", "stream-json", "--verbose", "--permission-mode", c.permission_mode ?? "bypassPermissions"];
     cmd.push("--model", c.model ?? "claude-opus-5-5");
     // the agent signature is the only attribution; drop Claude Code's own "Generated with" / co-author lines
-    cmd.push("--settings", JSON.stringify({ attribution: { commit: "", pr: "" }, includeCoAuthoredBy: false }));
+    cmd.push(...reasoningEffortOptions("claude", c.reasoning_effort, { attribution: { commit: "", pr: "" }, includeCoAuthoredBy: false }).args);
     const deny = claudeDisallowed(cfg, gateOverride);
     if (deny.length) cmd.push("--disallowedTools", ...deny);
     cmd.push(...mcpArgs);
@@ -175,7 +185,7 @@ export function cliCommand(cli: string, cfg: Cfg, gateOverride = false, mcpArgs:
       "-c", 'approval_policy="never"', "-c", "sandbox_workspace_write.network_access=true"];
     for (const dir of codexWritableDirs(homedir(), cfg.resources?.work_dirs)) cmd.push("--add-dir", dir);
     if (c.model) cmd.push("-m", c.model);
-    cmd.push(...mcpArgs);
+    cmd.push(...reasoningEffortOptions("codex", c.reasoning_effort).args, ...mcpArgs);
     return [...cmd, "-"];
   }
   throw new Error(`unknown cli ${cli}`);
@@ -249,6 +259,9 @@ export async function runAgent(cli: string, prompt: string, cwd: string, cfg: Cf
   extraEnv: Record<string, string> = {}, retryEmpty = true): Promise<string> {
   const mcp = await mcpLaunch(cli, cfg).catch(() => ({ args: [] as string[], env: {} as Record<string, string>, file: undefined }));
   const cmd = cliCommand(cli, cfg, gateOverride, mcp.args);
+  const claude = cfg.clis?.claude;
+  const effortEnv = cli === "claude" && !Array.isArray(claude?.command)
+    ? reasoningEffortOptions("claude", claude?.reasoning_effort).env : {};
   const timeoutMs = (cfg.clis?.timeout_minutes ?? 60) * 60_000;
   const stallMs = (cfg.clis?.stall_minutes ?? 20) * 60_000;
   const dir = cwd.replace(/^~/, homedir());
@@ -257,7 +270,7 @@ export async function runAgent(cli: string, prompt: string, cwd: string, cfg: Cf
   const proc = Bun.spawn(cmd, {
     cwd: existsSync(dir) ? dir : ROOT, stdin: new Blob([prompt]), stdout: "pipe", stderr: "pipe",
     // Claude -p stops background subagents 10 min after the last turn; our own run limit bounds the run instead
-    env: { ...process.env, CLAUDE_CODE_PRINT_BG_WAIT_CEILING_MS: "0", ...mcp.env, ...extraEnv, HUB_DATA: ROOT },
+    env: { ...process.env, CLAUDE_CODE_PRINT_BG_WAIT_CEILING_MS: "0", ...mcp.env, ...extraEnv, ...effortEnv, HUB_DATA: ROOT },
   });
   if (mcp.file) void proc.exited.finally(() => { try { rmSync(mcp.file!, { force: true }); } catch {} });
   const tid = logFile.split("/").pop()!.match(/^([A-Z]-[\w]*?\d{4})-\d{10,}/)?.[1];
@@ -491,12 +504,15 @@ async function askStructured(role: "router" | "judge", prompt: string, cfg: Cfg,
     } else if (routing && cli !== "claude") {
       codexArgs = ["--sandbox", "read-only"];
     }
+    const executor = cli === "claude" ? "claude" : "codex";
+    const defaultEffort = routing && executor === "codex" ? "low" : cfg.clis?.[executor]?.reasoning_effort;
+    const effort = reasoningEffortOptions(executor, cfg[role]?.reasoning_effort ?? defaultEffort);
     const cmd = cli === "claude"
       ? ["claude", "-p", "--output-format", "text", "--tools", "", ...(routing || explicit ? ["--strict-mcp-config"] : []),
-        ...(routing ? (model ? ["--model", model] : []) : ["--model", model ?? "claude-opus-5-5"])]
+        ...(routing ? (model ? ["--model", model] : []) : ["--model", model ?? "claude-opus-5-5"]), ...effort.args]
       : ["codex", "exec", "--skip-git-repo-check", ...codexArgs, ...(model ? ["-m", model] : []),
-        ...(routing ? ["-c", 'model_reasoning_effort="low"'] : []), "-"];
-    const { out, code } = await runInternalProcess(cmd, prompt, ROOT, timeout, env);
+        ...effort.args, "-"];
+    const { out, code } = await runInternalProcess(cmd, prompt, ROOT, timeout, { ...env, ...effort.env });
     mkdirSync(P("logs", "runs"), { recursive: true });
     if (explicit) appendFileSync(logFile, `${cli} ${model ?? ""} (exit ${code})\n${out}\n`);
     else writeFileSync(logFile, routing ? `${cli} ${model}\n${out}` : out);
