@@ -30,7 +30,7 @@ import { isWrite, runTool } from "../cloud/src/tools";
 import { cloudDeploy, startCloudBridge } from "./cloud";
 import { adoptCloudUrl, hubDialUrl, readHubToml } from "./sync";
 import { judgeAccuracy, level, needsApproval, noteStuckRoutine, proposeBatch, resolveProposals, routineParkedOnDecision, routineQueued, supersedeProposed } from "./autonomy";
-import { CODE, L, UPDATE_REQUEST, type UpdateState, setUpdateState, updateState, allowedClis, cliHintPatch, capOk, idTagFor, isPrimary, isCloudDeployHost, runningRev, setApprovalGate, setIdTag } from "./core";
+import { CODE, L, UPDATE_REQUEST, type UpdateState, setUpdateState, updateState, allowedClis, explicitTaskClis, cliHintPatch, capOk, idTagFor, isPrimary, isCloudDeployHost, runningRev, setApprovalGate, setIdTag } from "./core";
 import { accountEnv, accountsStatus, classify, failoverAccount, pendingLoginIds, pickAccount, reportFailure, retryLogins, submitLoginCode } from "./accounts";
 import { channelPrompt, channels, resolveChannels, updateChannel } from "./channels";
 import { shellBash } from "./shell";
@@ -137,9 +137,10 @@ const pendingRoute: string[] = [];
 const cancelled = new Set<string>(); // tasks the owner cancelled while their agent ran // decisions opened by workers, routed by the next tick
 async function processTask(path: string, cfg: Cfg, host: string) {
   const { meta, body } = readDoc(path);
-  const wanted = allowedClis(meta, cfg);
+  const explicit = explicitTaskClis(meta, cfg);
+  const wanted = explicit ?? allowedClis(meta, cfg);
   const installed = (c: string) => !!Bun.which(c);
-  const first = pickAccount(cfg, wanted.filter(installed)) ?? failoverAccount(cfg, null, wanted, installed);
+  const first = pickAccount(cfg, wanted.filter(installed)) ?? failoverAccount(cfg, null, wanted, installed, !!explicit);
   const agent = meta.agent || "lead";
   if (!first) { // no usable account right now → put it back, don't fail it
     await locked(async () => {
@@ -237,8 +238,8 @@ async function processTask(path: string, cfg: Cfg, host: string) {
     res = parseResult(out);
     const failure = res.status === "failed" ? classify(out) : null;
     if (!failure) break;
-    await reportFailure(acct, failure, out, cfg); // puts this account on cooldown / needs-login
-    const next: typeof first | null = hop < 4 ? failoverAccount(cfg, acct, wanted, installed) : null;
+    await reportFailure(acct, failure, out, cfg, !!explicit); // puts this account on cooldown / needs-login
+    const next: typeof first | null = hop < 4 ? failoverAccount(cfg, acct, wanted, installed, !!explicit) : null;
     if (next) {
       const was = `${acct.cli}/${acct.name}`;
       await locked(async () => {
@@ -816,7 +817,10 @@ export async function tick(cfg: Cfg, background = false) {
     if (running >= max) break;
     if (!pickAccount(cfg, ["claude", "codex"].filter((c) => Bun.which(c)))) break;
     if ((await githubStarved(cfg)).starved && list(P("tasks", "inbox"), /^T-.*\.md$/).every((p) => GH_HEAVY.has(readDoc(p).meta.agent))) break;
-    const t = pickTask(cfg, pressureOf(s), canRunHeavy(s, cfg, running));
+    const t = pickTask(cfg, pressureOf(s), canRunHeavy(s, cfg, running), (meta) => {
+      const explicit = explicitTaskClis(meta, cfg);
+      return !explicit || !!pickAccount(cfg, explicit.filter((cli) => Bun.which(cli)));
+    });
     if (!t) break;
     const active = await claim(t, host);
     if (!active) { if (tried.has(t)) break; tried.add(t); continue; } // e.g. offline: don't spin on the same task
