@@ -19,6 +19,9 @@ const answer = (input: string) => {
   if (message(input).includes("HOLD CONVERSATION")) record("held");
   if (input.startsWith("Tool results:")) return { calls: [], reply: "Fixture used task data" };
   if (message(input).includes("Read a task first")) return { calls: [{ tool: "list_tasks", args: {} }], reply: "" };
+  if (cli === "codex" && message(input).includes("Return an empty result")) return { calls: [], reply: "" };
+  if (message(input).includes("Run a write that cannot finish"))
+    return { calls: [{ tool: "remember", args: { file: "memory/unwritable.md", text: "Fixture memory" } }], reply: "" };
   if (message(input).includes("Create fixture task")) return { calls: [{ tool: "create_task", args: { title: "Created exactly once" } }], reply: "Creating one task" };
   return { calls: [], reply: cli + " fixture reply" };
 };
@@ -50,6 +53,10 @@ if (args.includes("--input-format")) {
     const turn = JSON.parse(line).message.content;
     record("chat");
     fault("chat");
+    if (message(turn).includes("Return an internal provider error")) {
+      console.log(JSON.stringify({ type: "result", is_error: true, result: "fixture raw provider trace ID review-123" }));
+      continue;
+    }
     const result = answer(turn);
     while (message(turn).includes("HOLD CONVERSATION") && !existsSync(join(dir, "release-chat"))) await Bun.sleep(100);
     console.log(JSON.stringify({ type: "result", result: JSON.stringify(result) }));
@@ -75,6 +82,10 @@ if (args.includes("--ephemeral")) {
 if (input.includes("You place tasks for an AI agent fleet")) {
   record("plan");
   fault("plan");
+  if (input.includes("Hold the planner during a settings change")) {
+    record("planner-held");
+    while (!existsSync(join(dir, "release-planner"))) await Bun.sleep(50);
+  }
   const tasks = Object.fromEntries(Array.from(input.matchAll(/^\- (T-\d+) \[agent /gm), ([, id]) => [id, { cli: "claude" }]));
   console.log(JSON.stringify(tasks));
   process.exit();
@@ -87,6 +98,10 @@ if (input.startsWith("You are the owner's JUDGE")) {
 }
 if (input.includes('{"fixed": true|false')) {
   record("medic");
+  if (cli === "codex" && input.includes("Repair with an unavailable service")) {
+    console.error("model service unavailable before tool start");
+    process.exit(1);
+  }
   if (existsSync(join(dir, cli + "-medic-write.fault"))) {
     record("medic-write");
     if (args.includes("--json")) console.log('{"type":"item.started","item":{"type":"command_execution"}}');

@@ -175,7 +175,9 @@ export class ClaudeModel implements Model {
         stdin.flush();
         let timer: ReturnType<typeof setTimeout> | undefined;
         try {
-          return await Promise.race([nextResult(), new Promise<string>((_, rej) => { timer = setTimeout(() => rej(new Error("model timeout")), this.timeoutMs); })]);
+          return await Promise.race([nextResult(), new Promise<string>((_, rej) => {
+            timer = setTimeout(() => rej(new ModelCallError("model timeout", "timeout")), this.timeoutMs);
+          })]);
         } finally { clearTimeout(timer); }
       },
       close: () => { try { stdin.end(); } catch {} proc.kill(); },
@@ -184,7 +186,9 @@ export class ClaudeModel implements Model {
 }
 
 export class ModelCallError extends Error {
-  constructor(message: string, readonly retryable = true) { super(message); }
+  constructor(message: string,
+    readonly kind: "auth" | "quota" | "timeout" | "unavailable" | "tool_started" = classify(message) ?? "unavailable",
+  ) { super(message); }
 }
 
 function modelCallError(error: unknown): never {
@@ -209,10 +213,12 @@ export class CodexModel implements Model {
         const prompt = `Conversation turns (JSON):\n${JSON.stringify(transcript)}\nRespond to the last user turn.`;
         const result = await runInternalProcess(cmd, prompt, BRAIN_DIR, this.timeoutMs, this.env);
         const { reply, completed, usedTools } = internalStream(result.out, "codex");
-        if (usedTools) throw new ModelCallError("Codex started a tool outside the Noop conversation", false);
-        if (result.timedOut) throw new Error("timed out");
-        const failure = classify(result.err + "\n" + result.out);
-        if (result.code) throw new Error(failure === "auth" ? "needs login" : failure === "quota" ? "is out of quota" : `exited with code ${result.code}`);
+        if (usedTools) throw new ModelCallError("Codex started a tool outside the Noop conversation", "tool_started");
+        if (result.timedOut) throw new ModelCallError("Codex timed out", "timeout");
+        if (result.code) {
+          const failure = classify(result.err + "\n" + result.out);
+          throw new ModelCallError(result.err.trim() || `Codex exited with code ${result.code}`, failure ?? "unavailable");
+        }
         if (!completed || !reply) throw new Error("ended without a completed reply");
         transcript.push({ role: "assistant", content: reply });
         return reply;
@@ -281,7 +287,7 @@ export type BrainIn = {
   /** Said inside a channel: the discussion and the work it starts stay there. */
   channel?: { slug: string; name: string; goal: string };
 };
-export type BrainOut = { reply: string; calls: { tool: string; args: any; ok: boolean; result?: any; error?: string }[]; rounds: number; ms: { first_reply?: number; model: number[]; total: number }; fallback?: boolean; executor?: string };
+export type BrainOut = { reply: string; calls: { tool: string; args: any; ok: boolean; result?: any; error?: string }[]; rounds: number; ms: { first_reply?: number; model: number[]; total: number }; startedWrite?: boolean; fallback?: boolean; executor?: string };
 
 /** The context block: what the brain sees before deciding (open work, decisions, relevant memory, the channel). */
 export function context(st: ToolStore, m: BrainIn): string {
@@ -370,6 +376,7 @@ export async function think(m: BrainIn, st: ToolStore, model: Model, post: (repl
       const ref = m.replyTo ?? writes.map((c) => c.args?.id).find((x) => typeof x === "string" && /^T-/.test(x));
       if (turn.reply) { post(turn.reply, ref); res.ms.first_reply = Date.now() - t0; }
       for (const c of writes) {
+        if (!invalid.some((x) => x.c === c)) res.startedWrite = true;
         const r = await runTool(st, c.tool, c.args);
         res.calls.push({ ...c, ok: r.ok, ...(r.ok ? { result: r.data } : { error: r.error }) });
       }

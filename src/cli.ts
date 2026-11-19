@@ -135,7 +135,8 @@ function runRoutines(cfg: Cfg, host: string, primary: boolean) {
 // ------------------------------------------------------------------ task processing
 const pendingRoute: string[] = [];
 const cancelled = new Set<string>(); // tasks the owner cancelled while their agent ran // decisions opened by workers, routed by the next tick
-async function processTask(path: string, cfg: Cfg, host: string) {
+async function processTask(path: string, host: string) {
+  const cfg = loadConfig();
   const { meta, body } = readDoc(path);
   const explicit = explicitTaskClis(meta, cfg);
   const wanted = explicit ?? allowedClis(meta, cfg);
@@ -801,7 +802,7 @@ export async function tick(cfg: Cfg, background = false) {
       .filter((m) => !m.held && m.kind !== "proposals").map((m) => m.id)];
     for (const id of new Set(toRoute)) {
       if (!require("node:fs").existsSync(P("decisions", "open", `${id}.md`))) continue;
-      await locked(async () => { await _pull(); await routeDecision(id, cfg, host); await _commitPush(`[${host}] route ${id}`); });
+      await locked(async () => { await _pull(); await routeDecision(id, loadConfig(), host); await _commitPush(`[${host}] route ${id}`); });
     }
   }
   // resource governor: disk first, then adaptive parallelism
@@ -812,14 +813,15 @@ export async function tick(cfg: Cfg, background = false) {
   const tried = new Set<string>();
   for (;;) {
     if (draining) break; // stopping: finish what runs, start nothing new
-    const s = sample(cfg);
-    const max = allowedParallel(s, cfg, running);
+    const current = loadConfig();
+    const s = sample(current);
+    const max = allowedParallel(s, current, running);
     if (running >= max) break;
-    if (!pickAccount(cfg, ["claude", "codex"].filter((c) => Bun.which(c)))) break;
-    if ((await githubStarved(cfg)).starved && list(P("tasks", "inbox"), /^T-.*\.md$/).every((p) => GH_HEAVY.has(readDoc(p).meta.agent))) break;
-    const t = pickTask(cfg, pressureOf(s), canRunHeavy(s, cfg, running), (meta) => {
-      const explicit = explicitTaskClis(meta, cfg);
-      return !explicit || !!pickAccount(cfg, explicit.filter((cli) => Bun.which(cli)));
+    if (!pickAccount(current, ["claude", "codex"].filter((c) => Bun.which(c)))) break;
+    if ((await githubStarved(current)).starved && list(P("tasks", "inbox"), /^T-.*\.md$/).every((p) => GH_HEAVY.has(readDoc(p).meta.agent))) break;
+    const t = pickTask(current, pressureOf(s), canRunHeavy(s, current, running), (meta) => {
+      const explicit = explicitTaskClis(meta, current);
+      return !explicit || !!pickAccount(current, explicit.filter((cli) => Bun.which(cli)));
     });
     if (!t) break;
     const active = await claim(t, host);
@@ -827,7 +829,7 @@ export async function tick(cfg: Cfg, background = false) {
     running++;
     const tid = basename(active, ".md");
     runningIds.add(tid);
-    const job = processTask(active, cfg, host)
+    const job = processTask(active, host)
       .catch((e) => { console.error(e); journal(host, `💥 worker crashed on ${active}: ${e}`); })
       .finally(() => { running--; runningIds.delete(tid); });
     jobs.push(job);
@@ -1032,6 +1034,7 @@ async function daemon(cfg: Cfg) {
     chatNow = { text, chat: m.chat, reply, thread, channel: room?.slug };
     const post = (r: string, ref?: string) => appendEvent({ from: "hub", kind: "system", text: r.slice(0, 2000), ...(ref ? { ref } : {}), ...(thread ? { thread } : {}), ...(room ? { channel: room.slug } : {}) });
     const current = loadConfig(), selected = current.clis?.internal;
+    let failureReason = L("An internal error occurred", "发生内部错误");
     let out: BrainOut;
     try {
       if (selected) {
@@ -1039,30 +1042,44 @@ async function daemon(cfg: Cfg) {
         let reason = L("None of the selected executors is available", "没有可用的所选执行器");
         const timeout = (current.router?.timeout_seconds ?? 45) * 1000;
         const result = await tryInternalExecutors(current, async (executor, env) => {
+          const name = executor === "codex" ? "Codex" : "Claude";
           const version = internalModel(current, "router", executor);
           const model = executor === "codex" ? new CodexModel(version, timeout, env) : new ClaudeModel(version, "claude", timeout, false, env);
           try {
             const answer = await think(m, store, model, post);
-            if (answer.reply || answer.rounds < 4 || answer.calls.some((c) => isWrite(c.tool) && c.ok)) return { ...answer, executor };
-            reason = L(`${executor} did not answer`, `${executor} 没有返回回复`);
+            if (answer.reply || answer.calls.some((c) => isWrite(c.tool) && c.ok && c.result?.ok !== false)) return { ...answer, executor };
+            if (answer.startedWrite) {
+              post(L("A chat action did not finish. Check the result before retrying.", "主会话的操作未完成。请确认结果后再试。"));
+              return { ...answer, executor };
+            }
+            reason = L(`${name} did not answer`, `${name} 没有返回回复`);
           } catch (error) {
-            if (!(error instanceof ModelCallError) || !error.retryable) throw error;
-            reason = `${executor === "codex" ? "Codex" : "Claude"} ${error.message.replace(/^Error: /, "").split("\n")[0].slice(0, 120)}`;
+            if (!(error instanceof ModelCallError) || error.kind === "tool_started") throw error;
+            console.error(`chat executor ${executor}:`, error);
+            reason = {
+              auth: L(`${name} needs login`, `${name} 需要登录`),
+              quota: L(`${name} is out of quota`, `${name} 额度已用完`),
+              timeout: L(`${name} timed out`, `${name} 已超时`),
+              unavailable: L(`${name} could not complete the request`, `${name} 未能完成请求`),
+            }[error.kind];
           }
-          console.error(`chat executor unavailable: ${reason}`);
         });
-        if (!result) throw new Error(reason);
+        if (!result) {
+          failureReason = reason;
+          throw new Error(reason);
+        }
         out = result;
-      } else out = await think(m, store, legacyModel, post);
-      // out of rounds with no reply and nothing done (only lookups): the message would vanish, so it becomes work
-      if (!out.reply && out.rounds >= 4 && !out.calls.some((c) => isWrite(c.tool) && c.ok)) throw new Error("no answer");
+      } else {
+        out = await think(m, store, legacyModel, post);
+        // The legacy path turns a conversation that runs out of rounds into work.
+        if (!out.reply && out.rounds >= 4 && !out.calls.some((c) => isWrite(c.tool) && c.ok)) throw new Error("no answer");
+      }
     } catch (err) {
-      // no model (CLI missing, logged out, quota, timeout): the message still becomes work, never lost, never guessed onto some
-      // other task. The owner is told where it went; the reason goes to the journal and brain.jsonl (stderr is not visible)
       console.error(`chat brain: ${err}`);
       if (selected) {
-        const why = String(err).replace(/^Error: /, "").split("\n")[0].slice(0, 160);
-        const note = L(`Chat could not finish (${why}). Please try again manually.`, `主会话未能完成（${why}），请手动重试。`);
+        const note = err instanceof ModelCallError && err.kind === "tool_started"
+          ? L("An executor started a tool outside the chat. Check the result before retrying.", "执行器启动了主会话之外的工具。请确认结果后再试。")
+          : L(`Chat could not finish (${failureReason}). Please try again manually.`, `主会话未能完成（${failureReason}），请手动重试。`);
         post(note);
         logBrain(m, { reply: note, calls: [], rounds: 0, ms: { model: [], total: Date.now() - got }, fallback: true }, got);
         return;

@@ -8,7 +8,7 @@ import { arch, homedir, platform, release } from "node:os";
 import { join } from "node:path";
 import { type Cfg, CODE, L, DATA, hostName, HOME_DIR } from "./core";
 
-import { classify, tryInternalExecutors } from "./accounts";
+import { tryInternalExecutors } from "./accounts";
 import { internalStream, runInternalProcess } from "./runner";
 import type { Executor } from "../app/executor-choices";
 
@@ -76,17 +76,18 @@ export async function medic(problem: string, cfg: Cfg, opts: { auto?: boolean; k
       : ["codex", "exec", "--skip-git-repo-check", "--approve-for-me", ...(explicit ? ["--json"] : []), "-c", "sandbox_workspace_write.network_access=true", ...(model ? ["-m", model] : []), "-"];
     console.error(`🩺 medic (${cli}) is looking at: ${problem.split("\n")[0].slice(0, 120)}`);
     const result = await runInternalProcess(cmd, prompt, CODE, (cfg.medic?.timeout_minutes ?? 30) * 60_000, { ...env, HUB_NO_MEDIC: "1" });
-    writeFileSync(log, `${problem}\n\n${cli} (exit ${result.code})\n${result.out}`, { flag: "a" });
-    if (!explicit) return result.out;
-    const { reply, completed, usedTools } = internalStream(result.out, cli);
+    writeFileSync(log, `${problem}\n\n${cli} (exit ${result.code})\n${result.out}\n${result.err}\n`, { flag: "a" });
+    const stream = explicit ? internalStream(result.out, cli) : undefined;
+    const out = stream ? (stream.completed && !result.code ? stream.reply : "") : result.out;
+    const m = [...out.matchAll(/```json\s*(\{[\s\S]*?\})\s*```/g)].pop();
+    let res: any = null; try { res = m ? JSON.parse(m[1]) : null; } catch {}
     // A repair that started a tool may have made changes even if its result failed.
-    if (!usedTools && (result.code === 127 || (result.code && classify(result.err + result.out)))) return undefined;
-    return completed && !result.code ? reply : "";
+    if (stream && !res && !stream.usedTools && !result.timedOut) return;
+    return { res };
   };
-  const out = explicit ? await tryInternalExecutors(cfg, attempt) : await attempt(legacyCli!);
-  if (out === undefined) { console.error("medic: no selected executor is available"); return null; }
-  const m = [...out.matchAll(/```json\s*(\{[\s\S]*?\})\s*```/g)].pop();
-  let res: any = null; try { res = m ? JSON.parse(m[1]) : null; } catch {}
+  const repair = explicit ? await tryInternalExecutors(cfg, attempt) : await attempt(legacyCli!);
+  if (!repair) { console.error(`medic: no selected executor returned a result; log: ${log}`); return null; }
+  const { res } = repair;
   const line = res ? `${res.fixed ? "✅ fixed" : "❌ not fixed"}: ${res.summary}${res.owner_action ? L(`\n👉 You need to run: ${res.owner_action}`, `\n👉 你需要执行: ${res.owner_action}`) : ""}${res.pr ? `\nPR: ${res.pr}` : ""}`
     : `medic finished without a result; log: ${log}`;
   console.error(`🩺 ${line}`);

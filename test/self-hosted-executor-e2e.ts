@@ -2,7 +2,7 @@
 import assert from "node:assert/strict";
 import { spawn, spawnSync, type ChildProcess } from "node:child_process";
 import { createHash } from "node:crypto";
-import { closeSync, cpSync, existsSync, mkdirSync, mkdtempSync, openSync, readFileSync, readdirSync, symlinkSync, unlinkSync, writeFileSync } from "node:fs";
+import { closeSync, cpSync, existsSync, mkdirSync, mkdtempSync, openSync, readFileSync, readdirSync, rmdirSync, symlinkSync, unlinkSync, writeFileSync } from "node:fs";
 import { BUILTIN_ROUTINES } from "../src/builtin-routines";
 import { b32decode, hotp, stepAt } from "../cloud/src/totp";
 import { createServer } from "node:net";
@@ -252,6 +252,17 @@ try {
       assert.equal(r.status, 200, await r.clone().text());
     };
     const stage = (name: string) => calls().filter(c => c.stage === name).map(c => c.cli);
+    await save({ clis: { internal: ["codex"], agents: { lead: ["claude"] } } });
+    add("Hold the planner during a settings change", "--cli", "codex");
+    await until("planner did not pause", () => stage("planner-held").length > 0);
+    const saved = await save({ clis: { agents: { lead: ["codex"] } } });
+    assert.deepEqual(saved.effective.agents.find(member => member.id === "lead")?.clis, ["codex"]);
+    const fresh = add("Run a new task after the member choice is confirmed");
+    writeFileSync(join(out, "release-planner"), "");
+    await until("the new task did not finish", async () => (await task(fresh)).state === "done");
+    assert.deepEqual(taskCalls(fresh), ["codex/default"]);
+    check("new tasks use the member choice confirmed while planning was in progress");
+
     await setSelection(["codex"]);
     const invalid = await request(local, "/api/settings", "PUT", { clis: { internal: ["bogus"] } });
     assert.equal(invalid.status, 400);
@@ -280,6 +291,34 @@ try {
     unlinkSync(join(out, "codex-chat.fault"));
     check("an exhausted chat remains visible and does not route to a member");
 
+    const beforeEmpty = (await feed()).events.length;
+    await say("Return an empty result");
+    assert((await feed()).events.slice(beforeEmpty).some(e => /did not answer.*try again manually/i.test(e.text)),
+      "an empty reply without a write must show the retry notice");
+    await setSelection(["codex", "claude"]);
+    const beforeEmptyBackup = stage("chat").length;
+    await say("Return an empty result with a backup available");
+    assert.deepEqual(stage("chat").slice(beforeEmptyBackup), ["codex", "claude"]);
+    check("empty results try the next allowed executor or display the retry notice");
+
+    const unwritableMemory = join(noopHome, "data/memory/unwritable.md");
+    mkdirSync(unwritableMemory);
+    const beforeWriteFailure = stage("chat").length;
+    await say("Run a write that cannot finish");
+    rmdirSync(unwritableMemory);
+    assert.deepEqual(stage("chat").slice(beforeWriteFailure), ["codex"]);
+    assert((await feed()).events.some(e => /check the result before retrying/i.test(e.text)));
+    check("a failed chat write shows a recovery notice without replaying the request");
+
+    await setSelection(["claude"]);
+    await say("Return an internal provider error");
+    const errorFeed = (await feed()).events;
+    assert(errorFeed.some(e => /Claude could not complete the request.*try again manually/i.test(e.text)));
+    assert(!errorFeed.some(e => e.text.includes("review-123")));
+    assert(readFileSync(join(out, "primary.log"), "utf8").includes("review-123"));
+    check("the chat shows a safe reason and keeps the raw provider error in local diagnostics");
+
+    await setSelection(["codex"]);
     writeFileSync(configPath, fixtureConfig.replace("timeout_seconds = 8", "timeout_seconds = 0.35"));
     await say("HOLD CONVERSATION");
     const timedOut = calls().filter(c => c.stage === "held").at(-1)!;
@@ -342,6 +381,24 @@ try {
     check("Judge and Medic use the same selection as planning and chat");
 
     await setSelection(["codex", "claude"]);
+    const codexConfig = join(home, ".codex/config.toml");
+    const validCodexConfig = readFileSync(codexConfig, "utf8");
+    writeFileSync(codexConfig, "[mcp_servers.\n");
+    const planWithBadConfig = stage("plan").length, judgeWithBadConfig = stage("judge").length;
+    const malformed = add("Ask fixture judgement with a malformed Codex profile", "--cli", "codex");
+    await until("bad Codex config stopped planning or judging", async () =>
+      (await task(malformed)).state === "blocked" && stage("judge").length > judgeWithBadConfig);
+    assert.deepEqual(stage("plan").slice(planWithBadConfig), ["claude"]);
+    assert.deepEqual(stage("judge").slice(judgeWithBadConfig), ["claude"]);
+    await setSelection(["codex"]);
+    const onlyBadConfig = stage("plan").length;
+    const stillRuns = add("Dispatch even when the planner has no usable profile", "--cli", "codex");
+    await until("bad Codex config blocked dispatch", () => taskCalls(stillRuns).length > 0);
+    assert.deepEqual(stage("plan").slice(onlyBadConfig), []);
+    writeFileSync(codexConfig, validCodexConfig);
+    check("bad Codex config skips only that internal candidate and does not block dispatch");
+
+    await setSelection(["codex", "claude"]);
     for (const entry of ["judge", "medic", "plan"]) writeFileSync(join(out, "codex-" + entry + ".fault"), "");
     const before = Object.fromEntries(["judge", "medic", "plan"].map(entry => [entry, stage(entry).length]));
     const alternate = add("Ask fixture judgement with a backup", "--cli", "codex");
@@ -351,6 +408,11 @@ try {
     check("planning, Judge and Medic try the available backup in the selected order");
 
     unlinkSync(join(out, "codex-medic.fault"));
+    const beforePreflight = stage("medic").length;
+    cli("fix", "Repair with an unavailable service");
+    assert.deepEqual(stage("medic").slice(beforePreflight), ["codex", "claude"]);
+    check("Medic can switch executors after a model failure before any tool starts");
+
     writeFileSync(join(out, "codex-medic-write.fault"), "");
     const beforeWrite = stage("medic").length;
     const repair = spawnSync(process.execPath, argsFor(["fix", "Repair tool starts before a quota failure"]), { cwd: repo, env, encoding: "utf8", timeout: 15000 });
