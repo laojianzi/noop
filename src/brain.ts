@@ -201,11 +201,12 @@ export class CodexModel implements Model {
   async open(system: string) {
     mkdirSync(BRAIN_DIR, { recursive: true });
     const transcript: { role: "user" | "assistant"; content: string }[] = [];
-    const protocol = 'Noop executes the tools listed above when your final JSON requests them. ' +
+    const protocol = 'Noop tools use the JSON conversation protocol below. They do not appear in the Codex native tool list. ' +
+      'To call a Noop tool, return a JSON request for the host to execute. ' +
       'For example, to read the task list, return {"calls":[{"tool":"list_tasks","args":{}}],"reply":""}. ' +
-      'The next turn supplies the result. Use these JSON requests for every Noop tool.';
+      'Noop supplies the result in the next turn.';
     const cmd = ["codex", "exec", "--ephemeral", "--json", "--skip-git-repo-check", ...codexReadOnlyArgs(BRAIN_DIR, this.env),
-      "-c", `developer_instructions=${JSON.stringify(system + "\n\n" + protocol)}`,
+      "-c", `developer_instructions=${JSON.stringify(protocol + "\n\n" + system)}`,
       ...(this.model ? ["--model", this.model] : []), "-"];
     return {
       send: async (text: string) => {
