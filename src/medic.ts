@@ -6,7 +6,11 @@ import { $ } from "bun";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { arch, homedir, platform, release } from "node:os";
 import { join } from "node:path";
-import { type Cfg, CODE, L, DATA, hostName, HOME_DIR } from "./core";
+import { CODE, L, DATA, hostName, HOME_DIR, loadConfig } from "./core";
+
+import { tryInternalExecutors } from "./accounts";
+import { internalStream, runInternalProcess } from "./runner";
+import type { Executor } from "../app/executor-choices";
 
 const STATE = join(HOME_DIR, "medic.json");
 const LOGDIR = join(HOME_DIR, "medic");
@@ -51,8 +55,10 @@ ${ctx}
 End with one \`\`\`json block: {"fixed": true|false, "summary": "...", "owner_action": "command or empty", "pr": "url or empty"}`;
 
 /** Run the medic. `auto` = triggered by a failure (rate-limited to once per hour per problem kind). */
-export async function medic(problem: string, cfg: Cfg, opts: { auto?: boolean; kind?: string } = {}) {
-  if (process.env.HUB_NO_MEDIC || cfg.medic?.enabled === false) return null;
+export async function medic(problem: string, opts: { auto?: boolean; kind?: string } = {}) {
+  if (process.env.HUB_NO_MEDIC) return null;
+  const cfg = loadConfig();
+  if (cfg.medic?.enabled === false) return null;
   const state: Record<string, string> = existsSync(STATE) ? JSON.parse(readFileSync(STATE, "utf8")) : {};
   const kind = opts.kind ?? "manual";
   if (opts.auto && state[kind] && Date.now() - Date.parse(state[kind]) < 60 * 60_000) return null;
@@ -60,21 +66,30 @@ export async function medic(problem: string, cfg: Cfg, opts: { auto?: boolean; k
   mkdirSync(LOGDIR, { recursive: true });
   writeFileSync(STATE, JSON.stringify(state));
 
-  const cli = ["claude", "codex"].find((c) => Bun.which(c));
-  if (!cli) { console.error("medic: neither claude nor codex is installed"); return null; }
+  const explicit = !!cfg.clis?.internal;
+  const legacyCli = explicit ? undefined : (["claude", "codex"] as const).find((c) => Bun.which(c));
+  if (!explicit && !legacyCli) { console.error("medic: neither claude nor codex is installed"); return null; }
   const prompt = PROMPT(problem, await context(), cfg.medic?.push !== false);
-  const cmd = cli === "claude"
-    ? ["claude", "-p", "--output-format", "text", "--permission-mode", "bypassPermissions", "--disallowedTools", "Bash(git push --force:*)", "Bash(git push -f:*)", "Bash(rm -rf /:*)", "Bash(rm -rf ~:*)"]
-    : ["codex", "exec", "--skip-git-repo-check", "--approve-for-me", "-c", "sandbox_workspace_write.network_access=true", "-"];
-  console.error(`🩺 medic (${cli}) is looking at: ${problem.split("\n")[0].slice(0, 120)}`);
-  const p = Bun.spawn(cmd, { cwd: CODE, stdin: new Blob([prompt]), stdout: "pipe", stderr: "pipe", env: { ...process.env, HUB_NO_MEDIC: "1" } });
-  const timer = setTimeout(() => p.kill(), (cfg.medic?.timeout_minutes ?? 30) * 60_000);
-  const out = await new Response(p.stdout).text();
-  await p.exited; clearTimeout(timer);
   const log = join(LOGDIR, `${new Date().toISOString().replace(/[:.]/g, "-")}-${kind}.log`);
-  writeFileSync(log, `${problem}\n\n${out}`);
-  const m = [...out.matchAll(/```json\s*(\{[\s\S]*?\})\s*```/g)].pop();
-  let res: any = null; try { res = m ? JSON.parse(m[1]) : null; } catch {}
+  const attempt = async (cli: Executor, env?: Record<string, string>) => {
+    const model = explicit ? cfg.clis[cli]?.model : undefined;
+    const cmd = cli === "claude"
+      ? ["claude", "-p", "--output-format", explicit ? "stream-json" : "text", ...(explicit ? ["--verbose"] : []), "--permission-mode", "bypassPermissions", "--disallowedTools", "Bash(git push --force:*)", "Bash(git push -f:*)", "Bash(rm -rf /:*)", "Bash(rm -rf ~/:*)", ...(model ? ["--model", model] : [])]
+      : ["codex", "exec", "--skip-git-repo-check", "--approve-for-me", ...(explicit ? ["--json"] : []), "-c", "sandbox_workspace_write.network_access=true", ...(model ? ["-m", model] : []), "-"];
+    console.error(`🩺 medic (${cli}) is looking at: ${problem.split("\n")[0].slice(0, 120)}`);
+    const result = await runInternalProcess(cmd, prompt, CODE, (cfg.medic?.timeout_minutes ?? 30) * 60_000, { ...env, HUB_NO_MEDIC: "1" });
+    writeFileSync(log, `${problem}\n\n${cli} (exit ${result.code})\n${result.out}\n${result.err}\n`, { flag: "a" });
+    const stream = explicit ? internalStream(result.out, cli) : undefined;
+    const out = stream ? (stream.completed && !result.code ? stream.reply : "") : result.out;
+    const m = [...out.matchAll(/```json\s*(\{[\s\S]*?\})\s*```/g)].pop();
+    let res: any = null; try { res = m ? JSON.parse(m[1]) : null; } catch {}
+    // A repair that started a tool may have made changes even if its result failed.
+    if (stream && !res && !stream.usedTools && !result.timedOut) return;
+    return { res };
+  };
+  const repair = explicit ? await tryInternalExecutors(cfg, attempt) : await attempt(legacyCli!);
+  if (!repair) { console.error(`medic: no selected executor returned a result; log: ${log}`); return null; }
+  const { res } = repair;
   const line = res ? `${res.fixed ? "✅ fixed" : "❌ not fixed"}: ${res.summary}${res.owner_action ? L(`\n👉 You need to run: ${res.owner_action}`, `\n👉 你需要执行: ${res.owner_action}`) : ""}${res.pr ? `\nPR: ${res.pr}` : ""}`
     : `medic finished without a result; log: ${log}`;
   console.error(`🩺 ${line}`);

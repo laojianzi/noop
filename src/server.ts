@@ -11,6 +11,7 @@
 //   POST /api/media (multipart file)      → { url }   (workers upload screenshots/recordings here)
 //   GET  /media/<file>                    → attachment
 //   GET  /api/files/list?prefix=  · GET /api/files/read?path=   → read-only rules & memory (same shape as the Worker)
+import { EXECUTOR_CHOICES, INTERNAL_SELECTION_ERROR, invalidInternalSelection } from "../app/executor-choices";
 import { appendFileSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { basename, join } from "node:path";
@@ -293,13 +294,14 @@ export function settingsView() {
   return {
     current: existsSync(P("settings.json")) ? JSON.parse(readFileSync(P("settings.json"), "utf8")) : {},
     effective: {
+      internalClis: cfg.clis?.internal ?? null,
       agents: agents.map((a) => ({ id: a, ...agentRole(a), clis: allowedClis({ agent: a }, cfg), autonomy: cfg.autonomy?.agents?.[a] ?? cfg.autonomy?.level ?? "onboarding" })),
       autonomy: cfg.autonomy?.level ?? "onboarding",
       routines: (cfg.routine ?? []).map((r: any) => ({ name: r.name, desc: routineDesc(r), every: r.every, agent: r.agent, enabled: r.enabled !== false })),
       max_parallel: cfg.host?.max_parallel ?? null,
       media_days: mediaDays(cfg),
     },
-    options: { clis: [["claude"], ["codex", "claude"], ["claude", "codex"], ["codex"]], autonomy: ["onboarding", "assisted", "autonomous"] },
+    options: { clis: EXECUTOR_CHOICES, autonomy: ["onboarding", "assisted", "autonomous"] },
   };
 }
 
@@ -307,6 +309,7 @@ let settingsHook: ((summary: string) => Promise<void>) | null = null;
 export const onSettingsSaved = (fn: (summary: string) => Promise<void>) => { settingsHook = fn; };
 
 export async function saveSettings(patch: Record<string, unknown>) {
+  if (invalidInternalSelection(patch.clis as { internal?: unknown } | undefined)) return { error: INTERNAL_SELECTION_ERROR };
   const cur = existsSync(P("settings.json")) ? JSON.parse(readFileSync(P("settings.json"), "utf8")) : {};
   const deep = (a: any, b: any): any => {
     const o = { ...a };
@@ -513,7 +516,10 @@ export function startServer(cfg: Cfg, onOwnerTask: OwnerTask) {
         return "error" in r ? json(r, 400) : json(r);
       }
       if (url.pathname === "/api/settings" && req.method === "GET") return json(settingsView());
-      if (url.pathname === "/api/settings" && req.method === "PUT") return json(await saveSettings((await req.json()) as Record<string, unknown>));
+      if (url.pathname === "/api/settings" && req.method === "PUT") {
+        const result = await saveSettings(await req.json() as Record<string, unknown>);
+        return json(result, "error" in result ? 400 : 200);
+      }
       if (url.pathname === "/api/tasks" && req.method === "GET") {
         return json(taskHistory(taskStore(), { query: url.searchParams.get("q") ?? "", offset: Number(url.searchParams.get("offset")), limit: Number(url.searchParams.get("limit")) }));
       }

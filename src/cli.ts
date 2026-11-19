@@ -10,7 +10,7 @@ import {
 } from "./core";
 import { amendDecision, closeDecision, IGNORE, ignoreDecision, openDecision, overrideJudge, ownerPickedMenu, recentJudgeIds, routeDecision } from "./decisions";
 import { notify, openDecisionIds, pollReplies } from "./notify";
-import { RUN_LIMIT, STALLED, type Result, agentProcs, ask, buildPrompt, parseResult, quickAsk, runAgent, runLimits } from "./runner";
+import { RUN_LIMIT, STALLED, type Result, agentProcs, ask, buildPrompt, internalModel, parseResult, quickAsk, runAgent, runLimits } from "./runner";
 import { writeRules } from "./rules";
 import { backoffMinutes, CHECKED_FALLBACK_MIN, isNoChangeRoutine, MAX_WAKES, tooManyWakes, waitMeta } from "./waits";
 import { allowedParallel, budget, canRunHeavy, ensureDisk, pressureOf, sample } from "./resources";
@@ -25,13 +25,13 @@ import { medic } from "./medic";
 import { githubStarved } from "./github";
 import { doctor, visual } from "./visual";
 import { ackInbound, answerFromChat, appendEvent, cancelTask, feed, handleOwnerMessage, mediaDays, pendingInbound, pruneMedia, recentChat, setApplyOp, setCancelTask, setUpdateFleet, onSettingsSaved, startServer, status as hubStatus } from "./server";
-import { addFollowUp, reopenTask, routeWithoutModel, type BrainOut, ClaudeModel, systemPrompt, dataActs, localStore, logBrain, think } from "./brain";
+import { addFollowUp, reopenTask, routeWithoutModel, type BrainOut, ClaudeModel, CodexModel, ModelCallError, systemPrompt, dataActs, localStore, logBrain, think } from "./brain";
 import { isWrite, runTool } from "../cloud/src/tools";
 import { cloudDeploy, startCloudBridge } from "./cloud";
 import { adoptCloudUrl, hubDialUrl, readHubToml } from "./sync";
 import { judgeAccuracy, level, needsApproval, noteStuckRoutine, proposeBatch, resolveProposals, routineParkedOnDecision, routineQueued, supersedeProposed } from "./autonomy";
-import { CODE, L, UPDATE_REQUEST, type UpdateState, setUpdateState, updateState, allowedClis, cliHintPatch, capOk, idTagFor, isPrimary, isCloudDeployHost, runningRev, setApprovalGate, setIdTag } from "./core";
-import { accountEnv, accountsStatus, classify, failoverAccount, pendingLoginIds, pickAccount, reportFailure, retryLogins, submitLoginCode } from "./accounts";
+import { CODE, L, UPDATE_REQUEST, type UpdateState, setUpdateState, updateState, allowedClis, explicitTaskClis, cliHintPatch, capOk, idTagFor, isPrimary, isCloudDeployHost, runningRev, setApprovalGate, setIdTag } from "./core";
+import { accountEnv, accountsStatus, classify, failoverAccount, pendingLoginIds, pickAccount, reportFailure, retryLogins, submitLoginCode, tryInternalExecutors } from "./accounts";
 import { channelPrompt, channels, resolveChannels, updateChannel } from "./channels";
 import { shellBash } from "./shell";
 
@@ -135,11 +135,13 @@ function runRoutines(cfg: Cfg, host: string, primary: boolean) {
 // ------------------------------------------------------------------ task processing
 const pendingRoute: string[] = [];
 const cancelled = new Set<string>(); // tasks the owner cancelled while their agent ran // decisions opened by workers, routed by the next tick
-async function processTask(path: string, cfg: Cfg, host: string) {
+async function processTask(path: string, host: string) {
+  const cfg = loadConfig();
   const { meta, body } = readDoc(path);
-  const wanted = allowedClis(meta, cfg);
+  const explicit = explicitTaskClis(meta, cfg);
+  const wanted = explicit ?? allowedClis(meta, cfg);
   const installed = (c: string) => !!Bun.which(c);
-  const first = pickAccount(cfg, wanted.filter(installed)) ?? failoverAccount(cfg, null, wanted, installed);
+  const first = pickAccount(cfg, wanted.filter(installed)) ?? failoverAccount(cfg, null, wanted, installed, !!explicit);
   const agent = meta.agent || "lead";
   if (!first) { // no usable account right now → put it back, don't fail it
     await locked(async () => {
@@ -237,8 +239,8 @@ async function processTask(path: string, cfg: Cfg, host: string) {
     res = parseResult(out);
     const failure = res.status === "failed" ? classify(out) : null;
     if (!failure) break;
-    await reportFailure(acct, failure, out, cfg); // puts this account on cooldown / needs-login
-    const next: typeof first | null = hop < 4 ? failoverAccount(cfg, acct, wanted, installed) : null;
+    await reportFailure(acct, failure, out, cfg, !!explicit); // puts this account on cooldown / needs-login
+    const next: typeof first | null = hop < 4 ? failoverAccount(cfg, acct, wanted, installed, !!explicit) : null;
     if (next) {
       const was = `${acct.cli}/${acct.name}`;
       await locked(async () => {
@@ -577,7 +579,7 @@ async function handleFailure(meta: Record<string, string>, body: string, summary
   // no keyword matching: when the agent could not even report a result, the medic (AI) decides whether the tooling broke
   const tooling = /agent returned no result block/.test(summary);
   if (tooling) void medic(`Agent run for ${meta.id} on ${host} ended without a result. Decide whether the tooling (CLI, auth, environment) is at fault and fix it; ignore it if the task itself failed:\n${out.slice(-2500)}`,
-    cfg, { auto: true, kind: `tool-${meta.cli_used ?? "agent"}` });
+    { auto: true, kind: `tool-${meta.cli_used ?? "agent"}` });
   if (attempt < (cfg.fleet?.max_attempts ?? 2)) {
     await locked(async () => {
       await _pull();
@@ -794,13 +796,13 @@ export async function tick(cfg: Cfg, background = false) {
   pruneMediaHourly(cfg);
   await retryLogins(cfg);
   if (primary || pendingLoginIds().size) await handleReplies(cfg, host);
-  if (primary) await planInbox(cfg, host);
+  if (primary) await planInbox(host);
   if (primary) {
     const toRoute = [...pendingRoute.splice(0), ...list(P("decisions", "open")).map((p) => readDoc(p).meta)
       .filter((m) => !m.held && m.kind !== "proposals").map((m) => m.id)];
     for (const id of new Set(toRoute)) {
       if (!require("node:fs").existsSync(P("decisions", "open", `${id}.md`))) continue;
-      await locked(async () => { await _pull(); await routeDecision(id, cfg, host); await _commitPush(`[${host}] route ${id}`); });
+      await locked(async () => { await _pull(); await routeDecision(id, loadConfig(), host); await _commitPush(`[${host}] route ${id}`); });
     }
   }
   // resource governor: disk first, then adaptive parallelism
@@ -811,19 +813,23 @@ export async function tick(cfg: Cfg, background = false) {
   const tried = new Set<string>();
   for (;;) {
     if (draining) break; // stopping: finish what runs, start nothing new
-    const s = sample(cfg);
-    const max = allowedParallel(s, cfg, running);
+    const current = loadConfig();
+    const s = sample(current);
+    const max = allowedParallel(s, current, running);
     if (running >= max) break;
-    if (!pickAccount(cfg, ["claude", "codex"].filter((c) => Bun.which(c)))) break;
-    if ((await githubStarved(cfg)).starved && list(P("tasks", "inbox"), /^T-.*\.md$/).every((p) => GH_HEAVY.has(readDoc(p).meta.agent))) break;
-    const t = pickTask(cfg, pressureOf(s), canRunHeavy(s, cfg, running));
+    if (!pickAccount(current, ["claude", "codex"].filter((c) => Bun.which(c)))) break;
+    if ((await githubStarved(current)).starved && list(P("tasks", "inbox"), /^T-.*\.md$/).every((p) => GH_HEAVY.has(readDoc(p).meta.agent))) break;
+    const t = pickTask(current, pressureOf(s), canRunHeavy(s, current, running), (meta) => {
+      const explicit = explicitTaskClis(meta, current);
+      return !explicit || !!pickAccount(current, explicit.filter((cli) => Bun.which(cli)));
+    });
     if (!t) break;
     const active = await claim(t, host);
     if (!active) { if (tried.has(t)) break; tried.add(t); continue; } // e.g. offline: don't spin on the same task
     running++;
     const tid = basename(active, ".md");
     runningIds.add(tid);
-    const job = processTask(active, cfg, host)
+    const job = processTask(active, host)
       .catch((e) => { console.error(e); journal(host, `💥 worker crashed on ${active}: ${e}`); })
       .finally(() => { running--; runningIds.delete(tid); });
     jobs.push(job);
@@ -835,8 +841,8 @@ export async function tick(cfg: Cfg, background = false) {
  *  fits it (Claude for hard engineering, Codex for routine work), and how hard it is. One call for the whole batch. */
 let planning: Promise<void> | null = null;
 /** One planner run at a time (a chat task plans at once, the tick plans the rest): a second caller waits for the first. */
-function planInbox(cfg: Cfg, host: string): Promise<void> {
-  planning ??= planNow(cfg, host).finally(() => { planning = null; });
+function planInbox(host: string): Promise<void> {
+  planning ??= planNow(loadConfig(), host).finally(() => { planning = null; });
   return planning;
 }
 
@@ -898,11 +904,13 @@ Reply with exactly one fenced json block: {"<task id>": {"requires": "", "cli": 
 }
 
 async function daemon(cfg: Cfg) {
+  const legacyModel = new ClaudeModel(String(cfg.router?.model ?? "claude-haiku-5-5"), String(cfg.router?.cli ?? "claude"), (cfg.router?.timeout_seconds ?? 45) * 1000);
   const host = hostName(cfg);
   const every = (cfg.host?.tick_seconds ?? 60) * 1000;
   console.log(`hub daemon on ${host} caps=${hostCaps(cfg).join(",")} tick=${every / 1000}s parallel≤${cfg.host?.max_parallel ?? "cores/3"}`);
   onSettingsSaved((summary) => locked(async () => {
     await _pull();
+    if (loadConfig().clis?.internal) legacyModel.stopWarming();
     journal(host, `⚙️ owner changed settings: ${summary}`);
     await _commitPush(`[${host}] settings: ${summary.slice(0, 60)}`);
   }));
@@ -922,7 +930,7 @@ async function daemon(cfg: Cfg) {
         reopenTask(f, text);
         journal(host, `💬 ${tid} reopened by owner: ${text.slice(0, 80)}`);
         await _commitPush(`[${host}] reopen ${tid}`);
-        queueMicrotask(() => void planInbox(cfg, host).then(wakeDaemon).catch(() => {}));
+        queueMicrotask(() => void planInbox(host).then(wakeDaemon).catch(() => {}));
         return String(meta.title ?? tid);
       }
       addFollowUp(f, text, dir === "waiting"); // a waiting one is acted on now, not when its wait ends
@@ -994,7 +1002,7 @@ async function daemon(cfg: Cfg) {
     journal(host, `💬 ${id} from owner ${m ? "chat" : "MCP"}${prevFile ? ` (follows ${prev})` : ""}: ${op.title.slice(0, 80)}`);
     await _commitPush(`[${host}] chat ${id}`);
     // plan it now and wake the loop, so an idle machine starts it within seconds instead of after the next tick or two
-    queueMicrotask(() => void planInbox(cfg, host).then(wakeDaemon).catch(() => {}));
+    queueMicrotask(() => void planInbox(host).then(wakeDaemon).catch(() => {}));
     return { ok: true, id, ...(prevFile ? { follows: prev } : {}) };
   });
   const store = localStore({
@@ -1018,23 +1026,64 @@ async function daemon(cfg: Cfg) {
     },
   });
   setApplyOp((op) => runTool(store, op?.tool, op));
-  const model = new ClaudeModel(String(cfg.router?.model ?? "claude-haiku-5-5"), String(cfg.router?.cli ?? "claude"), (cfg.router?.timeout_seconds ?? 45) * 1000);
-  if (isPrimary(cfg, host) && Bun.which(String(cfg.router?.cli ?? "claude"))) model.warm(systemPrompt());
+  if (isPrimary(cfg, host) && !cfg.clis?.internal && Bun.which(String(cfg.router?.cli ?? "claude"))) legacyModel.warm(systemPrompt());
   if (isPrimary(cfg, host)) startServer(cfg, async (text, { reply, answered, sentAt, thread, channel }) => {
     const got = Date.now();
     const room = channel ? channels().find((c) => c.slug === channel) : undefined;
     const m = { text, replyTo: reply, answered, chat: recentChat(text, { channel }), sentAt, ...(room ? { channel: { slug: room.slug, name: room.name, goal: room.goal } } : {}) };
     chatNow = { text, chat: m.chat, reply, thread, channel: room?.slug };
     const post = (r: string, ref?: string) => appendEvent({ from: "hub", kind: "system", text: r.slice(0, 2000), ...(ref ? { ref } : {}), ...(thread ? { thread } : {}), ...(room ? { channel: room.slug } : {}) });
+    const current = loadConfig(), selected = current.clis?.internal;
+    let failureReason = L("An internal error occurred", "发生内部错误");
     let out: BrainOut;
     try {
-      out = await think(m, store, model, post);
-      // out of rounds with no reply and nothing done (only lookups): the message would vanish, so it becomes work
-      if (!out.reply && out.rounds >= 4 && !out.calls.some((c) => isWrite(c.tool) && c.ok)) throw new Error("no answer");
+      if (selected) {
+        legacyModel.stopWarming();
+        let reason = L("None of the selected executors is available", "没有可用的所选执行器");
+        const timeout = (current.router?.timeout_seconds ?? 45) * 1000;
+        const result = await tryInternalExecutors(current, async (executor, env) => {
+          const name = executor === "codex" ? "Codex" : "Claude";
+          const version = internalModel(current, "router", executor);
+          const model = executor === "codex" ? new CodexModel(version, timeout, env) : new ClaudeModel(version, "claude", timeout, false, env);
+          try {
+            const answer = await think(m, store, model, post);
+            if (answer.reply || answer.calls.some((c) => isWrite(c.tool) && c.ok && c.result?.ok !== false)) return { ...answer, executor };
+            if (answer.startedWrite) {
+              post(L("A chat action did not finish. Check the result before retrying.", "主会话的操作未完成。请确认结果后再试。"));
+              return { ...answer, executor };
+            }
+            reason = L(`${name} did not answer`, `${name} 没有返回回复`);
+          } catch (error) {
+            if (!(error instanceof ModelCallError) || error.kind === "tool_started") throw error;
+            console.error(`chat executor ${executor}:`, error);
+            reason = {
+              auth: L(`${name} needs login`, `${name} 需要登录`),
+              quota: L(`${name} is out of quota`, `${name} 额度已用完`),
+              timeout: L(`${name} timed out`, `${name} 已超时`),
+              unavailable: L(`${name} could not complete the request`, `${name} 未能完成请求`),
+            }[error.kind];
+          }
+        });
+        if (!result) {
+          failureReason = reason;
+          throw new Error(reason);
+        }
+        out = result;
+      } else {
+        out = await think(m, store, legacyModel, post);
+        // The legacy path turns a conversation that runs out of rounds into work.
+        if (!out.reply && out.rounds >= 4 && !out.calls.some((c) => isWrite(c.tool) && c.ok)) throw new Error("no answer");
+      }
     } catch (err) {
-      // no model (CLI missing, logged out, quota, timeout): the message still becomes work, never lost, never guessed onto some
-      // other task. The owner is told where it went; the reason goes to the journal and brain.jsonl (stderr is not visible)
       console.error(`chat brain: ${err}`);
+      if (selected) {
+        const note = err instanceof ModelCallError && err.kind === "tool_started"
+          ? L("An executor started a tool outside the chat. Check the result before retrying.", "执行器启动了主会话之外的工具。请确认结果后再试。")
+          : L(`Chat could not finish (${failureReason}). Please try again manually.`, `主会话未能完成（${failureReason}），请手动重试。`);
+        post(note);
+        logBrain(m, { reply: note, calls: [], rounds: 0, ms: { model: [], total: Date.now() - got }, fallback: true }, got);
+        return;
+      }
       const routed = await routeWithoutModel(store, { text, reply, why: err });
       post(routed.note, routed.id);
       await locked(async () => {
@@ -1068,6 +1117,7 @@ async function daemon(cfg: Cfg) {
   let lastUpdate = 0, failures = 0;
   for (;;) {
     const c = loadConfig();
+    if (c.clis?.internal) legacyModel.stopWarming();
     if (adoptCloudUrl(c.cloud?.url)) journal(host, `☁️ hub moved: now syncing with ${c.cloud.url}`);
     if (existsSync(RESTART_FLAG())) { // `hub restart` (throttled) / `hub restart --force`
       const force = readFileSync(RESTART_FLAG(), "utf8").includes("force");
@@ -1077,7 +1127,7 @@ async function daemon(cfg: Cfg) {
     await locked(() => guardMemory(host)); // damage sync reported since the last tick; the daily memory snapshot
     try { await tick(c, true); failures = 0; } catch (e) {
       console.error("tick failed", e);
-      if (++failures >= 3) void medic(`noop daemon: ${failures} consecutive tick failures on ${host}.\n${(e as Error)?.stack ?? e}`, c, { auto: true, kind: "daemon" });
+      if (++failures >= 3) void medic(`noop daemon: ${failures} consecutive tick failures on ${host}.\n${(e as Error)?.stack ?? e}`, { auto: true, kind: "daemon" });
     }
     // self-update only when idle and not restarted within the hour; otherwise check again next tick
     if (!draining && running === 0 && restartAllowed() && Date.now() - lastUpdate > (c.update?.check_minutes ?? 30) * 60_000) {
@@ -1185,7 +1235,7 @@ async function main() {
     case "doctor": return doctor();
     case "fix": {
       const what = rest.join(" ") || "Run a health check (hub doctor, hub status, service logs, bun test) and fix whatever is broken.";
-      const r = await medic(what, cfg, { kind: "manual" });
+      const r = await medic(what, { kind: "manual" });
       if (!r?.fixed) process.exitCode = 1;
       return;
     }
@@ -1331,7 +1381,7 @@ if (import.meta.main) {
     const cmd = Bun.argv[2] ?? "";
     console.error(e);
     if (["init", "install", "update", "tick", "learn"].includes(cmd) && !process.env.HUB_NO_MEDIC) {
-      await medic(`\`hub ${Bun.argv.slice(2).join(" ")}\` failed:\n${(e as Error)?.stack ?? e}`, loadConfig(), { auto: true, kind: `cmd-${cmd}` });
+      await medic(`\`hub ${Bun.argv.slice(2).join(" ")}\` failed:\n${(e as Error)?.stack ?? e}`, { auto: true, kind: `cmd-${cmd}` });
     }
     process.exit(1);
   }

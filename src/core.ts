@@ -1,4 +1,5 @@
 // noop core — shared files as the world (stigmergy; synced via the owner's Worker, src/sync.ts), task queue, agent runner, journal, memory.
+import { INTERNAL_SELECTION_ERROR, invalidInternalSelection } from "../app/executor-choices";
 import { OFFLINE_AFTER_MINUTES } from "../cloud/src/budget";
 import { existsSync, mkdirSync, readdirSync, readFileSync, unlinkSync, writeFileSync, appendFileSync } from "node:fs";
 import { homedir, hostname } from "node:os";
@@ -44,6 +45,7 @@ export function loadConfig(): Cfg {
   const ui = existsSync(P("settings.json")) ? JSON.parse(readFileSync(P("settings.json"), "utf8")) : {};
   const bootstrap = sync.readHubToml();
   const cfg: Cfg = merge(merge(merge(bootstrap, read("config.toml")), ui), read("config.local.toml"));
+  if (invalidInternalSelection(cfg.clis)) throw new Error(INTERNAL_SELECTION_ERROR);
   // built-in routines (src/builtin-routines.ts) unless config.toml defines one of the same name
   cfg.routine = Array.isArray(cfg.routine) ? cfg.routine : [];
   for (const b of BUILTIN_ROUTINES) if (!cfg.routine.some((r: any) => r.name === b.name)) {
@@ -249,10 +251,15 @@ export const which = (bin: string) => Bun.which(bin) !== null;
  *  4. otherwise either CLI, Claude first.
  *  The per-member config is checked before the hint on purpose: an owner who sets a member to codex-only in the app
  *  must not have that silently undone by the planner picking Claude for a task it calls "hard". */
-export function allowedClis(meta: Record<string, string>, cfg: Cfg): string[] {
+export function explicitTaskClis(meta: Record<string, string>, cfg: Cfg): string[] | undefined {
   if (meta.cli && meta.cli !== "auto") return [meta.cli];
   const per = cfg.clis?.agents?.[meta.agent || "lead"];
   if (Array.isArray(per) && per.length) return per;
+}
+
+export function allowedClis(meta: Record<string, string>, cfg: Cfg): string[] {
+  const explicit = explicitTaskClis(meta, cfg);
+  if (explicit) return explicit;
   if (meta.cli_hint === "claude" || meta.cli_hint === "codex") return [meta.cli_hint];
   return ["claude", "codex"];
 }
@@ -359,13 +366,14 @@ function yieldHeavy(meta: Record<string, string>, cfg: Cfg, myLoad: number, heav
     && heartPressure(h.stats) + 0.2 < myLoad && h.busy === 0);
 }
 
-export function pickTask(cfg: Cfg, myLoad = 0, heavyOk = true): string | null {
+export function pickTask(cfg: Cfg, myLoad = 0, heavyOk = true, canStart?: (meta: Record<string, string>) => boolean): string | null {
   const caps = hostCaps(cfg);
   const rank: Record<string, number> = { urgent: 0, high: 1, normal: 2, low: 3 };
   const cands = list(P("tasks", "inbox"), /^T-.*\.md$/)
     .map((p) => ({ p, m: readDoc(p).meta }))
     // the planner decides where a task runs first; unplanned tasks wait for it (at most plan_wait_minutes)
     .filter(({ m }) => (m.planned || Date.now() - Date.parse(m.created ?? "") > (cfg.fleet?.plan_wait_minutes ?? 3) * 60_000) && matches(m, caps) && chooseCli(m, cfg) && !yieldToPreferred(m, caps, cfg) && !yieldHeavy(m, cfg, myLoad, heavyOk))
+    .filter(({ m }) => !canStart || canStart(m))
     .sort((a, b) => (rank[a.m.priority] ?? 2) - (rank[b.m.priority] ?? 2) || a.p.localeCompare(b.p));
   return cands[0]?.p ?? null;
 }

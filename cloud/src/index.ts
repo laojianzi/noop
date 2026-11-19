@@ -16,6 +16,7 @@
 // Guest workers (low-trust shared machines): /api/guest/* and /api/guests/* — see guests.ts.
 // MCP (Claude / ChatGPT connectors): /mcp + OAuth 2.1 at /oauth/* and /.well-known/oauth-* — see mcp.ts and docs/mcp.md.
 // Every other /api/* and /media/* needs Bearer <HUB_TOKEN|session> (or ?token= for WebSocket / <img>).
+import { INTERNAL_SELECTION_ERROR, invalidInternalSelection } from "../../app/executor-choices";
 import { DurableObject } from "cloudflare:workers";
 import { b64dec, b64enc, handleFiles, handleReadFiles, initFilesSchema } from "./files";
 import { FREE, LEAN, SHED, TARGET, latestOnly } from "./budget";
@@ -389,19 +390,20 @@ export class Hub extends DurableObject<Env> {
     if (r) this.mem.set(k, r.v as string);
     return r ? JSON.parse(r.v as string) : null;
   }
-  /** Writes only when the value changed. Hot keys (status, host_seen) are kept in memory and persisted at most every
+  /** Returns whether the value changed. Hot keys (status, host_seen) are kept in memory and persisted at most every
    *  HOT_PERSIST_MS (longer when the budget is tight): losing a few minutes of them on eviction is harmless, the daemon re-sends. */
   set(k: string, v: unknown) {
     const s = JSON.stringify(v);
-    if (this.mem.get(k) === s) return;
-    if (!this.mem.has(k) && this.sql.exec("SELECT v FROM kv WHERE k = ?", k).toArray()[0]?.v === s) { this.mem.set(k, s); return; }
+    if (this.mem.get(k) === s) return false;
+    if (!this.mem.has(k) && this.sql.exec("SELECT v FROM kv WHERE k = ?", k).toArray()[0]?.v === s) { this.mem.set(k, s); return false; }
     this.mem.set(k, s);
     if (HOT.has(k)) {
       const lvl = this.level(), every = lvl === "ok" ? HOT_PERSIST_MS : lvl === "lean" ? HOT_PERSIST_MS * 6 : Infinity;
-      if (Date.now() - (this.flushed.get(k) ?? 0) < every) return;
+      if (Date.now() - (this.flushed.get(k) ?? 0) < every) return true;
     }
     this.flushed.set(k, Date.now());
     this.sql.exec("INSERT OR REPLACE INTO kv (k, v) VALUES (?, ?)", k, s);
+    return true;
   }
   touchHost() { this.set("host_seen", Date.now()); }
 
@@ -528,9 +530,9 @@ export class Hub extends DurableObject<Env> {
     for (const ws of this.ctx.getWebSockets("host")) try { ws.send(JSON.stringify({ type: "watchers", n })); } catch {}
   }
   /** Owner clients that asked for status frames (?v=2) get the dashboard pushed instead of polling for it. */
-  pushStatus() {
-    const s = JSON.stringify({ $status: this.statusView() });
-    for (const ws of this.ctx.getWebSockets("v2")) try { ws.send(s); } catch {}
+  pushStatus(settings?: unknown, socket?: WebSocket) {
+    const s = JSON.stringify({ $status: this.statusView(), $settings: settings });
+    for (const ws of socket ? [socket] : this.ctx.getWebSockets("v2")) try { ws.send(s); } catch {}
   }
 
   // ---- auth
@@ -826,7 +828,9 @@ export class Hub extends DurableObject<Env> {
       if (req.headers.get("upgrade") !== "websocket") return json({ error: "websocket expected" }, 426);
       const [client, server] = Object.values(new WebSocketPair());
       // ?v=2 clients take {"$status": …} frames, so they need not poll /api/status
-      this.ctx.acceptWebSocket(server, url.searchParams.get("v") === "2" ? ["owner", "v2"] : ["owner"]);
+      const v2 = url.searchParams.get("v") === "2";
+      this.ctx.acceptWebSocket(server, v2 ? ["owner", "v2"] : ["owner"]);
+      if (v2) this.pushStatus(this.get("settings") ?? undefined, server);
       this.tellWatchers();
       return new Response(null, { status: 101, webSocket: client });
     }
@@ -945,7 +949,8 @@ export class Hub extends DurableObject<Env> {
       return json({ ok: true });
     }
     if (p === "/api/settings" && m === "PUT") {
-      const patch = await req.json();
+      const patch = await req.json() as { clis?: { internal?: unknown } } | null;
+      if (invalidInternalSelection(patch?.clis)) return json({ error: INTERNAL_SELECTION_ERROR }, 400);
       this.toInbox({ type: "settings", patch });
       const view = this.get("settings") ?? { current: {} };
       const deep = (a: any, b: any): any => { const o = { ...a }; for (const [k, v] of Object.entries(b ?? {})) o[k] = v && typeof v === "object" && !Array.isArray(v) ? deep(o[k] ?? {}, v) : v; return o; };
@@ -990,8 +995,14 @@ export class Hub extends DurableObject<Env> {
       const { status, settings } = (await req.json()) as { status?: unknown; settings?: unknown };
       // over budget the dashboard refreshes at most every 10 minutes
       const shed = this.level() === "shed" && Date.now() - (this.flushed.get("status_at") ?? 0) < 10 * 60_000;
-      if (status && !shed) { this.flushed.set("status_at", Date.now()); this.set("status", status); this.mcp.onChanged(["noop://status"]); this.pushStatus(); }
-      if (settings) this.set("settings", settings);
+      const publishStatus = !!status && !shed;
+      const acknowledgement = settings && (this.set("settings", settings) || !status) ? settings : undefined;
+      if (publishStatus) {
+        this.flushed.set("status_at", Date.now());
+        this.set("status", status);
+        this.mcp.onChanged(["noop://status"]);
+      }
+      if (publishStatus || acknowledgement) this.pushStatus(acknowledgement);
       this.touchHost();
       // watchers: owner clients connected right now. With none, the primary skips live-activity-only refreshes.
       return json({ ok: true, watchers: this.ctx.getWebSockets("owner").length, level: this.level() });

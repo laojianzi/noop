@@ -2,6 +2,7 @@
 // Accounts are per machine (credentials never enter the shared data repo):
 //   ~/.noop/accounts/<cli>-<name>/   → CLAUDE_CONFIG_DIR or CODEX_HOME for that account
 //   ~/.noop/accounts/state.json      → cooldowns, auth status, pending logins
+import type { Executor } from "../app/executor-choices";
 import { existsSync, statSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
@@ -74,6 +75,13 @@ function credStamp(a: Account): number {
 }
 
 export function usable(a: Account): boolean {
+  if (!a.default) {
+    try {
+      const dir = statSync(a.dir, { throwIfNoEntry: false });
+      if (!dir) mkdirSync(a.dir, { recursive: true });
+      else if (!dir.isDirectory()) return false;
+    } catch { return false; }
+  }
   const all = load();
   const s = all.accounts[key(a)] ?? {};
   if (s.cooldown_until && !s.needs_login && s.last_error && /API Error: 50[234]\b/.test(s.last_error) && classify(s.last_error) === null) {
@@ -98,14 +106,29 @@ export function pickAccount(cfg: Cfg, clis: string[]): Account | null {
   return null;
 }
 
+export async function tryInternalExecutors<T>(cfg: Cfg, attempt: (cli: Executor, env: Record<string, string>) => Promise<T | undefined>): Promise<T | undefined> {
+  for (const cli of cfg.clis.internal as Executor[]) {
+    if (!Bun.which(cli)) continue;
+    for (const account of accounts(cfg, cli)) {
+      if (!usable(account)) continue;
+      let env: Record<string, string>;
+      try { env = accountEnv(account); }
+      catch (error) { console.error(`executor ${key(account)} account directory:`, error); continue; }
+      const result = await attempt(cli, env);
+      if (result !== undefined) return result;
+    }
+  }
+}
+
 const OTHER_CLI: Record<string, string> = { claude: "codex", codex: "claude" };
 
 /** After `failed` hit a quota/login wall (or nothing in `wanted` is usable when failed is null):
  *  another usable account of the same CLI first, else the other CLI (codex <-> claude) — for any agent. */
-export function failoverAccount(cfg: Cfg, failed: Account | null, wanted: string[], installed: (cli: string) => boolean = (c) => !!Bun.which(c)): Account | null {
-  const same = failed ? [failed.cli] : wanted;
+export function failoverAccount(cfg: Cfg, failed: Account | null, wanted: string[], installed: (cli: string) => boolean = (c) => !!Bun.which(c), explicit = false): Account | null {
+  const same = failed && !explicit ? [failed.cli] : wanted;
   const first = same.filter(installed);
   for (const cli of first) for (const a of accounts(cfg, cli)) if (usable(a) && !(failed && key(a) === key(failed))) return a;
+  if (explicit) return null;
   const others = [...new Set(same.map((c) => OTHER_CLI[c]).filter((c) => c && !first.includes(c) && installed(c)))];
   return pickAccount(cfg, others);
 }
@@ -159,7 +182,7 @@ export function quotaCooldownUntil(current: string | undefined, output: string):
   return current && Date.parse(current) > Date.now() ? current : resetTime(output).toISOString();
 }
 
-export async function reportFailure(a: Account, kind: Failure, output: string, cfg: Cfg) {
+export async function reportFailure(a: Account, kind: Failure, output: string, cfg: Cfg, explicit = false) {
   if (!kind) return;
   const s = load();
   const st = (s.accounts[key(a)] ??= {});
@@ -175,7 +198,7 @@ export async function reportFailure(a: Account, kind: Failure, output: string, c
       const others = (cfg.clis?.preference ?? ["claude", "codex"]).filter((c: string) => c !== a.cli && Bun.which(c) && accounts(cfg, c).some(usable));
       const at = new Date(st.cooldown_until).toLocaleTimeString(L("en-US", "zh-CN"), { hour: "2-digit", minute: "2-digit" });
       void notify([L(`${a.cli === "claude" ? "Claude" : "Codex"} (${host}) is out of quota, back around ${at}.`, `${a.cli === "claude" ? "Claude" : "Codex"}（${host}）额度用完了，约 ${at} 恢复。`),
-        others.length ? L(`Until then tasks go to ${others.join(", ")}.`, `这期间任务先交给 ${others.join("、")} 做。`) : L("No AI is available until then, tasks will queue.", "这期间没有可用的 AI，任务会排队等着。"),
+        explicit ? L("Affected tasks stay within their selected executors.", "受影响的任务只使用所选执行器。") : others.length ? L(`Until then tasks go to ${others.join(", ")}.`, `这期间任务先交给 ${others.join("、")} 做。`) : L("No AI is available until then, tasks will queue.", "这期间没有可用的 AI，任务会排队等着。"),
         L(`To recover now: run ${a.cli === "claude" ? "claude /login" : "codex login"} on this machine to switch account; it is picked up automatically.`, `想马上恢复：在这台机器上运行 ${a.cli === "claude" ? "claude /login" : "codex login"} 换个账号，登录后会自动接着用，不用等。`)].join("\n"),
         cfg, { kind: "notice" });
     }
@@ -189,10 +212,9 @@ export async function reportFailure(a: Account, kind: Failure, output: string, c
     if (st.told !== `gateway:${day}`) {
       st.told = `gateway:${day}`;
       journal(host, `${key(a)} gateway auth failed → cooldown 1h (no OAuth login for gateway accounts)`);
-      const other = a.cli === "claude" ? "Codex" : "Claude";
       const where = a.cli === "claude" ? "~/.claude/settings.json (ANTHROPIC_BASE_URL / ANTHROPIC_AUTH_TOKEN)" : "~/.codex/config.toml ([model_providers.*]: experimental_bearer_token / env_key / base_url)";
-      void notify([L(`${a.cli === "claude" ? "Claude" : "Codex"} (${host}) authenticates through an API gateway and the gateway rejected the token. Tasks go to ${other} for now. No login link will be sent: replace the token in ${where}.`,
-        `${a.cli === "claude" ? "Claude" : "Codex"}（${host}）使用 API 网关鉴权，网关拒绝了令牌，任务暂时交给 ${other}。这里不适用 OAuth 登录，不会再发登录链接；请更换 ${where} 里的令牌。`)].join("\n"), cfg, { kind: "notice" });
+      void notify([L(`${a.cli === "claude" ? "Claude" : "Codex"} (${host}) authenticates through an API gateway and the gateway rejected the token. No login link will be sent: replace the token in ${where}.`,
+        `${a.cli === "claude" ? "Claude" : "Codex"}（${host}）使用 API 网关鉴权，网关拒绝了令牌，这里不适用 OAuth 登录，不会再发登录链接；请更换 ${where} 里的令牌。`)].join("\n"), cfg, { kind: "notice" });
     }
   } else {
     st.needs_login = true;

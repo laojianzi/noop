@@ -77,10 +77,17 @@ export function startCloudBridge(cfg: Cfg) {
   const saveCursor = () => { try { writeFileSync(cursorFile, JSON.stringify({ url: base(cfg), after, seen: seen.slice(-500) })); } catch {} };
   let after = sameHub ? Number(saved.after) || 0 : 0, n = 0, busy = false, lastStatus = "", lastShape = "", lastPush = 0;
   let watchers = 1; // owner clients connected (the Worker reports it); until it says otherwise, assume someone looks
+  // A late dashboard snapshot must not overwrite a newer settings acknowledgement.
+  let stateWrites = Promise.resolve();
+  const publishState = (send: () => Promise<void>) => {
+    const next = stateWrites.then(send);
+    stateWrites = next.catch(() => {});
+    return next;
+  };
   // push the dashboard at once when its shape changes (an answered decision must leave "待你决定" at once); live agent
   // activity alone is pushed at most once a minute and only while an owner client is open; an unchanged dashboard
   // every ~15 min (Cloudflare free plan: cloud/src/budget.ts)
-  const pushStatus = async (force = false) => {
+  const pushStatus = (force = false) => publishState(async () => {
     const s = status();
     const st = JSON.stringify(s);
     const shape = JSON.stringify({ ...s, active: s.active.map(({ activity: _, ...t }) => t) });
@@ -88,7 +95,7 @@ export function startCloudBridge(cfg: Cfg) {
     if (!due) return;
     const r = await call(cfg, "/api/host/state", { method: "PUT", body: JSON.stringify({ status: s, settings: settingsView() }) });
     if (r) { lastStatus = st; lastShape = shape; lastPush = Date.now(); if (typeof r.watchers === "number") watchers = r.watchers; }
-  };
+  });
   // housekeeping every few seconds: mirror events up, push the dashboard (both cost nothing when nothing changed)
   const loop = async () => {
     if (busy) return; busy = true;
@@ -121,7 +128,9 @@ export function startCloudBridge(cfg: Cfg) {
       await updateFleet();
     } else if (it.type === "settings") {
       await saveSettings(it.patch);
-      await call(cfg, "/api/host/state", { method: "PUT", body: JSON.stringify({ settings: settingsView() }) });
+      await publishState(async () => {
+        await call(cfg, "/api/host/state", { method: "PUT", body: JSON.stringify({ settings: settingsView() }) });
+      });
     }
     after = it.seq; saveCursor();
   };
