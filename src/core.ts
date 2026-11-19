@@ -47,7 +47,7 @@ export function loadConfig(): Cfg {
   const cfg: Cfg = merge(merge(merge(bootstrap, read("config.toml")), ui), read("config.local.toml"));
   if (invalidInternalSelection(cfg.clis)) throw new Error(INTERNAL_SELECTION_ERROR);
   for (const [section, settings] of [
-    ["clis.claude", cfg.clis?.claude], ["clis.codex", cfg.clis?.codex], ["router", cfg.router], ["judge", cfg.judge],
+    ["clis.claude", cfg.clis?.claude], ["clis.codex", cfg.clis?.codex], ["router", cfg.router], ["judge", cfg.judge], ["chat", cfg.chat],
   ]) {
     const effort = settings?.reasoning_effort;
     if (effort !== undefined && (typeof effort !== "string" || !effort.trim()))

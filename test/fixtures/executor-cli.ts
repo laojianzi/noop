@@ -50,7 +50,7 @@ if (cli === "codex" && process.env.NOOP_E2E_REAL_CODEX) {
       probes.some(s => s.name !== "noop_probe")) throw new Error("Codex inherited project MCP configuration");
   }
   const started = Date.now();
-  const proc = Bun.spawn([process.env.NOOP_E2E_REAL_CODEX, "exec", "-c", 'model_reasoning_effort="low"', ...projectArgs, ...args.slice(1)],
+  const proc = Bun.spawn([process.env.NOOP_E2E_REAL_CODEX, "exec", ...projectArgs, ...args.slice(1)],
     { stdin: "inherit", stdout: "pipe", stderr: "inherit" });
   const out = await new Response(proc.stdout).text();
   process.stdout.write(out);

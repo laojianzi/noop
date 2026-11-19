@@ -10,7 +10,7 @@
 import { appendFileSync, existsSync, mkdirSync, readFileSync, readdirSync, statSync, unlinkSync, writeFileSync } from "node:fs";
 import { channelPrompt } from "./channels";
 import { classify } from "./accounts";
-import { codexReadOnlyArgs, internalStream, runInternalProcess } from "./runner";
+import { codexReadOnlyArgs, internalStream, reasoningEffortOptions, runInternalProcess } from "./runner";
 import { homedir } from "node:os";
 import { join, relative } from "node:path";
 import { DATA, HOME_DIR, L, P, loadConfig, _commitPush, _pull, journal, locked, now, readDoc, writeDoc } from "./core";
@@ -196,7 +196,8 @@ function modelCallError(error: unknown): never {
 }
 
 export class CodexModel implements Model {
-  constructor(private model: string | undefined, private timeoutMs: number, private env: Record<string, string>) {}
+  constructor(private model: string | undefined, private timeoutMs: number, private env: Record<string, string>,
+    private effort?: string) {}
 
   async open(system: string) {
     mkdirSync(BRAIN_DIR, { recursive: true });
@@ -207,7 +208,7 @@ export class CodexModel implements Model {
       'Noop supplies the result in the next turn.';
     const cmd = ["codex", "exec", "--ephemeral", "--json", "--skip-git-repo-check", ...codexReadOnlyArgs(BRAIN_DIR, this.env),
       "-c", `developer_instructions=${JSON.stringify(protocol + "\n\n" + system)}`,
-      ...(this.model ? ["--model", this.model] : []), "-"];
+      ...(this.model ? ["--model", this.model] : []), ...reasoningEffortOptions("codex", this.effort).args, "-"];
     return {
       send: async (text: string) => {
         transcript.push({ role: "user", content: text });

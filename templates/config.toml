@@ -45,8 +45,16 @@ timeout_minutes = 90
 [clis.claude]
 permission_mode = "bypassPermissions" # hard gates still apply via --disallowedTools (src/gates.ts)
 model = "claude-opus-5-5"
+# reasoning_effort = "high"           # use "default" to defer to the CLI
 [clis.codex]
 # model = "gpt-5.5-codex"
+# reasoning_effort = "high"
+
+# [router]
+# reasoning_effort = "low"            # Codex task planning uses low when omitted
+# [chat]
+# model = "gpt-6.2-sol"               # applies to the first internal executor
+# reasoning_effort = "medium"
 
 [autonomy]
 level = "onboarding"                  # onboarding → assisted → autonomous. Only the owner changes this
@@ -83,6 +91,7 @@ timeout_minutes = 30
 enabled = true
 cli = "claude"
 model = "claude-opus-5-5"
+# reasoning_effort = "max"
 
 [tunnel]                              # Cloudflare Tunnel → public HTTPS for the client, no LAN/VPN needed
 mode = "quick"                        # quick (no account, URL changes on restart) | named (stable: `cloudflared tunnel login` once) | off

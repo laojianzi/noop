@@ -168,7 +168,7 @@ try {
   if (mode === "--web" || mode === "--real") {
     accounts();
     if (mode === "--real") {
-      writeFileSync(configPath, fixtureConfig + '\n[clis.codex]\nmodel = "gpt-6-luna"\n');
+      writeFileSync(configPath, fixtureConfig + '\n[clis.codex]\nmodel = "gpt-6-luna"\nreasoning_effort = "low"\n');
       const git = spawnSync("git", ["init", "-q", home], { encoding: "utf8" });
       assert.equal(git.status, 0, git.stderr);
       const brain = join(noopHome, "brain");
@@ -321,7 +321,14 @@ try {
       const measurements = readFileSync(join(out, "real-codex.jsonl"), "utf8").trim().split("\n").map(line => JSON.parse(line));
       const turns = measurements.filter(m => m.stage === "chat");
       assert(turns.length >= 2 && turns.every(m => m.code === 0 && m.tools.length === 0 && m.usage));
-      assert(calls().some(c => c.stage === "task" && c.cli === "codex" && c.model === "gpt-6-luna"));
+      for (const stage of ["chat", "task"]) {
+        const launches = calls().filter(c => c.stage === stage && c.cli === "codex");
+        assert(launches.length);
+        for (const launch of launches) {
+          assert.equal(launch.model, "gpt-6-luna");
+          assertEffort(launch, "codex", "low");
+        }
+      }
       check("real Codex replied, used the Noop read tool and fixed the task's code");
     } else {
       await say("Read a task first");
@@ -336,13 +343,15 @@ try {
   } else if (mode === "--internal") {
     mkdirSync(join(home, ".codex"), { recursive: true });
     writeFileSync(join(home, ".codex/config.toml"), '[mcp_servers.noop_probe]\ncommand = "/usr/bin/false"\n');
-    accounts();
+    writeFileSync(configPath, fixtureConfig + '\n[chat]\nreasoning_effort = "medium"\n');
     start("primary", "daemon");
     await until("primary did not start", () => ready(local));
     const legacy = add("Legacy planned task");
     await until("legacy task did not complete", async () => (await task(legacy)).state === "done");
     assert(calls().some(c => c.stage === "plan" && c.cli === "claude"));
-    assert(calls().some(c => c.stage === "warm" && c.cli === "claude" && c.model === "legacy-claude-model"));
+    const warm = calls().find(c => c.stage === "warm");
+    assertEffort(warm, "claude", "medium");
+    assert.equal(warm?.model, "legacy-claude-model");
     check("legacy routing keeps the Claude planner and configured chat model");
 
     symlinkSync(join(bin, "codex"), join(bin, "codex-wrapper"));
@@ -364,6 +373,14 @@ try {
     };
     const stage = (name: string) => calls().filter(c => c.stage === name).map(c => c.cli);
     const lastLaunch = (name: string) => calls().findLast(c => c.stage === name);
+    const effortConfig = fixtureConfig + '\n[clis.codex]\nmodel = "gpt-6.2-sol"\nreasoning_effort = "max"\n' +
+      '\n[clis.claude]\nreasoning_effort = "high"\n';
+    const observeChat = async (text: string, config: string) => {
+      writeFileSync(configPath, effortConfig + "\n[chat]\n" + config + "\n");
+      const before = stage("chat").length;
+      await say(text);
+      return calls().filter(c => c.stage === "chat").slice(before);
+    };
     await save({ clis: { internal: ["codex"], agents: { lead: ["claude"] } } });
     add("Hold the planner during a settings change", "--cli", "codex");
     await until("planner did not pause", () => stage("planner-held").length > 0);
@@ -382,12 +399,39 @@ try {
     await until("legacy idle Claude process did not stop", () => {
       try { process.kill(legacyWarm.pid, 0); return false; } catch { return true; }
     });
-    const count = stage("chat").length;
-    await say("Read a task first");
-    assert.deepEqual(stage("chat").slice(count), ["codex", "codex"]);
+    const directBefore = calls().length;
+    for (const route of ["/api/status", "/api/tasks", "/api/tasks/get?id=" + fresh]) {
+      assert((await request(local, route)).ok);
+    }
+    assert.equal(calls().length, directBefore, "fixed-format queries do not start an executor");
+    const reading = await observeChat("Read a task first", 'reasoning_effort = "medium"');
+    assert.equal(reading.length, 2);
+    for (const launch of reading) {
+      assertEffort(launch, "codex", "medium");
+      assert.equal(launch.model, "gpt-6.2-sol");
+    }
     assert(calls().filter(c => c.stage === "chat").every(c => c.mcpDisabled), "Noop chat disables locally configured Codex MCP servers");
     assert((await feed()).events.some(e => e.text === "Fixture used task data"));
     check("Codex handles a multi-turn Web chat and returns the tool-informed reply");
+
+    const modelOnly = 'model = "chat-model"';
+    for (const [setting, level] of [["", "max"], ['\nreasoning_effort = "default"', undefined]] as const) {
+      const [launch] = await observeChat("Use the configured chat model", modelOnly + setting);
+      assertEffort(launch, "codex", level);
+      assert.equal(launch?.model, "chat-model");
+    }
+    await setSelection(["codex", "claude"]);
+    writeFileSync(join(out, "codex-chat.fault"), "");
+    const backup = await observeChat("Use the next configured chat executor", modelOnly);
+    assert.equal(backup.length, 2);
+    assertEffort(backup[0], "codex", "max");
+    assertEffort(backup[1], "claude", "high");
+    assert.deepEqual(backup.map(c => c.model), ["chat-model", "legacy-claude-model"]);
+    unlinkSync(join(out, "codex-chat.fault"));
+    await setSelection(["codex"]);
+    writeFileSync(configPath, fixtureConfig);
+    assertInvalidEffort("chat", '"  "');
+    check("chat model and effort resolve separately and each fallback uses its own model settings");
 
     await save({ clis: { agents: { lead: ["claude"] } } });
     writeFileSync(join(out, "codex-chat.fault"), "");
@@ -482,8 +526,6 @@ try {
     assert.deepEqual(stage("plan").slice(planBefore), ["codex"]);
     check("settings apply to new work and spare the current conversation");
 
-    const effortConfig = fixtureConfig + '\n[clis.codex]\nmodel = "gpt-6.2-sol"\nreasoning_effort = "max"\n' +
-      '\n[clis.claude]\nreasoning_effort = "high"\n';
     for (const [executor, configured, expected] of [
       ["codex", "", "low"], ["codex", "medium", "medium"], ["codex", "default", undefined],
       ["claude", "", "high"], ["claude", "low", "low"], ["claude", "default", undefined],
@@ -587,10 +629,12 @@ try {
     await setSelection(["codex", "claude"]);
 
     accounts(["codex", "invalid-account-directory"]);
+    writeFileSync(configPath, readFileSync(configPath, "utf8") + '\n[chat]\nmodel = "codex-only-chat-model"\n');
     writeFileSync(join(out, "invalid-account-directory"), "a file cannot be used as an account directory");
     const beforeAccount = stage("chat").length;
     await say("Use the backup if the first account directory cannot be opened");
     assert.deepEqual(stage("chat").slice(beforeAccount), ["claude"]);
+    assert.equal(lastLaunch("chat")?.model, "legacy-claude-model");
     check("an unusable account directory does not stop the next selected executor");
   } else {
     env.CLAUDE_CODE_EFFORT_LEVEL = "high";
