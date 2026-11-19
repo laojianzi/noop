@@ -1,0 +1,1053 @@
+{
+  "candidate": "82782ef6913714de04c4028cd4170fa90659a7f1",
+  "red": {
+    "taskOutOfSelection": {
+      "revision": "4a0b79210e6d6ab04da2627d31f4ee46976ec560",
+      "checks": [],
+      "error": "AssertionError [ERR_ASSERTION]: the task must not escape its member selection\n+ actual - expected\n\n  [\n    'codex/codex-limited',\n+   'claude/claude-available'\n  ]",
+      "calls": [
+        {
+          "cli": "codex",
+          "account": "default",
+          "stage": "warm"
+        },
+        {
+          "cli": "codex",
+          "account": "default",
+          "stage": "plan"
+        },
+        {
+          "cli": "codex",
+          "account": "codex-limited",
+          "stage": "task",
+          "task": "T-0002"
+        },
+        {
+          "cli": "claude",
+          "account": "claude-available",
+          "stage": "task",
+          "task": "T-0002"
+        }
+      ]
+    },
+    "legacyPlannerAndMissingSetting": {
+      "revision": "7780e546504125d202101e4359f9e837f4505145",
+      "checks": [
+        "legacy routing keeps the Claude planner and configured chat model"
+      ],
+      "error": "AssertionError [ERR_ASSERTION]: the saved setting is returned as effective\n+ actual - expected\n\n+ undefined\n- [\n-   'codex'\n- ]",
+      "calls": [
+        {
+          "cli": "claude",
+          "account": "default",
+          "stage": "warm",
+          "model": "legacy-claude-model"
+        },
+        {
+          "cli": "claude",
+          "account": "default",
+          "stage": "plan",
+          "model": "legacy-claude-model"
+        },
+        {
+          "cli": "claude",
+          "account": "default",
+          "stage": "task",
+          "task": "T-0002",
+          "model": "claude-opus-5-5"
+        }
+      ]
+    },
+    "legacyWebProtocol": {
+      "revision": "7780e546504125d202101e4359f9e837f4505145",
+      "checks": [],
+      "error": "AssertionError [ERR_ASSERTION]: Codex main chat must use its own protocol\n+ actual - expected\n\n+ 'wrong-protocol'\n- 'chat'",
+      "calls": [
+        {
+          "cli": "codex",
+          "account": "default",
+          "stage": "wrong-protocol",
+          "mcpDisabled": false,
+          "model": "legacy-claude-model"
+        }
+      ]
+    },
+    "medicAfterTool": {
+      "revision": "7780e546504125d202101e4359f9e837f4505145",
+      "checks": [
+        "legacy routing keeps the Claude planner and configured chat model",
+        "Codex handles a multi-turn Web chat and returns the tool-informed reply",
+        "an exhausted chat remains visible and does not route to a member",
+        "a timed-out model exits and leaves the request available for retry",
+        "settings apply to new work and spare the current conversation",
+        "Judge and Medic use the same selection as planning and chat",
+        "planning, Judge and Medic try the available backup in the selected order"
+      ],
+      "error": "AssertionError [ERR_ASSERTION]: a repair must not run a second executor after starting a tool\n+ actual - expected\n\n  [\n    'codex',\n+   'claude'\n  ]",
+      "calls": [
+        {
+          "cli": "claude",
+          "account": "default",
+          "stage": "warm",
+          "model": "legacy-claude-model"
+        },
+        {
+          "cli": "claude",
+          "account": "default",
+          "stage": "plan",
+          "model": "legacy-claude-model"
+        },
+        {
+          "cli": "claude",
+          "account": "default",
+          "stage": "task",
+          "task": "T-0002",
+          "model": "claude-opus-5-5"
+        },
+        {
+          "cli": "codex",
+          "account": "default",
+          "stage": "chat"
+        },
+        {
+          "cli": "codex",
+          "account": "default",
+          "stage": "chat"
+        },
+        {
+          "cli": "codex",
+          "account": "default",
+          "stage": "chat"
+        },
+        {
+          "cli": "codex",
+          "account": "default",
+          "stage": "chat"
+        },
+        {
+          "cli": "codex",
+          "account": "default",
+          "stage": "held"
+        },
+        {
+          "cli": "codex",
+          "account": "default",
+          "stage": "chat"
+        },
+        {
+          "cli": "codex",
+          "account": "default",
+          "stage": "plan"
+        },
+        {
+          "cli": "codex",
+          "account": "default",
+          "stage": "chat"
+        },
+        {
+          "cli": "claude",
+          "account": "default",
+          "stage": "warm",
+          "model": "legacy-claude-model"
+        },
+        {
+          "cli": "claude",
+          "account": "default",
+          "stage": "chat",
+          "model": "legacy-claude-model"
+        },
+        {
+          "cli": "claude",
+          "account": "default",
+          "stage": "task",
+          "task": "T-0003",
+          "model": "claude-opus-5-5"
+        },
+        {
+          "cli": "claude",
+          "account": "default",
+          "stage": "warm",
+          "model": "legacy-claude-model"
+        },
+        {
+          "cli": "claude",
+          "account": "default",
+          "stage": "chat",
+          "model": "legacy-claude-model"
+        },
+        {
+          "cli": "codex",
+          "account": "default",
+          "stage": "chat"
+        },
+        {
+          "cli": "codex",
+          "account": "default",
+          "stage": "chat"
+        },
+        {
+          "cli": "codex",
+          "account": "default",
+          "stage": "held"
+        },
+        {
+          "cli": "claude",
+          "account": "default",
+          "stage": "warm",
+          "model": "legacy-claude-model"
+        },
+        {
+          "cli": "claude",
+          "account": "default",
+          "stage": "chat",
+          "model": "legacy-claude-model"
+        },
+        {
+          "cli": "codex",
+          "account": "default",
+          "stage": "plan"
+        },
+        {
+          "cli": "codex",
+          "account": "default",
+          "stage": "task",
+          "task": "T-0004"
+        },
+        {
+          "cli": "codex",
+          "account": "default",
+          "stage": "plan"
+        },
+        {
+          "cli": "codex",
+          "account": "default",
+          "stage": "task",
+          "task": "T-0005"
+        },
+        {
+          "cli": "codex",
+          "account": "default",
+          "stage": "judge"
+        },
+        {
+          "cli": "codex",
+          "account": "default",
+          "stage": "medic"
+        },
+        {
+          "cli": "codex",
+          "account": "default",
+          "stage": "plan"
+        },
+        {
+          "cli": "claude",
+          "account": "default",
+          "stage": "plan",
+          "model": "legacy-claude-model"
+        },
+        {
+          "cli": "codex",
+          "account": "default",
+          "stage": "task",
+          "task": "T-0006"
+        },
+        {
+          "cli": "codex",
+          "account": "default",
+          "stage": "judge"
+        },
+        {
+          "cli": "claude",
+          "account": "default",
+          "stage": "judge",
+          "model": "claude-opus-5-5"
+        },
+        {
+          "cli": "codex",
+          "account": "default",
+          "stage": "medic"
+        },
+        {
+          "cli": "claude",
+          "account": "default",
+          "stage": "medic",
+          "model": "claude-opus-5-5"
+        },
+        {
+          "cli": "codex",
+          "account": "default",
+          "stage": "medic"
+        },
+        {
+          "cli": "codex",
+          "account": "default",
+          "stage": "medic-write"
+        },
+        {
+          "cli": "claude",
+          "account": "default",
+          "stage": "medic",
+          "model": "claude-opus-5-5"
+        }
+      ]
+    },
+    "chatAfterTool": {
+      "revision": "a6482487339838e88c045b20216bd7f9de37dd5b",
+      "checks": [
+        "legacy routing keeps the Claude planner and configured chat model",
+        "Codex handles a multi-turn Web chat and returns the tool-informed reply",
+        "an exhausted chat remains visible and does not route to a member",
+        "a timed-out model exits and leaves the request available for retry"
+      ],
+      "error": "AssertionError [ERR_ASSERTION]: Expected values to be strictly deep-equal:\n+ actual - expected\n\n  [\n    'codex',\n+   'claude'\n  ]",
+      "calls": [
+        {
+          "cli": "claude",
+          "account": "default",
+          "stage": "warm",
+          "model": "legacy-claude-model"
+        },
+        {
+          "cli": "claude",
+          "account": "default",
+          "stage": "plan",
+          "model": "legacy-claude-model"
+        },
+        {
+          "cli": "claude",
+          "account": "default",
+          "stage": "task",
+          "task": "T-0001",
+          "model": "claude-opus-5-5"
+        },
+        {
+          "cli": "codex",
+          "account": "default",
+          "stage": "chat"
+        },
+        {
+          "cli": "codex",
+          "account": "default",
+          "stage": "chat"
+        },
+        {
+          "cli": "codex",
+          "account": "default",
+          "stage": "chat"
+        },
+        {
+          "cli": "codex",
+          "account": "default",
+          "stage": "chat"
+        },
+        {
+          "cli": "codex",
+          "account": "default",
+          "stage": "held"
+        },
+        {
+          "cli": "codex",
+          "account": "default",
+          "stage": "chat"
+        },
+        {
+          "cli": "codex",
+          "account": "default",
+          "stage": "plan"
+        },
+        {
+          "cli": "codex",
+          "account": "default",
+          "stage": "chat"
+        },
+        {
+          "cli": "claude",
+          "account": "default",
+          "stage": "warm",
+          "model": "legacy-claude-model"
+        },
+        {
+          "cli": "claude",
+          "account": "default",
+          "stage": "chat",
+          "model": "legacy-claude-model"
+        },
+        {
+          "cli": "claude",
+          "account": "default",
+          "stage": "task",
+          "task": "T-0002",
+          "model": "claude-opus-5-5"
+        },
+        {
+          "cli": "claude",
+          "account": "default",
+          "stage": "warm",
+          "model": "legacy-claude-model"
+        },
+        {
+          "cli": "claude",
+          "account": "default",
+          "stage": "chat",
+          "model": "legacy-claude-model"
+        },
+        {
+          "cli": "codex",
+          "account": "default",
+          "stage": "chat"
+        },
+        {
+          "cli": "codex",
+          "account": "default",
+          "stage": "chat"
+        },
+        {
+          "cli": "claude",
+          "account": "default",
+          "stage": "warm",
+          "model": "legacy-claude-model"
+        },
+        {
+          "cli": "claude",
+          "account": "default",
+          "stage": "chat",
+          "model": "legacy-claude-model"
+        }
+      ]
+    },
+    "configuredMcp": {
+      "revision": "6cefd8e46d9beab252b796eb25dc88ed1d98d445",
+      "checks": [
+        "legacy routing keeps the Claude planner and configured chat model"
+      ],
+      "error": "AssertionError [ERR_ASSERTION]: Noop chat disables locally configured Codex MCP servers",
+      "calls": [
+        {
+          "cli": "claude",
+          "account": "default",
+          "stage": "warm",
+          "mcpDisabled": false,
+          "model": "legacy-claude-model"
+        },
+        {
+          "cli": "claude",
+          "account": "default",
+          "stage": "plan",
+          "mcpDisabled": false,
+          "model": "legacy-claude-model"
+        },
+        {
+          "cli": "claude",
+          "account": "default",
+          "stage": "task",
+          "task": "T-0001",
+          "mcpDisabled": false,
+          "model": "claude-opus-5-5"
+        },
+        {
+          "cli": "codex",
+          "account": "default",
+          "stage": "chat",
+          "mcpDisabled": false
+        },
+        {
+          "cli": "codex",
+          "account": "default",
+          "stage": "chat",
+          "mcpDisabled": false
+        }
+      ]
+    },
+    "retryNotice": {
+      "revision": "a49ec44b17ed3f6bc9f2a7471f90ce38acccdd4b",
+      "error": "The browser waited for the exact retry notice with one executor name. The notice displayed both codex and Codex."
+    }
+  },
+  "green": {
+    "tasks": {
+      "revision": "82782ef6913714de04c4028cd4170fa90659a7f1",
+      "checks": [
+        "Codex-only member task queues when its account runs out",
+        "explicit task choice takes priority and stays on one executor",
+        "codex preferred order includes accounts then the allowed alternate",
+        "claude preferred order includes accounts then the allowed alternate",
+        "a missing single executor leaves the task queued"
+      ],
+      "error": "",
+      "calls": [
+        {
+          "cli": "codex",
+          "account": "default",
+          "stage": "wrong-protocol",
+          "mcpDisabled": false,
+          "model": "legacy-claude-model"
+        },
+        {
+          "cli": "codex",
+          "account": "default",
+          "stage": "plan",
+          "mcpDisabled": false,
+          "model": "legacy-claude-model"
+        },
+        {
+          "cli": "codex",
+          "account": "codex-limited",
+          "stage": "task",
+          "task": "T-0001",
+          "mcpDisabled": false
+        },
+        {
+          "cli": "codex",
+          "account": "default",
+          "stage": "plan",
+          "mcpDisabled": false,
+          "model": "legacy-claude-model"
+        },
+        {
+          "cli": "claude",
+          "account": "claude-expired",
+          "stage": "task",
+          "task": "T-0002",
+          "mcpDisabled": false,
+          "model": "claude-opus-5-5"
+        },
+        {
+          "cli": "claude",
+          "account": "claude-expired",
+          "stage": "login",
+          "mcpDisabled": false
+        },
+        {
+          "cli": "codex",
+          "account": "default",
+          "stage": "plan",
+          "mcpDisabled": false,
+          "model": "legacy-claude-model"
+        },
+        {
+          "cli": "codex",
+          "account": "codex-ordered",
+          "stage": "task",
+          "task": "T-0003",
+          "mcpDisabled": false
+        },
+        {
+          "cli": "codex",
+          "account": "codex-second",
+          "stage": "task",
+          "task": "T-0003",
+          "mcpDisabled": false
+        },
+        {
+          "cli": "claude",
+          "account": "claude-good",
+          "stage": "task",
+          "task": "T-0003",
+          "mcpDisabled": false,
+          "model": "claude-opus-5-5"
+        },
+        {
+          "cli": "codex",
+          "account": "default",
+          "stage": "plan",
+          "mcpDisabled": false,
+          "model": "legacy-claude-model"
+        },
+        {
+          "cli": "claude",
+          "account": "claude-ordered",
+          "stage": "task",
+          "task": "T-0004",
+          "mcpDisabled": false,
+          "model": "claude-opus-5-5"
+        },
+        {
+          "cli": "claude",
+          "account": "claude-second",
+          "stage": "task",
+          "task": "T-0004",
+          "mcpDisabled": false,
+          "model": "claude-opus-5-5"
+        },
+        {
+          "cli": "codex",
+          "account": "codex-good",
+          "stage": "task",
+          "task": "T-0004",
+          "mcpDisabled": false
+        },
+        {
+          "cli": "claude",
+          "account": "default",
+          "stage": "plan",
+          "mcpDisabled": false,
+          "model": "claude-haiku-5-5"
+        }
+      ]
+    },
+    "internal": {
+      "revision": "82782ef6913714de04c4028cd4170fa90659a7f1",
+      "checks": [
+        "legacy routing keeps the Claude planner and configured chat model",
+        "Codex handles a multi-turn Web chat and returns the tool-informed reply",
+        "an exhausted chat remains visible and does not route to a member",
+        "a timed-out model exits and leaves the request available for retry",
+        "a conversation is not replayed after the CLI starts a tool",
+        "settings apply to new work and spare the current conversation",
+        "Judge and Medic use the same selection as planning and chat",
+        "planning, Judge and Medic try the available backup in the selected order",
+        "a partially executed repair is not replayed after a quota failure"
+      ],
+      "error": "",
+      "calls": [
+        {
+          "cli": "claude",
+          "account": "default",
+          "stage": "warm",
+          "mcpDisabled": false,
+          "model": "legacy-claude-model"
+        },
+        {
+          "cli": "claude",
+          "account": "default",
+          "stage": "plan",
+          "mcpDisabled": false,
+          "model": "legacy-claude-model"
+        },
+        {
+          "cli": "claude",
+          "account": "default",
+          "stage": "task",
+          "task": "T-0001",
+          "mcpDisabled": false,
+          "model": "claude-opus-5-5"
+        },
+        {
+          "cli": "codex",
+          "account": "default",
+          "stage": "chat",
+          "mcpDisabled": true
+        },
+        {
+          "cli": "codex",
+          "account": "default",
+          "stage": "chat",
+          "mcpDisabled": true
+        },
+        {
+          "cli": "codex",
+          "account": "default",
+          "stage": "chat",
+          "mcpDisabled": true
+        },
+        {
+          "cli": "codex",
+          "account": "default",
+          "stage": "chat",
+          "mcpDisabled": true
+        },
+        {
+          "cli": "codex",
+          "account": "default",
+          "stage": "held",
+          "mcpDisabled": true
+        },
+        {
+          "cli": "codex",
+          "account": "default",
+          "stage": "chat",
+          "mcpDisabled": true
+        },
+        {
+          "cli": "codex",
+          "account": "default",
+          "stage": "plan",
+          "mcpDisabled": true
+        },
+        {
+          "cli": "codex",
+          "account": "default",
+          "stage": "chat",
+          "mcpDisabled": true
+        },
+        {
+          "cli": "claude",
+          "account": "default",
+          "stage": "warm",
+          "mcpDisabled": false,
+          "model": "legacy-claude-model"
+        },
+        {
+          "cli": "claude",
+          "account": "default",
+          "stage": "chat",
+          "mcpDisabled": false,
+          "model": "legacy-claude-model"
+        },
+        {
+          "cli": "claude",
+          "account": "default",
+          "stage": "task",
+          "task": "T-0002",
+          "mcpDisabled": false,
+          "model": "claude-opus-5-5"
+        },
+        {
+          "cli": "claude",
+          "account": "default",
+          "stage": "warm",
+          "mcpDisabled": false,
+          "model": "legacy-claude-model"
+        },
+        {
+          "cli": "claude",
+          "account": "default",
+          "stage": "chat",
+          "mcpDisabled": false,
+          "model": "legacy-claude-model"
+        },
+        {
+          "cli": "codex",
+          "account": "default",
+          "stage": "chat",
+          "mcpDisabled": true
+        },
+        {
+          "cli": "codex",
+          "account": "default",
+          "stage": "chat",
+          "mcpDisabled": true
+        },
+        {
+          "cli": "codex",
+          "account": "default",
+          "stage": "chat",
+          "mcpDisabled": true
+        },
+        {
+          "cli": "codex",
+          "account": "default",
+          "stage": "held",
+          "mcpDisabled": true
+        },
+        {
+          "cli": "claude",
+          "account": "default",
+          "stage": "warm",
+          "mcpDisabled": false,
+          "model": "legacy-claude-model"
+        },
+        {
+          "cli": "claude",
+          "account": "default",
+          "stage": "chat",
+          "mcpDisabled": false,
+          "model": "legacy-claude-model"
+        },
+        {
+          "cli": "codex",
+          "account": "default",
+          "stage": "plan",
+          "mcpDisabled": true
+        },
+        {
+          "cli": "codex",
+          "account": "default",
+          "stage": "task",
+          "task": "T-0003",
+          "mcpDisabled": false
+        },
+        {
+          "cli": "codex",
+          "account": "default",
+          "stage": "plan",
+          "mcpDisabled": true
+        },
+        {
+          "cli": "codex",
+          "account": "default",
+          "stage": "task",
+          "task": "T-0004",
+          "mcpDisabled": false
+        },
+        {
+          "cli": "codex",
+          "account": "default",
+          "stage": "judge",
+          "mcpDisabled": true
+        },
+        {
+          "cli": "codex",
+          "account": "default",
+          "stage": "medic",
+          "mcpDisabled": false
+        },
+        {
+          "cli": "codex",
+          "account": "default",
+          "stage": "plan",
+          "mcpDisabled": true
+        },
+        {
+          "cli": "claude",
+          "account": "default",
+          "stage": "plan",
+          "mcpDisabled": false,
+          "model": "legacy-claude-model"
+        },
+        {
+          "cli": "codex",
+          "account": "default",
+          "stage": "task",
+          "task": "T-0005",
+          "mcpDisabled": false
+        },
+        {
+          "cli": "codex",
+          "account": "default",
+          "stage": "judge",
+          "mcpDisabled": true
+        },
+        {
+          "cli": "claude",
+          "account": "default",
+          "stage": "judge",
+          "mcpDisabled": false,
+          "model": "claude-opus-5-5"
+        },
+        {
+          "cli": "codex",
+          "account": "default",
+          "stage": "medic",
+          "mcpDisabled": false
+        },
+        {
+          "cli": "claude",
+          "account": "default",
+          "stage": "medic",
+          "mcpDisabled": false,
+          "model": "claude-opus-5-5"
+        },
+        {
+          "cli": "codex",
+          "account": "default",
+          "stage": "medic",
+          "mcpDisabled": false
+        },
+        {
+          "cli": "codex",
+          "account": "default",
+          "stage": "medic-write",
+          "mcpDisabled": false
+        }
+      ]
+    },
+    "web": {
+      "revision": "82782ef6913714de04c4028cd4170fa90659a7f1",
+      "checks": [
+        "Web settings display the primary's acknowledged executor selection",
+        "Web chat shows a multi-turn reply and a manual retry notice"
+      ],
+      "error": "",
+      "calls": [
+        {
+          "cli": "claude",
+          "account": "default",
+          "stage": "warm",
+          "mcpDisabled": false,
+          "model": "legacy-claude-model"
+        },
+        {
+          "cli": "codex",
+          "account": "default",
+          "stage": "chat",
+          "mcpDisabled": false
+        },
+        {
+          "cli": "codex",
+          "account": "default",
+          "stage": "chat",
+          "mcpDisabled": false
+        },
+        {
+          "cli": "codex",
+          "account": "default",
+          "stage": "chat",
+          "mcpDisabled": false
+        }
+      ]
+    },
+    "realCodex": {
+      "revision": "a49ec44b17ed3f6bc9f2a7471f90ce38acccdd4b",
+      "checks": [
+        "Web settings display the primary's acknowledged executor selection",
+        "real Codex replied, used the Noop read tool and fixed the task's code"
+      ],
+      "error": "",
+      "calls": [
+        {
+          "cli": "claude",
+          "account": "default",
+          "stage": "warm",
+          "mcpDisabled": false,
+          "model": "legacy-claude-model"
+        },
+        {
+          "cli": "codex",
+          "account": "isolated-authorized-profile",
+          "stage": "chat",
+          "mcpDisabled": true,
+          "model": "gpt-6-luna"
+        },
+        {
+          "cli": "codex",
+          "account": "isolated-authorized-profile",
+          "stage": "chat",
+          "mcpDisabled": true,
+          "model": "gpt-6-luna"
+        },
+        {
+          "cli": "codex",
+          "account": "isolated-authorized-profile",
+          "stage": "chat",
+          "mcpDisabled": true,
+          "model": "gpt-6-luna"
+        },
+        {
+          "cli": "codex",
+          "account": "isolated-authorized-profile",
+          "stage": "plan",
+          "mcpDisabled": true,
+          "model": "gpt-6-luna"
+        },
+        {
+          "cli": "codex",
+          "account": "isolated-authorized-profile",
+          "stage": "task",
+          "mcpDisabled": false,
+          "model": "gpt-6-luna"
+        }
+      ]
+    }
+  },
+  "realCodex": {
+    "model": "gpt-6-luna",
+    "reasoningEffort": "low",
+    "tool": "list_tasks",
+    "configuredMcpStartedInChat": false,
+    "processes": [
+      {
+        "stage": "chat",
+        "code": 0,
+        "elapsedMs": 10978,
+        "usage": {
+          "input_tokens": 12143,
+          "cached_input_tokens": 0,
+          "cache_write_input_tokens": 0,
+          "output_tokens": 22,
+          "reasoning_output_tokens": 0
+        },
+        "tools": []
+      },
+      {
+        "stage": "chat",
+        "code": 0,
+        "elapsedMs": 9102,
+        "usage": {
+          "input_tokens": 12201,
+          "cached_input_tokens": 8192,
+          "cache_write_input_tokens": 0,
+          "output_tokens": 13,
+          "reasoning_output_tokens": 0
+        },
+        "tools": []
+      },
+      {
+        "stage": "chat",
+        "code": 0,
+        "elapsedMs": 13008,
+        "usage": {
+          "input_tokens": 12249,
+          "cached_input_tokens": 8192,
+          "cache_write_input_tokens": 0,
+          "output_tokens": 20,
+          "reasoning_output_tokens": 0
+        },
+        "tools": []
+      },
+      {
+        "stage": "plan",
+        "code": 0,
+        "elapsedMs": 9036
+      },
+      {
+        "stage": "task",
+        "code": 0,
+        "elapsedMs": 25222
+      }
+    ],
+    "taskAcceptance": {
+      "beforeExitCode": 1,
+      "afterExitCode": 0,
+      "valuesChecked": [
+        {
+          "inputs": [
+            2,
+            3
+          ],
+          "sum": 5
+        },
+        {
+          "inputs": [
+            -2,
+            1
+          ],
+          "sum": -1
+        }
+      ],
+      "correctedSource": "export const sum = (a: number, b: number) => a + b;"
+    }
+  },
+  "ablation": {
+    "change": "Remove the idle legacy chat prewarm cleanup from the detached candidate",
+    "result": {
+      "revision": "a6482487339838e88c045b20216bd7f9de37dd5b",
+      "checks": [
+        "legacy routing keeps the Claude planner and configured chat model"
+      ],
+      "error": "Error: legacy idle Claude process did not stop",
+      "calls": [
+        {
+          "cli": "claude",
+          "account": "default",
+          "stage": "warm",
+          "model": "legacy-claude-model"
+        },
+        {
+          "cli": "claude",
+          "account": "default",
+          "stage": "plan",
+          "model": "legacy-claude-model"
+        },
+        {
+          "cli": "claude",
+          "account": "default",
+          "stage": "task",
+          "task": "T-0001",
+          "model": "claude-opus-5-5"
+        }
+      ]
+    }
+  },
+  "upstreamMergePreview": {
+    "upstream": "f940acf71df48bf7dd5c8b25108db8342910b95d",
+    "alreadyAncestor": true,
+    "tree": "050dd430c8072be9ffc7c7cf611bb3296f194544",
+    "conflicts": []
+  },
+  "fleetBudget": {
+    "requests": 7595,
+    "rowsWrittenApprox": 15427,
+    "targetEach": 20000
+  }
+}
