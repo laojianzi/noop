@@ -288,6 +288,13 @@ try {
       assert((await feed()).events.some(e => e.text === second + " fixture reply"));
       unlinkSync(join(out, first + "-chat.fault"));
     }
+    await setSelection(["codex", "claude"]);
+    writeFileSync(join(out, "codex-chat-tool.fault"), "");
+    const beforeUnexpectedTool = stage("chat").length;
+    await say("Do not replay this conversation");
+    assert.deepEqual(stage("chat").slice(beforeUnexpectedTool), ["codex"]);
+    unlinkSync(join(out, "codex-chat-tool.fault"));
+    check("a conversation is not replayed after the CLI starts a tool");
     await setSelection(["codex"]);
     const beforeHold = stage("chat").length;
     const ongoing = say("HOLD CONVERSATION");

@@ -59,6 +59,10 @@ if (args.includes("--input-format")) {
 const input = await Bun.stdin.text();
 if (args.includes("--ephemeral")) {
   record("chat");
+  if (existsSync(join(dir, "codex-chat-tool.fault"))) {
+    console.log('{"type":"item.started","item":{"type":"command_execution"}}');
+    process.exit(1);
+  }
   fault("chat");
   const data = input.split("Conversation turns (JSON):\n").at(-1)!.split("\nRespond to the last user turn.")[0]!;
   const turn = (JSON.parse(data).at(-1) as { content: string }).content;

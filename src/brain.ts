@@ -10,7 +10,7 @@
 import { appendFileSync, existsSync, mkdirSync, readFileSync, readdirSync, statSync, unlinkSync, writeFileSync } from "node:fs";
 import { channelPrompt } from "./channels";
 import { classify } from "./accounts";
-import { internalStream, runInternalProcess } from "./runner";
+import { CODEX_READ_ONLY_ARGS, internalStream, runInternalProcess } from "./runner";
 import { homedir } from "node:os";
 import { join, relative } from "node:path";
 import { DATA, HOME_DIR, L, P, loadConfig, _commitPush, _pull, journal, locked, now, readDoc, writeDoc } from "./core";
@@ -183,7 +183,13 @@ export class ClaudeModel implements Model {
   }
 }
 
-export class ModelCallError extends Error {}
+export class ModelCallError extends Error {
+  constructor(message: string, readonly retryable = true) { super(message); }
+}
+
+function modelCallError(error: unknown): never {
+  throw error instanceof ModelCallError ? error : new ModelCallError(error instanceof Error ? error.message : String(error));
+}
 
 export class CodexModel implements Model {
   constructor(private model: string | undefined, private timeoutMs: number, private env: Record<string, string>) {}
@@ -191,22 +197,22 @@ export class CodexModel implements Model {
   async open(system: string) {
     mkdirSync(BRAIN_DIR, { recursive: true });
     const transcript: { role: "user" | "assistant"; content: string }[] = [];
-    const cmd = ["codex", "exec", "--ephemeral", "--json", "--skip-git-repo-check", "--sandbox", "read-only",
-      "--disable", "shell_tool", "--disable", "unified_exec", "--disable", "apps", "--disable", "plugins", "--disable", "multi_agent_v2",
-      "-c", 'web_search="disabled"', "-c", "mcp_servers={}", ...(this.model ? ["--model", this.model] : []), "-"];
+    const protocol = 'Noop executes the tools listed above when your final JSON requests them. ' +
+      'For example, to read the task list, return {"calls":[{"tool":"list_tasks","args":{}}],"reply":""}. ' +
+      'The next turn supplies the result. Use these JSON requests for every Noop tool.';
+    const cmd = ["codex", "exec", "--ephemeral", "--json", "--skip-git-repo-check", ...CODEX_READ_ONLY_ARGS,
+      "-c", `developer_instructions=${JSON.stringify(system + "\n\n" + protocol)}`,
+      ...(this.model ? ["--model", this.model] : []), "-"];
     return {
       send: async (text: string) => {
         transcript.push({ role: "user", content: text });
-        const protocol = 'Noop executes the tools listed above when your final JSON requests them. ' +
-          'For example, to read the task list, return {"calls":[{"tool":"list_tasks","args":{}}],"reply":""}. ' +
-          'The next turn supplies the tool result. Use these JSON requests for every Noop tool.';
-        const prompt = `${system}\n\n${protocol}\n\nConversation turns (JSON):\n${JSON.stringify(transcript)}\nRespond to the last user turn.`;
+        const prompt = `Conversation turns (JSON):\n${JSON.stringify(transcript)}\nRespond to the last user turn.`;
         const result = await runInternalProcess(cmd, prompt, BRAIN_DIR, this.timeoutMs, this.env);
+        const { reply, completed, usedTools } = internalStream(result.out, "codex");
+        if (usedTools) throw new ModelCallError("Codex started a tool outside the Noop conversation", false);
         if (result.timedOut) throw new Error("Codex timed out");
         const failure = classify(result.err + "\n" + result.out);
         if (result.code) throw new Error(failure === "auth" ? "Codex needs login" : failure === "quota" ? "Codex is out of quota" : `Codex exited with code ${result.code}`);
-        const { reply, completed, usedTools } = internalStream(result.out, "codex");
-        if (usedTools) throw new Error("Codex used a tool outside the Noop conversation");
         if (!completed || !reply) throw new Error("Codex ended without a completed reply");
         transcript.push({ role: "assistant", content: reply });
         return reply;
@@ -329,14 +335,14 @@ export function parseTurn(out: string): { calls: { tool: string; args: any }[]; 
 export async function think(m: BrainIn, st: ToolStore, model: Model, post: (reply: string, ref?: string) => void): Promise<BrainOut> {
   const t0 = Date.now();
   const res: BrainOut = { reply: "", calls: [], rounds: 0, ms: { model: [], total: 0 } };
-  const conv = await model.open(systemPrompt()).catch((error) => { throw new ModelCallError(error instanceof Error ? error.message : String(error)); });
+  const conv = await model.open(systemPrompt()).catch(modelCallError);
   try {
     let input = context(st, m);
     for (let round = 0; round < MAX_ROUNDS; round++) {
       res.rounds++;
       const last = round === MAX_ROUNDS - 1;
       const tm = Date.now();
-      const out = await conv.send(input).catch((error) => { throw new ModelCallError(error instanceof Error ? error.message : String(error)); });
+      const out = await conv.send(input).catch(modelCallError);
       res.ms.model.push(Date.now() - tm);
       const turn = parseTurn(out);
       if (!turn) { input = `That was not one JSON object. Answer again with exactly {"calls": [...], "reply": "..."}.`; continue; }

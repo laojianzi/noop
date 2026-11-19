@@ -414,6 +414,10 @@ function repairJson(json: string): string {
  * `[router] cli/model` in config.toml puts one first; the others are fallbacks when its CLI is missing or fails. */
 const ROUTERS = [{ cli: "claude", model: "claude-haiku-5-5" }, { cli: "codex", model: "gpt-6-luna" }];
 
+export const CODEX_READ_ONLY_ARGS = ["--sandbox", "read-only",
+  "--disable", "shell_tool", "--disable", "unified_exec", "--disable", "apps", "--disable", "plugins", "--disable", "multi_agent_v2",
+  "-c", 'web_search="disabled"', "-c", "mcp_servers={}"];
+
 export function internalModel(cfg: Cfg, role: "router" | "judge", cli: Executor): string | undefined {
   const entry = cfg[role];
   return ((entry?.cli ?? "claude") === cli ? entry?.model : undefined) ?? cfg.clis?.[cli]?.model;
@@ -470,7 +474,7 @@ export async function quickAsk(prompt: string, cfg: Cfg, logFile: string): Promi
   const attempt = async (cli: string, model?: string, env?: Record<string, string>) => {
     const cmd = cli === "claude"
       ? ["claude", "-p", "--output-format", "text", "--tools", "", "--strict-mcp-config", ...(model ? ["--model", model] : [])]
-      : ["codex", "exec", "--skip-git-repo-check", "--sandbox", "read-only", ...(model ? ["-m", model] : []), "-c", 'model_reasoning_effort="low"', "-"];
+      : ["codex", "exec", "--skip-git-repo-check", ...(explicit ? CODEX_READ_ONLY_ARGS : ["--sandbox", "read-only"]), ...(model ? ["-m", model] : []), "-c", 'model_reasoning_effort="low"', "-"];
     const { out, code } = await runInternalProcess(cmd, prompt, ROOT, (cfg.router?.timeout_seconds ?? 45) * 1000, env);
     mkdirSync(P("logs", "runs"), { recursive: true });
     if (explicit) appendFileSync(logFile, `${cli} ${model ?? ""} (exit ${code})\n${out}\n`);
@@ -493,7 +497,7 @@ export async function ask(prompt: string, cfg: Cfg, logFile: string): Promise<an
   const attempt = async (cli: string, model?: string, env?: Record<string, string>) => {
     const cmd = cli === "claude"
       ? ["claude", "-p", "--output-format", "text", "--model", model ?? "claude-opus-5-5", "--tools", ""]
-      : ["codex", "exec", "--skip-git-repo-check", ...(explicit ? ["--sandbox", "read-only"] : []), ...(model ? ["-m", model] : []), "-"];
+      : ["codex", "exec", "--skip-git-repo-check", ...(explicit ? CODEX_READ_ONLY_ARGS : []), ...(model ? ["-m", model] : []), "-"];
     const { out, code } = await runInternalProcess(cmd, prompt, ROOT, (cfg.judge?.timeout_minutes ?? 10) * 60_000, env);
     mkdirSync(P("logs", "runs"), { recursive: true });
     if (explicit) appendFileSync(logFile, `${cli} ${model ?? ""} (exit ${code})\n${out}\n`);

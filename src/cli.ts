@@ -795,7 +795,7 @@ export async function tick(cfg: Cfg, background = false) {
   pruneMediaHourly(cfg);
   await retryLogins(cfg);
   if (primary || pendingLoginIds().size) await handleReplies(cfg, host);
-  if (primary) await planInbox(cfg, host);
+  if (primary) await planInbox(host);
   if (primary) {
     const toRoute = [...pendingRoute.splice(0), ...list(P("decisions", "open")).map((p) => readDoc(p).meta)
       .filter((m) => !m.held && m.kind !== "proposals").map((m) => m.id)];
@@ -839,8 +839,8 @@ export async function tick(cfg: Cfg, background = false) {
  *  fits it (Claude for hard engineering, Codex for routine work), and how hard it is. One call for the whole batch. */
 let planning: Promise<void> | null = null;
 /** One planner run at a time (a chat task plans at once, the tick plans the rest): a second caller waits for the first. */
-function planInbox(cfg: Cfg, host: string): Promise<void> {
-  planning ??= planNow(cfg, host).finally(() => { planning = null; });
+function planInbox(host: string): Promise<void> {
+  planning ??= planNow(loadConfig(), host).finally(() => { planning = null; });
   return planning;
 }
 
@@ -902,6 +902,7 @@ Reply with exactly one fenced json block: {"<task id>": {"requires": "", "cli": 
 }
 
 async function daemon(cfg: Cfg) {
+  const legacyModel = new ClaudeModel(String(cfg.router?.model ?? "claude-haiku-5-5"), String(cfg.router?.cli ?? "claude"), (cfg.router?.timeout_seconds ?? 45) * 1000);
   const host = hostName(cfg);
   const every = (cfg.host?.tick_seconds ?? 60) * 1000;
   console.log(`hub daemon on ${host} caps=${hostCaps(cfg).join(",")} tick=${every / 1000}s parallel≤${cfg.host?.max_parallel ?? "cores/3"}`);
@@ -927,7 +928,7 @@ async function daemon(cfg: Cfg) {
         reopenTask(f, text);
         journal(host, `💬 ${tid} reopened by owner: ${text.slice(0, 80)}`);
         await _commitPush(`[${host}] reopen ${tid}`);
-        queueMicrotask(() => void planInbox(loadConfig(), host).then(wakeDaemon).catch(() => {}));
+        queueMicrotask(() => void planInbox(host).then(wakeDaemon).catch(() => {}));
         return String(meta.title ?? tid);
       }
       addFollowUp(f, text, dir === "waiting"); // a waiting one is acted on now, not when its wait ends
@@ -999,7 +1000,7 @@ async function daemon(cfg: Cfg) {
     journal(host, `💬 ${id} from owner ${m ? "chat" : "MCP"}${prevFile ? ` (follows ${prev})` : ""}: ${op.title.slice(0, 80)}`);
     await _commitPush(`[${host}] chat ${id}`);
     // plan it now and wake the loop, so an idle machine starts it within seconds instead of after the next tick or two
-    queueMicrotask(() => void planInbox(loadConfig(), host).then(wakeDaemon).catch(() => {}));
+    queueMicrotask(() => void planInbox(host).then(wakeDaemon).catch(() => {}));
     return { ok: true, id, ...(prevFile ? { follows: prev } : {}) };
   });
   const store = localStore({
@@ -1023,7 +1024,6 @@ async function daemon(cfg: Cfg) {
     },
   });
   setApplyOp((op) => runTool(store, op?.tool, op));
-  const legacyModel = new ClaudeModel(String(cfg.router?.model ?? "claude-haiku-5-5"), String(cfg.router?.cli ?? "claude"), (cfg.router?.timeout_seconds ?? 45) * 1000);
   if (isPrimary(cfg, host) && !cfg.clis?.internal && Bun.which(String(cfg.router?.cli ?? "claude"))) legacyModel.warm(systemPrompt());
   if (isPrimary(cfg, host)) startServer(cfg, async (text, { reply, answered, sentAt, thread, channel }) => {
     const got = Date.now();
@@ -1046,7 +1046,7 @@ async function daemon(cfg: Cfg) {
             if (answer.reply || answer.rounds < 4 || answer.calls.some((c) => isWrite(c.tool) && c.ok)) return { ...answer, executor };
             reason = L(`${executor} did not answer`, `${executor} 没有返回回复`);
           } catch (error) {
-            if (!(error instanceof ModelCallError)) throw error;
+            if (!(error instanceof ModelCallError) || !error.retryable) throw error;
             reason = `${executor} ${error.message.replace(/^Error: /, "").split("\n")[0].slice(0, 120)}`;
           }
           console.error(`chat executor unavailable: ${reason}`);
