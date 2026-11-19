@@ -16,6 +16,12 @@ Removing the conversation effort override from the tested code caused the Codex 
 
 The initial CI artifact manifest referenced a separate call ledger. The upload excludes it. The repaired manifest verifies the report, which includes the complete call ledger. A local replay of the CI file selection passed the checksum check.
 
+## Review follow-up
+
+Claude Code 2.1.322 sent the account's `max` on task and planning requests when Noop passed `low` only through the process environment. A loopback endpoint captured the requests. With the fix, tasks, planning, Judge, Medic, and the owner conversation all sent the selected `low` with the gateway configured in account settings. A task configured with `default` sent the account's `max`. Removing the inline setting made tasks and planning send `max` again.
+
+The fixture tests verify the inline level, preserve task attribution settings, and reject numeric and blank `[chat].model` values. The repair passed all 37 executor checks. The report records the request observations and tested revision.
+
 ## Repeat
 
 Set up the Web assets, pinned workerd, and browser as in the [executor acceptance instructions](../issue-35/README.md#repeat). Run the fixture matrix from the checkout under test.

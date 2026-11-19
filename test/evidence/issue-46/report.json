@@ -284,5 +284,96 @@
     "passed": 345,
     "skipped": 1,
     "failed": 0
+  },
+  "reviewFix": {
+    "revision": "9f720cd6fd15b0c7b9ad498cf77ac2c4b1d4b686",
+    "claudeCli": "2.1.322",
+    "before": [
+      {
+        "role": "task",
+        "noopEffort": "low",
+        "accountEnvEffort": "max",
+        "observedEffort": "max"
+      },
+      {
+        "role": "planning",
+        "noopEffort": "low",
+        "accountEnvEffort": "max",
+        "observedEffort": "max"
+      },
+      {
+        "role": "chat",
+        "noopEffort": "low",
+        "accountEnvEffort": "max",
+        "observedEffort": "low"
+      }
+    ],
+    "afterWithAccountGateway": [
+      {
+        "role": "task",
+        "noopEffort": "low",
+        "accountEnvEffort": null,
+        "observedEffort": "low"
+      },
+      {
+        "role": "task",
+        "noopEffort": "low",
+        "accountEnvEffort": "max",
+        "observedEffort": "low"
+      },
+      {
+        "role": "task",
+        "noopEffort": "default",
+        "accountEnvEffort": "max",
+        "observedEffort": "max"
+      },
+      {
+        "role": "planning",
+        "noopEffort": "low",
+        "accountEnvEffort": "max",
+        "observedEffort": "low"
+      },
+      {
+        "role": "judge",
+        "noopEffort": "low",
+        "accountEnvEffort": "max",
+        "observedEffort": "low"
+      },
+      {
+        "role": "medic",
+        "noopEffort": "low",
+        "accountEnvEffort": "max",
+        "observedEffort": "low"
+      },
+      {
+        "role": "chat",
+        "noopEffort": "low",
+        "accountEnvEffort": "max",
+        "observedEffort": "low"
+      }
+    ],
+    "ablationWithoutInlineEffort": [
+      {
+        "role": "task",
+        "noopEffort": "low",
+        "accountEnvEffort": "max",
+        "observedEffort": "max"
+      },
+      {
+        "role": "planning",
+        "noopEffort": "low",
+        "accountEnvEffort": "max",
+        "observedEffort": "max"
+      }
+    ],
+    "invalidChatModel": {
+      "red": "numeric model accepted",
+      "green": "number and blank string identify chat.model"
+    },
+    "fixtureChecksPassed": {
+      "tasks": 11,
+      "internal": 21,
+      "web": 5
+    }
   }
 }
