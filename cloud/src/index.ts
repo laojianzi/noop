@@ -529,9 +529,9 @@ export class Hub extends DurableObject<Env> {
     for (const ws of this.ctx.getWebSockets("host")) try { ws.send(JSON.stringify({ type: "watchers", n })); } catch {}
   }
   /** Owner clients that asked for status frames (?v=2) get the dashboard pushed instead of polling for it. */
-  pushStatus(settings?: unknown) {
+  pushStatus(settings?: unknown, socket?: WebSocket) {
     const s = JSON.stringify({ $status: this.statusView(), $settings: settings });
-    for (const ws of this.ctx.getWebSockets("v2")) try { ws.send(s); } catch {}
+    for (const ws of socket ? [socket] : this.ctx.getWebSockets("v2")) try { ws.send(s); } catch {}
   }
 
   // ---- auth
@@ -827,7 +827,9 @@ export class Hub extends DurableObject<Env> {
       if (req.headers.get("upgrade") !== "websocket") return json({ error: "websocket expected" }, 426);
       const [client, server] = Object.values(new WebSocketPair());
       // ?v=2 clients take {"$status": …} frames, so they need not poll /api/status
-      this.ctx.acceptWebSocket(server, url.searchParams.get("v") === "2" ? ["owner", "v2"] : ["owner"]);
+      const v2 = url.searchParams.get("v") === "2";
+      this.ctx.acceptWebSocket(server, v2 ? ["owner", "v2"] : ["owner"]);
+      if (v2) this.pushStatus(this.get("settings") ?? undefined, server);
       this.tellWatchers();
       return new Response(null, { status: 101, webSocket: client });
     }

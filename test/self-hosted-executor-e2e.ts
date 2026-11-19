@@ -168,6 +168,12 @@ try {
     const input = page.getByPlaceholder(/Tell the team what to do|给团队下指令/);
     await input.waitFor({ timeout: 30_000 });
     const settings = await context.newPage();
+    let settingsStream: any, suspendSettingsStream = false;
+    if (mode === "--web") await settings.routeWebSocket((url: URL) => url.pathname === "/api/stream", (ws: any) => {
+      if (suspendSettingsStream) { ws.close(); return; }
+      settingsStream = ws;
+      ws.connectToServer();
+    });
     await settings.goto(hub, { waitUntil: "domcontentloaded" });
     await settings.getByTestId("user-menu").click({ timeout: 30_000 });
     await settings.getByTestId("settings").click();
@@ -189,6 +195,23 @@ try {
     }
     await settings.screenshot({ path: join(out, "settings.png") });
     check("Web settings display the primary's acknowledged executor selection");
+    if (mode === "--web") {
+      const previousStream = settingsStream;
+      assert(previousStream);
+      suspendSettingsStream = true;
+      previousStream.close();
+      assert((await request(hub, "/api/settings", "PUT", { clis: { internal: ["claude"] } })).ok);
+      await until("settings did not reach the primary while the browser was offline", async () => {
+        const view = await (await request(hub, "/api/settings")).json() as { effective?: { internalClis?: string[] } };
+        return view.effective?.internalClis?.join(",") === "claude";
+      });
+      suspendSettingsStream = false;
+      await until("settings page did not reconnect", () => settingsStream !== previousStream);
+      await control.getByText(/Claude only|仅 Claude/).waitFor({ timeout: 8000 });
+      assert((await request(hub, "/api/settings", "PUT", { clis: { internal: ["codex"] } })).ok);
+      await control.getByText(/Codex only|仅 Codex/).waitFor();
+      check("reconnecting recovers a settings confirmation that the browser missed offline");
+    }
     const invalid = await request(hub, "/api/settings", "PUT", { clis: { internal: [] } });
     assert.equal(invalid.status, 400);
     const say = async (text: string) => {
@@ -419,6 +442,13 @@ try {
     assert.deepEqual(stage("medic").slice(beforeWrite), ["codex"], "a repair must not run a second executor after starting a tool");
     assert.equal(repair.status, 1);
     check("a partially executed repair is not replayed after a quota failure");
+
+    accounts(["codex", "invalid-account-directory"]);
+    writeFileSync(join(out, "invalid-account-directory"), "a file cannot be used as an account directory");
+    const beforeAccount = stage("chat").length;
+    await say("Use the backup if the first account directory cannot be opened");
+    assert.deepEqual(stage("chat").slice(beforeAccount), ["claude"]);
+    check("an unusable account directory does not stop the next selected executor");
   } else {
     accounts(["codex", "codex-limited", quota], ["claude", "claude-available"]);
     start("primary", "daemon");
@@ -452,6 +482,14 @@ try {
       assert.equal((await task(id)).cli, second);
       check(first + " preferred order includes accounts then the allowed alternate");
     }
+
+    accounts(["codex", "broken-task-account"], ["claude", "available-task-account"]);
+    writeFileSync(join(out, "broken-task-account"), "a file cannot be used as an account directory");
+    await save({ clis: { agents: { lead: ["codex", "claude"] } } });
+    const recoverable = add("Skip an invalid preferred account directory");
+    await until("invalid account directory blocked the task", async () => (await task(recoverable)).state === "done");
+    assert.deepEqual(taskCalls(recoverable), ["claude/available-task-account"]);
+    check("a task skips an unusable account directory and keeps the configured order");
 
     unlinkSync(join(bin, "codex"));
     await save({ clis: { agents: { lead: ["codex"] } } });

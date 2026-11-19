@@ -75,6 +75,11 @@ function credStamp(a: Account): number {
 }
 
 export function usable(a: Account): boolean {
+  if (!a.default) {
+    try {
+      if (statSync(a.dir, { throwIfNoEntry: false })?.isDirectory() === false) return false;
+    } catch { return false; }
+  }
   const all = load();
   const s = all.accounts[key(a)] ?? {};
   if (s.cooldown_until && !s.needs_login && s.last_error && /API Error: 50[234]\b/.test(s.last_error) && classify(s.last_error) === null) {
@@ -104,7 +109,10 @@ export async function tryInternalExecutors<T>(cfg: Cfg, attempt: (cli: Executor,
     if (!Bun.which(cli)) continue;
     for (const account of accounts(cfg, cli)) {
       if (!usable(account)) continue;
-      const result = await attempt(cli, accountEnv(account));
+      let env: Record<string, string>;
+      try { env = accountEnv(account); }
+      catch (error) { console.error(`executor ${key(account)} account directory:`, error); continue; }
+      const result = await attempt(cli, env);
       if (result !== undefined) return result;
     }
   }
