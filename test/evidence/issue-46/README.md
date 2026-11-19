@@ -22,6 +22,12 @@ Claude Code 2.1.322 sent the account's `max` on task and planning requests when 
 
 The fixture tests verify the inline level, preserve task attribution settings, and reject numeric and blank `[chat].model` values. The repair passed all 37 executor checks. The report records the request observations and tested revision.
 
+## Linux CI browser preparation
+
+The x86_64 job uses the runner's system libraries. It caches `playwright-core` and the headless browser by Ubuntu version, architecture, and Playwright version. A cache miss downloads the pinned tools with a five-minute step timeout. The same Web test runs on a hit or a miss.
+
+To check both paths, use the first run of a new Playwright version. After the job succeeds, start a new run on the same branch with `gh workflow run coordinator-linux.yml --ref <branch>`. Check the cache result and the preparation step. Verify the browser versions and the five Web checks in each downloaded report.
+
 ## Repeat
 
 Set up the Web assets, pinned workerd, and browser as in the [executor acceptance instructions](../issue-35/README.md#repeat). Run the fixture matrix from the checkout under test.
