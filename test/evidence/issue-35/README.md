@@ -1,5 +1,7 @@
 # Executor selection acceptance
 
+See [Review follow-up](REVIEW.md) for the fixes and repeat runs after review.
+
 The implementation and deterministic E2E checkout is `82782ef6913714de04c4028cd4170fa90659a7f1`. The authorized Codex run uses `a49ec44b17ed3f6bc9f2a7471f90ce38acccdd4b`. The only product change between these commits is the chat error text. The browser fixture retests that text. All runs start a fresh workerd coordinator and primary on Linux x86_64. The browser uses the Web bundle built from the same application sources. The tested versions are Bun 1.4.4, workerd 2026-11-10, NSH nightly `4aeefa8`, Chromium 155.0.8059.84, Playwright Core 1.64.1 and Codex CLI 0.170.0.
 
 | Check | Result |
