@@ -125,7 +125,7 @@ function accounts(...entries: [string, string, string?][]) {
 }
 const quota = '{"status":"failed","summary":"rate limit, try again in 1h"}';
 const auth = '{"status":"failed","summary":"not logged in"}';
-let error = "", browser: any;
+let error = "", browser: any, playwrightVersion: string | undefined, browserVersion: string | undefined;
 try {
   assert(assets && workerd, "Set NOOP_E2E_WEB_ASSETS and NOOP_E2E_WORKERD");
   for (const name of ["src", "cloud", "app", "templates", "presets"])
@@ -167,8 +167,12 @@ try {
     const setup = await (await request(hub, "/api/host/2fa/setup", "POST", {})).json() as { secret: string };
     const secret = b32decode(setup.secret);
     assert((await request(hub, "/api/host/2fa/confirm", "POST", { totp: await hotp(secret, stepAt() - 1) })).ok);
-    const { chromium } = await import(process.env.NOOP_E2E_PLAYWRIGHT ?? "playwright-core");
+    const playwrightModule = process.env.NOOP_E2E_PLAYWRIGHT ?? "playwright-core";
+    const { chromium } = await import(playwrightModule);
+    const packageJson = new URL("./package.json", import.meta.resolve(playwrightModule));
+    if (existsSync(packageJson)) playwrightVersion = JSON.parse(readFileSync(packageJson, "utf8")).version;
     browser = await chromium.launch({ executablePath: process.env.NOOP_E2E_BROWSER || Bun.which("chromium") || undefined, headless: true });
+    browserVersion = browser.version();
     const context = await browser.newContext({ viewport: { width: 1440, height: 960 }, locale: "en-US" });
     await context.route("**/*", (route: any) => new URL(route.request().url()).origin === hub ? route.continue() : route.abort());
     const page = await context.newPage();
@@ -599,8 +603,16 @@ try {
     try { process.kill(-child.pid, "SIGKILL"); } catch {}
   }
   const revision = spawnSync("git", ["rev-parse", "HEAD"], { cwd: source, encoding: "utf8" }).stdout.trim();
-  const report = JSON.stringify({ revision, checks, error, calls: readdirSync(out).includes("calls.jsonl") ? calls() : [] }, null, 2) + "\n";
+  const diagnostics = mode === "--web"
+    ? readdirSync(out).filter(name => name.endsWith(".log") || name === "settings.png" || name === "chat.png").sort()
+    : [];
+  const report = JSON.stringify({
+    revision, checks, error, calls: readdirSync(out).includes("calls.jsonl") ? calls() : [],
+    ...(mode === "--web" ? { playwright: playwrightVersion, chromium: browserVersion, diagnostics } : {}),
+  }, null, 2) + "\n";
   writeFileSync(join(out, "report.json"), report);
-  writeFileSync(join(out, "SHA256SUMS"), createHash("sha256").update(report).digest("hex") + "  report.json\n");
+  const evidence = ["report.json", ...diagnostics].map(name =>
+    `${createHash("sha256").update(readFileSync(join(out, name))).digest("hex")}  ${name}`).join("\n");
+  writeFileSync(join(out, "SHA256SUMS"), evidence + "\n");
   console.log("Evidence:", out);
 }

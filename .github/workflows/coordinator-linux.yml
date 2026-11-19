@@ -107,6 +107,21 @@ jobs:
           bun test/self-hosted-guest-e2e.ts
           bun test/self-hosted-backup-e2e.ts
           bun test/self-hosted-budget-e2e.ts
+      - name: Prepare pinned browser for x86_64 executor settings acceptance
+        if: matrix.arch == 'x86_64'
+        run: |
+          package=$(npm pack --silent --ignore-scripts playwright-core@1.64.1 --pack-destination "$RUNNER_TEMP")
+          mkdir -p "$RUNNER_TEMP/playwright-core"
+          tar -xzf "$RUNNER_TEMP/$package" -C "$RUNNER_TEMP/playwright-core"
+          playwright="$RUNNER_TEMP/playwright-core/package"
+          export PLAYWRIGHT_BROWSERS_PATH="$RUNNER_TEMP/noop-browsers"
+          node "$playwright/cli.js" install --with-deps --only-shell chromium
+          browser=$(find "$PLAYWRIGHT_BROWSERS_PATH" -type f -name chrome-headless-shell -print -quit)
+          test -x "$browser"
+          printf 'NOOP_E2E_PLAYWRIGHT=%s\nNOOP_E2E_BROWSER=%s\n' "$playwright/index.mjs" "$browser" >> "$GITHUB_ENV"
+      - name: Run x86_64 Web executor settings acceptance
+        if: matrix.arch == 'x86_64'
+        run: bun test/self-hosted-executor-e2e.ts --web
       - name: Build and verify the coordinator archive
         run: |
           bun scripts/package-local-coordinator.ts --workerd "$NOOP_E2E_WORKERD" --output "$RUNNER_TEMP/coordinator-artifacts" \
@@ -149,6 +164,8 @@ jobs:
             ${{ runner.temp }}/coordinator-e2e/**/discovery.json
             ${{ runner.temp }}/coordinator-e2e/**/shared-mcp-task.json
             ${{ runner.temp }}/coordinator-e2e/**/bad-workerd
+            ${{ runner.temp }}/coordinator-e2e/**/settings.png
+            ${{ runner.temp }}/coordinator-e2e/**/chat.png
           if-no-files-found: warn
       - uses: actions/download-artifact@v4
         with:
