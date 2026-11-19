@@ -210,10 +210,10 @@ export class CodexModel implements Model {
         const result = await runInternalProcess(cmd, prompt, BRAIN_DIR, this.timeoutMs, this.env);
         const { reply, completed, usedTools } = internalStream(result.out, "codex");
         if (usedTools) throw new ModelCallError("Codex started a tool outside the Noop conversation", false);
-        if (result.timedOut) throw new Error("Codex timed out");
+        if (result.timedOut) throw new Error("timed out");
         const failure = classify(result.err + "\n" + result.out);
-        if (result.code) throw new Error(failure === "auth" ? "Codex needs login" : failure === "quota" ? "Codex is out of quota" : `Codex exited with code ${result.code}`);
-        if (!completed || !reply) throw new Error("Codex ended without a completed reply");
+        if (result.code) throw new Error(failure === "auth" ? "needs login" : failure === "quota" ? "is out of quota" : `exited with code ${result.code}`);
+        if (!completed || !reply) throw new Error("ended without a completed reply");
         transcript.push({ role: "assistant", content: reply });
         return reply;
       },

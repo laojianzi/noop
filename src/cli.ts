@@ -1047,7 +1047,7 @@ async function daemon(cfg: Cfg) {
             reason = L(`${executor} did not answer`, `${executor} 没有返回回复`);
           } catch (error) {
             if (!(error instanceof ModelCallError) || !error.retryable) throw error;
-            reason = `${executor} ${error.message.replace(/^Error: /, "").split("\n")[0].slice(0, 120)}`;
+            reason = `${executor === "codex" ? "Codex" : "Claude"} ${error.message.replace(/^Error: /, "").split("\n")[0].slice(0, 120)}`;
           }
           console.error(`chat executor unavailable: ${reason}`);
         });

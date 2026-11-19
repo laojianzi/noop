@@ -225,7 +225,7 @@ try {
       await page.getByText("Fixture used task data", { exact: true }).waitFor({ timeout: 20_000 });
       writeFileSync(join(out, "codex-chat.fault"), "");
       await say("Keep this failed message in the Web conversation");
-      await page.getByText(/try again manually|请手动重试/).waitFor({ timeout: 20_000 });
+      await page.getByText("Chat could not finish (Codex needs login). Please try again manually.").waitFor({ timeout: 20_000 });
       await page.getByText("Keep this failed message in the Web conversation", { exact: true }).waitFor();
       check("Web chat shows a multi-turn reply and a manual retry notice");
     }
