@@ -1,0 +1,288 @@
+{
+  "forkBase": "3d7b8459aafebfcd1e119aab35d044b7e3a46996",
+  "upstreamPreview": "6bcc190e7c92d4389e3764d37b84492a6b756f3a",
+  "red": {
+    "47": {
+      "revision": "3d7b8459aafebfcd1e119aab35d044b7e3a46996",
+      "expected": "model_reasoning_effort=\"max\"",
+      "actual": "[]"
+    },
+    "48": {
+      "revision": "641221b7e7b4180e9dfa5114252f9a7c82fab889",
+      "expected": "model_reasoning_effort=\"medium\"",
+      "actual": "model_reasoning_effort=\"low\""
+    },
+    "49": {
+      "revision": "e5c0b47b19fbefd9b8b1af9a30e65fb91e217241",
+      "expected": "medium",
+      "actual": "undefined"
+    }
+  },
+  "fixture": {
+    "tasks": {
+      "revision": "1d6b3a1ed593afedbd7d03f3dd4be5ed297be459",
+      "passed": 11,
+      "launches": [
+        {
+          "stage": "task",
+          "cli": "codex",
+          "model": "gpt-6.2-sol",
+          "effortArgs": [
+            "model_reasoning_effort=\"max\""
+          ],
+          "effortEnv": "high"
+        },
+        {
+          "stage": "task",
+          "cli": "codex",
+          "model": "changed-model",
+          "effortArgs": [
+            "model_reasoning_effort=\"high\""
+          ],
+          "effortEnv": "high"
+        },
+        {
+          "stage": "task",
+          "cli": "codex",
+          "model": "gpt-6.2-sol",
+          "effortArgs": [],
+          "effortEnv": "high"
+        },
+        {
+          "stage": "task",
+          "cli": "claude",
+          "model": "claude-fixture",
+          "effortArgs": [],
+          "effortEnv": "medium"
+        },
+        {
+          "stage": "task",
+          "cli": "claude",
+          "model": "claude-fixture",
+          "effortArgs": [],
+          "effortEnv": "high"
+        },
+        {
+          "stage": "task",
+          "cli": "codex",
+          "model": "custom-model",
+          "effortArgs": [
+            "model_reasoning_effort=\"medium\""
+          ],
+          "effortEnv": "high"
+        }
+      ]
+    },
+    "internal": {
+      "revision": "1d6b3a1ed593afedbd7d03f3dd4be5ed297be459",
+      "passed": 21,
+      "launches": [
+        {
+          "stage": "warm",
+          "cli": "claude",
+          "model": "legacy-claude-model",
+          "effortArgs": [],
+          "effortEnv": "medium"
+        },
+        {
+          "stage": "chat",
+          "cli": "codex",
+          "model": "gpt-6.2-sol",
+          "effortArgs": [
+            "model_reasoning_effort=\"medium\""
+          ]
+        },
+        {
+          "stage": "chat",
+          "cli": "codex",
+          "model": "chat-model",
+          "effortArgs": [
+            "model_reasoning_effort=\"max\""
+          ]
+        },
+        {
+          "stage": "chat",
+          "cli": "codex",
+          "model": "chat-model",
+          "effortArgs": []
+        },
+        {
+          "stage": "warm",
+          "cli": "claude",
+          "model": "legacy-claude-model",
+          "effortArgs": [],
+          "effortEnv": "high"
+        },
+        {
+          "stage": "chat",
+          "cli": "claude",
+          "model": "legacy-claude-model",
+          "effortArgs": [],
+          "effortEnv": "high"
+        },
+        {
+          "stage": "plan",
+          "cli": "codex",
+          "model": "gpt-6.2-sol",
+          "effortArgs": [
+            "model_reasoning_effort=\"low\""
+          ]
+        },
+        {
+          "stage": "task",
+          "cli": "codex",
+          "model": "gpt-6.2-sol",
+          "effortArgs": [
+            "model_reasoning_effort=\"max\""
+          ]
+        },
+        {
+          "stage": "plan",
+          "cli": "codex",
+          "model": "gpt-6.2-sol",
+          "effortArgs": [
+            "model_reasoning_effort=\"medium\""
+          ]
+        },
+        {
+          "stage": "plan",
+          "cli": "codex",
+          "model": "gpt-6.2-sol",
+          "effortArgs": []
+        },
+        {
+          "stage": "plan",
+          "cli": "claude",
+          "model": "legacy-claude-model",
+          "effortArgs": [],
+          "effortEnv": "high"
+        },
+        {
+          "stage": "task",
+          "cli": "claude",
+          "model": "claude-opus-5-5",
+          "effortArgs": [],
+          "effortEnv": "high"
+        },
+        {
+          "stage": "plan",
+          "cli": "claude",
+          "model": "legacy-claude-model",
+          "effortArgs": [],
+          "effortEnv": "low"
+        },
+        {
+          "stage": "judge",
+          "cli": "codex",
+          "model": "gpt-6.2-sol",
+          "effortArgs": [
+            "model_reasoning_effort=\"max\""
+          ]
+        },
+        {
+          "stage": "medic",
+          "cli": "codex",
+          "model": "gpt-6.2-sol",
+          "effortArgs": [
+            "model_reasoning_effort=\"max\""
+          ]
+        },
+        {
+          "stage": "judge",
+          "cli": "claude",
+          "model": "claude-opus-5-5",
+          "effortArgs": [],
+          "effortEnv": "low"
+        },
+        {
+          "stage": "medic",
+          "cli": "claude",
+          "model": "claude-opus-5-5",
+          "effortArgs": [],
+          "effortEnv": "high"
+        },
+        {
+          "stage": "judge",
+          "cli": "claude",
+          "model": "claude-opus-5-5",
+          "effortArgs": [],
+          "effortEnv": "high"
+        },
+        {
+          "stage": "medic-write",
+          "cli": "codex",
+          "model": "gpt-6.2-sol",
+          "effortArgs": [
+            "model_reasoning_effort=\"max\""
+          ]
+        }
+      ]
+    },
+    "web": {
+      "revision": "1d6b3a1ed593afedbd7d03f3dd4be5ed297be459",
+      "passed": 5
+    }
+  },
+  "realCodex": {
+    "revision": "ec53487b4243df5b80912daaf79373fe0b4b6d10",
+    "cliVersion": "0.170.0",
+    "passed": 3,
+    "launches": [
+      {
+        "stage": "chat",
+        "model": "gpt-6-luna",
+        "effortArgs": [
+          "model_reasoning_effort=\"low\""
+        ],
+        "elapsedMs": 23689,
+        "nativeTools": [],
+        "exitCode": 0
+      },
+      {
+        "stage": "chat",
+        "model": "gpt-6-luna",
+        "effortArgs": [
+          "model_reasoning_effort=\"low\""
+        ],
+        "elapsedMs": 13727,
+        "nativeTools": [],
+        "exitCode": 0
+      },
+      {
+        "stage": "plan",
+        "model": "gpt-6-luna",
+        "effortArgs": [
+          "model_reasoning_effort=\"low\""
+        ],
+        "elapsedMs": 11551,
+        "nativeTools": [],
+        "exitCode": 0
+      },
+      {
+        "stage": "task",
+        "model": "gpt-6-luna",
+        "effortArgs": [
+          "model_reasoning_effort=\"low\""
+        ],
+        "elapsedMs": 31137,
+        "nativeTools": [],
+        "exitCode": 0
+      }
+    ]
+  },
+  "ablation": {
+    "removed": "explicit chat effort lookup",
+    "expected": "medium",
+    "actual": "max"
+  },
+  "artifactProjection": {
+    "before": "calls.jsonl missing",
+    "after": "report.json verified with embedded calls"
+  },
+  "bunTests": {
+    "revision": "ec53487b4243df5b80912daaf79373fe0b4b6d10",
+    "passed": 345,
+    "skipped": 1,
+    "failed": 0
+  }
+}
