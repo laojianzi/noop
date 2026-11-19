@@ -751,7 +751,7 @@ try {
     ...(mode === "--web" ? { playwright: playwrightVersion, chromium: browserVersion, diagnostics } : {}),
   }, null, 2) + "\n";
   writeFileSync(join(out, "report.json"), report);
-  const evidence = ["report.json", ...["calls.jsonl", "real-codex.jsonl"].filter(name => existsSync(join(out, name))), ...diagnostics].map(name =>
+  const evidence = ["report.json", ...diagnostics].map(name =>
     `${createHash("sha256").update(readFileSync(join(out, name))).digest("hex")}  ${name}`).join("\n");
   writeFileSync(join(out, "SHA256SUMS"), evidence + "\n");
   console.log("Evidence:", out);
