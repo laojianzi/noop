@@ -77,7 +77,9 @@ function credStamp(a: Account): number {
 export function usable(a: Account): boolean {
   if (!a.default) {
     try {
-      if (statSync(a.dir, { throwIfNoEntry: false })?.isDirectory() === false) return false;
+      const dir = statSync(a.dir, { throwIfNoEntry: false });
+      if (!dir) mkdirSync(a.dir, { recursive: true });
+      else if (!dir.isDirectory()) return false;
     } catch { return false; }
   }
   const all = load();

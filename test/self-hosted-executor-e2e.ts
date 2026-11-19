@@ -2,7 +2,7 @@
 import assert from "node:assert/strict";
 import { spawn, spawnSync, type ChildProcess } from "node:child_process";
 import { createHash } from "node:crypto";
-import { closeSync, cpSync, existsSync, mkdirSync, mkdtempSync, openSync, readFileSync, readdirSync, rmdirSync, symlinkSync, unlinkSync, writeFileSync } from "node:fs";
+import { chmodSync, closeSync, cpSync, existsSync, mkdirSync, mkdtempSync, openSync, readFileSync, readdirSync, rmdirSync, symlinkSync, unlinkSync, writeFileSync } from "node:fs";
 import { BUILTIN_ROUTINES } from "../src/builtin-routines";
 import { b32decode, hotp, stepAt } from "../cloud/src/totp";
 import { createServer } from "node:net";
@@ -490,6 +490,18 @@ try {
     await until("invalid account directory blocked the task", async () => (await task(recoverable)).state === "done");
     assert.deepEqual(taskCalls(recoverable), ["claude/available-task-account"]);
     check("a task skips an unusable account directory and keeps the configured order");
+
+    if (process.getuid?.() !== 0) {
+      const readOnly = join(out, "read-only-accounts");
+      mkdirSync(readOnly, { mode: 0o555 });
+      try {
+        accounts(["codex", "read-only-accounts/codex"], ["claude", "available-task-account"]);
+        const needsDirectory = add("Skip a preferred account whose directory cannot be created");
+        await until("failed account initialization blocked the task", async () => (await task(needsDirectory)).state === "done");
+        assert.deepEqual(taskCalls(needsDirectory), ["claude/available-task-account"]);
+        check("a task skips an account that cannot initialize its directory");
+      } finally { chmodSync(readOnly, 0o755); }
+    }
 
     unlinkSync(join(bin, "codex"));
     await save({ clis: { agents: { lead: ["codex"] } } });
