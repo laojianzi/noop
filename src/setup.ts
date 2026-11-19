@@ -177,9 +177,8 @@ export async function selfUpdate(opts: { busy?: number; force?: boolean; deploy?
     try { mkdirSync(HOME_DIR, { recursive: true }); writeFileSync(REJECTED(), up); } catch {}
     console.error(`self-update to ${up.slice(0, 7)} failed tests → rolled back to ${head.slice(0, 7)}`);
     const { medic } = await import("./medic");
-    const { loadConfig } = await import("./core");
     void medic(`self-update ${head.slice(0, 7)} → ${up.slice(0, 7)} failed (deps exit ${deps.exitCode}, tests exit ${test.exitCode}); rolled back.\n${test.stdout.toString().slice(-3000)}${test.stderr.toString().slice(-3000)}`,
-      loadConfig(), { auto: true, kind: "update" });
+      { auto: true, kind: "update" });
     return false;
   }
   seedTemplates(); // new template agents/policies appear; existing ones untouched

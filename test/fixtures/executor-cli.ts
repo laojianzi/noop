@@ -1,4 +1,4 @@
-import { appendFileSync, existsSync, readFileSync } from "node:fs";
+import { appendFileSync, existsSync, readFileSync, writeFileSync } from "node:fs";
 import { basename, join } from "node:path";
 import { createInterface } from "node:readline";
 
@@ -31,8 +31,23 @@ if (cli === "codex" && process.env.NOOP_E2E_REAL_CODEX) {
   if (args[0] !== "exec") process.exit(2);
   const stage = args.includes("--ephemeral") ? "chat" : args.includes("workspace-write") ? "task" : "plan";
   record(stage);
+  const trust = stage === "chat" ? process.env.NOOP_E2E_CODEX_PROJECT_TRUST : undefined;
+  const projectArgs = trust ? ["-c", trust] : [];
+  const configProof = join(dir, "codex-mcp-probe.json");
+  if (trust && !existsSync(configProof)) {
+    const flags = args.filter((arg, i) => arg === "-c" || arg === "--disable" ||
+      args[i - 1] === "-c" || args[i - 1] === "--disable");
+    const list = Bun.spawnSync([process.env.NOOP_E2E_REAL_CODEX, "mcp", "list", "--json", ...projectArgs, ...flags]);
+    if (list.exitCode !== 0) throw new Error(list.stderr.toString());
+    const servers = JSON.parse(list.stdout.toString()) as { name: string; enabled: boolean }[];
+    const probes = servers.filter(s => ["noop_probe", "parent_probe", "cwd_probe"].includes(s.name))
+      .map(({ name, enabled }) => ({ name, enabled }));
+    writeFileSync(configProof, JSON.stringify(probes) + "\n");
+    if (!probes.some(s => s.name === "noop_probe" && !s.enabled) ||
+      probes.some(s => s.name !== "noop_probe")) throw new Error("Codex inherited project MCP configuration");
+  }
   const started = Date.now();
-  const proc = Bun.spawn([process.env.NOOP_E2E_REAL_CODEX, "exec", "-c", 'model_reasoning_effort="low"', ...args.slice(1)],
+  const proc = Bun.spawn([process.env.NOOP_E2E_REAL_CODEX, "exec", "-c", 'model_reasoning_effort="low"', ...projectArgs, ...args.slice(1)],
     { stdin: "inherit", stdout: "pipe", stderr: "inherit" });
   const out = await new Response(proc.stdout).text();
   process.stdout.write(out);
@@ -121,6 +136,14 @@ if (input.includes('{"fixed": true|false')) {
 const task = input.match(/^# Task (T-\d+):/m)?.[1];
 if (!task) { record("other"); process.exit(1); }
 record("task", task);
+if (/^# Task T-\d+: Task fails after the Medic selection changes$/m.test(input)) {
+  while (!existsSync(join(dir, "release-failing-task"))) await Bun.sleep(50);
+  console.log("fixture task failed before returning a result");
+  process.exit(1);
+}
+if (/^# Task T-\d+: Hold a task for the next status push$/m.test(input)) {
+  while (!existsSync(join(dir, "release-status-task"))) await Bun.sleep(50);
+}
 const taskFault = join(dir, account + ".fault");
 const result = existsSync(taskFault) ? readFileSync(taskFault, "utf8")
   : input.includes("Ask fixture judgement") ? '{"status":"needs_decision","summary":"fixture question","question":"Can we continue?","options":["A: yes","B: no"]}'

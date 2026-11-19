@@ -6,7 +6,7 @@ import { $ } from "bun";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { arch, homedir, platform, release } from "node:os";
 import { join } from "node:path";
-import { type Cfg, CODE, L, DATA, hostName, HOME_DIR } from "./core";
+import { CODE, L, DATA, hostName, HOME_DIR, loadConfig } from "./core";
 
 import { tryInternalExecutors } from "./accounts";
 import { internalStream, runInternalProcess } from "./runner";
@@ -55,8 +55,10 @@ ${ctx}
 End with one \`\`\`json block: {"fixed": true|false, "summary": "...", "owner_action": "command or empty", "pr": "url or empty"}`;
 
 /** Run the medic. `auto` = triggered by a failure (rate-limited to once per hour per problem kind). */
-export async function medic(problem: string, cfg: Cfg, opts: { auto?: boolean; kind?: string } = {}) {
-  if (process.env.HUB_NO_MEDIC || cfg.medic?.enabled === false) return null;
+export async function medic(problem: string, opts: { auto?: boolean; kind?: string } = {}) {
+  if (process.env.HUB_NO_MEDIC) return null;
+  const cfg = loadConfig();
+  if (cfg.medic?.enabled === false) return null;
   const state: Record<string, string> = existsSync(STATE) ? JSON.parse(readFileSync(STATE, "utf8")) : {};
   const kind = opts.kind ?? "manual";
   if (opts.auto && state[kind] && Date.now() - Date.parse(state[kind]) < 60 * 60_000) return null;

@@ -414,7 +414,7 @@ function repairJson(json: string): string {
  * `[router] cli/model` in config.toml puts one first; the others are fallbacks when its CLI is missing or fails. */
 const ROUTERS = [{ cli: "claude", model: "claude-haiku-5-5" }, { cli: "codex", model: "gpt-6-luna" }];
 
-export function codexReadOnlyArgs(env: Record<string, string> = {}): string[] {
+export function codexReadOnlyArgs(cwd: string, env: Record<string, string> = {}): string[] {
   const home = env.CODEX_HOME ?? process.env.CODEX_HOME ?? join(homedir(), ".codex");
   const config = join(home, "config.toml");
   const parsed = Bun.TOML.parse(existsSync(config) ? readFileSync(config, "utf8") : "") as {
@@ -426,8 +426,11 @@ export function codexReadOnlyArgs(env: Record<string, string> = {}): string[] {
   // Codex merges the server table with lower layers. An empty override leaves their servers enabled.
   const servers = Object.keys({ ...parsed.mcp_servers, ...profile?.mcp_servers });
   const disabled = servers.map((name) => `${JSON.stringify(name)}={enabled=false}`).join(",");
+  // Stop project discovery at this directory, and also exclude its own project configuration.
+  const project = JSON.stringify(realpathSync(cwd));
   return ["--sandbox", "read-only",
     "--disable", "shell_tool", "--disable", "unified_exec", "--disable", "apps", "--disable", "plugins", "--disable", "multi_agent_v2",
+    "-c", "project_root_markers=[]", "-c", `projects={${project}={trust_level="untrusted"}}`,
     "-c", 'web_search="disabled"', "-c", `mcp_servers={${disabled}}`];
 }
 
@@ -483,7 +486,7 @@ async function askStructured(role: "router" | "judge", prompt: string, cfg: Cfg,
   const attempt = async (cli: string, model?: string, env?: Record<string, string>) => {
     let codexArgs: string[] = [];
     if (explicit && cli === "codex") {
-      try { codexArgs = codexReadOnlyArgs(env); }
+      try { codexArgs = codexReadOnlyArgs(ROOT, env); }
       catch (error) { console.error(`Codex ${role} configuration:`, error); return; }
     } else if (routing && cli !== "claude") {
       codexArgs = ["--sandbox", "read-only"];

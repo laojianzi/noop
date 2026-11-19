@@ -579,7 +579,7 @@ async function handleFailure(meta: Record<string, string>, body: string, summary
   // no keyword matching: when the agent could not even report a result, the medic (AI) decides whether the tooling broke
   const tooling = /agent returned no result block/.test(summary);
   if (tooling) void medic(`Agent run for ${meta.id} on ${host} ended without a result. Decide whether the tooling (CLI, auth, environment) is at fault and fix it; ignore it if the task itself failed:\n${out.slice(-2500)}`,
-    cfg, { auto: true, kind: `tool-${meta.cli_used ?? "agent"}` });
+    { auto: true, kind: `tool-${meta.cli_used ?? "agent"}` });
   if (attempt < (cfg.fleet?.max_attempts ?? 2)) {
     await locked(async () => {
       await _pull();
@@ -1127,7 +1127,7 @@ async function daemon(cfg: Cfg) {
     await locked(() => guardMemory(host)); // damage sync reported since the last tick; the daily memory snapshot
     try { await tick(c, true); failures = 0; } catch (e) {
       console.error("tick failed", e);
-      if (++failures >= 3) void medic(`noop daemon: ${failures} consecutive tick failures on ${host}.\n${(e as Error)?.stack ?? e}`, c, { auto: true, kind: "daemon" });
+      if (++failures >= 3) void medic(`noop daemon: ${failures} consecutive tick failures on ${host}.\n${(e as Error)?.stack ?? e}`, { auto: true, kind: "daemon" });
     }
     // self-update only when idle and not restarted within the hour; otherwise check again next tick
     if (!draining && running === 0 && restartAllowed() && Date.now() - lastUpdate > (c.update?.check_minutes ?? 30) * 60_000) {
@@ -1235,7 +1235,7 @@ async function main() {
     case "doctor": return doctor();
     case "fix": {
       const what = rest.join(" ") || "Run a health check (hub doctor, hub status, service logs, bun test) and fix whatever is broken.";
-      const r = await medic(what, cfg, { kind: "manual" });
+      const r = await medic(what, { kind: "manual" });
       if (!r?.fixed) process.exitCode = 1;
       return;
     }
@@ -1381,7 +1381,7 @@ if (import.meta.main) {
     const cmd = Bun.argv[2] ?? "";
     console.error(e);
     if (["init", "install", "update", "tick", "learn"].includes(cmd) && !process.env.HUB_NO_MEDIC) {
-      await medic(`\`hub ${Bun.argv.slice(2).join(" ")}\` failed:\n${(e as Error)?.stack ?? e}`, loadConfig(), { auto: true, kind: `cmd-${cmd}` });
+      await medic(`\`hub ${Bun.argv.slice(2).join(" ")}\` failed:\n${(e as Error)?.stack ?? e}`, { auto: true, kind: `cmd-${cmd}` });
     }
     process.exit(1);
   }

@@ -46,7 +46,9 @@ const request = (base: string, route: string, method = "GET", body?: unknown) =>
 const argsFor = (args: string[]) => [join(repo, "src/cli.ts"), ...args];
 function start(name: string, ...args: string[]) {
   const fd = openSync(join(out, name + ".log"), "a");
-  children.push(spawn(process.execPath, argsFor(args), { cwd: repo, env, detached: true, stdio: ["ignore", fd, fd] }));
+  const preload = name === "primary" && mode === "--web"
+    ? ["--preload", join(source, "test/fixtures/settings-state-network.ts")] : [];
+  children.push(spawn(process.execPath, [...preload, ...argsFor(args)], { cwd: repo, env, detached: true, stdio: ["ignore", fd, fd] }));
   closeSync(fd);
 }
 function cli(...args: string[]) {
@@ -147,7 +149,19 @@ try {
   writeFileSync(join(noopHome, "data/settings.json"), JSON.stringify({ routines }));
   if (mode === "--web" || mode === "--real") {
     accounts();
-    if (mode === "--real") writeFileSync(configPath, fixtureConfig + '\n[clis.codex]\nmodel = "gpt-6-luna"\n');
+    if (mode === "--real") {
+      writeFileSync(configPath, fixtureConfig + '\n[clis.codex]\nmodel = "gpt-6-luna"\n');
+      const git = spawnSync("git", ["init", "-q", home], { encoding: "utf8" });
+      assert.equal(git.status, 0, git.stderr);
+      const brain = join(noopHome, "brain");
+      for (const [dir, name] of [[home, "parent_probe"], [brain, "cwd_probe"]]) {
+        mkdirSync(join(dir, ".codex"), { recursive: true });
+        writeFileSync(join(dir, ".codex/config.toml"),
+          `[mcp_servers.${name}]\ncommand = "/usr/bin/touch"\nargs = [${JSON.stringify(join(out, name + "-started"))}]\n`);
+      }
+      const projectEntries = [home, brain].map(dir => `${JSON.stringify(dir)}={trust_level="trusted"}`).join(",");
+      env.NOOP_E2E_CODEX_PROJECT_TRUST = `projects={${projectEntries}}`;
+    }
     start("primary", "daemon");
     await until("primary did not start", () => ready(local));
     const setup = await (await request(hub, "/api/host/2fa/setup", "POST", {})).json() as { secret: string };
@@ -211,6 +225,47 @@ try {
       assert((await request(hub, "/api/settings", "PUT", { clis: { internal: ["codex"] } })).ok);
       await control.getByText(/Codex only|仅 Codex/).waitFor();
       check("reconnecting recovers a settings confirmation that the browser missed offline");
+
+      const stillOpen = settingsStream;
+      writeFileSync(join(out, "drop-settings-ack"), "");
+      assert((await request(hub, "/api/settings", "PUT", { clis: { internal: ["claude"] } })).ok);
+      await until("settings-only acknowledgement was not dropped", () => existsSync(join(out, "drop-settings-ack-observed")));
+      const active = add("Hold a task for the next status push", "--cli", "codex");
+      await until("the status task did not start", () => taskCalls(active).length > 0);
+      await until("a regular status push did not deliver confirmed settings", async () => {
+        const view = await (await request(hub, "/api/settings")).json() as { effective?: { internalClis?: string[] } };
+        return view.effective?.internalClis?.join(",") === "claude";
+      });
+      await control.getByText(/Claude only|仅 Claude/).waitFor({ timeout: 8000 });
+      assert.equal(settingsStream, stillOpen);
+      writeFileSync(join(out, "release-status-task"), "");
+      assert((await request(hub, "/api/settings", "PUT", { clis: { internal: ["codex"] } })).ok);
+      await control.getByText(/Codex only|仅 Codex/).waitFor();
+      check("the normal status push restores a dropped settings acknowledgement without reconnecting");
+
+      await until("the status task did not finish", async () => (await task(active)).state === "done");
+      unlinkSync(join(out, "release-status-task"));
+      const delivery = join(out, "settings-delivery-order");
+      writeFileSync(join(out, "hold-old-status"), "");
+      add("Hold a task for the next status push", "--cli", "codex");
+      await until("the older status was not held", () => existsSync(join(out, "hold-old-status-observed")));
+      assert((await request(hub, "/api/settings", "PUT", { clis: { internal: ["claude"] } })).ok);
+      await until("the primary did not save the new selection", async () => {
+        const view = await (await request(local, "/api/settings")).json() as { effective?: { internalClis?: string[] } };
+        return view.effective?.internalClis?.join(",") === "claude";
+      });
+      // Give an unsequenced acknowledgement time to overtake the older status.
+      await until("an acknowledgement went ahead of the old status", () => existsSync(delivery), 1600).catch(() => {});
+      writeFileSync(join(out, "hold-old-status-release"), "");
+      await until("both status and acknowledgement must arrive", () =>
+        existsSync(delivery) && readFileSync(delivery, "utf8").trim().split("\n").length >= 2);
+      assert.deepEqual(readFileSync(delivery, "utf8").trim().split("\n"), ["status", "ack"]);
+      await control.getByText(/Claude only|仅 Claude/).waitFor();
+      unlinkSync(join(out, "hold-old-status-observed"));
+      writeFileSync(join(out, "release-status-task"), "");
+      assert((await request(hub, "/api/settings", "PUT", { clis: { internal: ["codex"] } })).ok);
+      await control.getByText(/Codex only|仅 Codex/).waitFor();
+      check("an older status request cannot overwrite newly acknowledged settings");
     }
     const invalid = await request(hub, "/api/settings", "PUT", { clis: { internal: [] } });
     assert.equal(invalid.status, 400);
@@ -225,6 +280,9 @@ try {
       assert(brain.some(row => row.executor === "codex" && row.rounds >= 2 && row.calls.some((c: any) => c.tool === "list_tasks" && c.ok)));
       assert(calls().filter(c => c.stage === "chat").every(c => c.mcpDisabled), "the profile must define the noop_probe MCP server");
       assert(!existsSync(join(env.CODEX_HOME!, "noop-mcp-probe-started")), "Codex did not launch an MCP server in the Web conversation");
+      assert.deepEqual(JSON.parse(readFileSync(join(out, "codex-mcp-probe.json"), "utf8")), [{ name: "noop_probe", enabled: false }]);
+      assert(!existsSync(join(out, "parent_probe-started")) && !existsSync(join(out, "cwd_probe-started")));
+      check("Codex ignores trusted project MCP layers and disables the account MCP probe");
       const project = join(out, "acceptance-project");
       mkdirSync(project);
       writeFileSync(join(project, "sum.ts"), "export const sum = (a: number, b: number) => a - b;\n");
@@ -450,6 +508,18 @@ try {
     assert.deepEqual(stage("medic").slice(beforeWrite), ["codex"], "a repair must not run a second executor after starting a tool");
     assert.equal(repair.status, 1);
     check("a partially executed repair is not replayed after a quota failure");
+
+    unlinkSync(join(out, "codex-medic-write.fault"));
+    await setSelection(["claude"]);
+    const beforeAutoMedic = stage("medic").length;
+    const failingTask = add("Task fails after the Medic selection changes", "--cli", "codex");
+    await until("the task did not start", () => taskCalls(failingTask).length > 0);
+    await setSelection(["codex"]);
+    writeFileSync(join(out, "release-failing-task"), "");
+    await until("the failed task did not start automatic Medic", () => stage("medic").length > beforeAutoMedic);
+    assert.deepEqual(stage("medic").slice(beforeAutoMedic), ["codex"]);
+    check("automatic Medic uses the selection confirmed after the failed task started");
+    await setSelection(["codex", "claude"]);
 
     accounts(["codex", "invalid-account-directory"]);
     writeFileSync(join(out, "invalid-account-directory"), "a file cannot be used as an account directory");

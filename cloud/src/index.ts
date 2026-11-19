@@ -390,19 +390,20 @@ export class Hub extends DurableObject<Env> {
     if (r) this.mem.set(k, r.v as string);
     return r ? JSON.parse(r.v as string) : null;
   }
-  /** Writes only when the value changed. Hot keys (status, host_seen) are kept in memory and persisted at most every
+  /** Returns whether the value changed. Hot keys (status, host_seen) are kept in memory and persisted at most every
    *  HOT_PERSIST_MS (longer when the budget is tight): losing a few minutes of them on eviction is harmless, the daemon re-sends. */
   set(k: string, v: unknown) {
     const s = JSON.stringify(v);
-    if (this.mem.get(k) === s) return;
-    if (!this.mem.has(k) && this.sql.exec("SELECT v FROM kv WHERE k = ?", k).toArray()[0]?.v === s) { this.mem.set(k, s); return; }
+    if (this.mem.get(k) === s) return false;
+    if (!this.mem.has(k) && this.sql.exec("SELECT v FROM kv WHERE k = ?", k).toArray()[0]?.v === s) { this.mem.set(k, s); return false; }
     this.mem.set(k, s);
     if (HOT.has(k)) {
       const lvl = this.level(), every = lvl === "ok" ? HOT_PERSIST_MS : lvl === "lean" ? HOT_PERSIST_MS * 6 : Infinity;
-      if (Date.now() - (this.flushed.get(k) ?? 0) < every) return;
+      if (Date.now() - (this.flushed.get(k) ?? 0) < every) return true;
     }
     this.flushed.set(k, Date.now());
     this.sql.exec("INSERT OR REPLACE INTO kv (k, v) VALUES (?, ?)", k, s);
+    return true;
   }
   touchHost() { this.set("host_seen", Date.now()); }
 
@@ -994,11 +995,14 @@ export class Hub extends DurableObject<Env> {
       const { status, settings } = (await req.json()) as { status?: unknown; settings?: unknown };
       // over budget the dashboard refreshes at most every 10 minutes
       const shed = this.level() === "shed" && Date.now() - (this.flushed.get("status_at") ?? 0) < 10 * 60_000;
-      if (status && !shed) { this.flushed.set("status_at", Date.now()); this.set("status", status); this.mcp.onChanged(["noop://status"]); this.pushStatus(); }
-      if (settings) {
-        this.set("settings", settings);
-        if (!status) this.pushStatus(settings);
+      const publishStatus = !!status && !shed;
+      const acknowledgement = settings && (this.set("settings", settings) || !status) ? settings : undefined;
+      if (publishStatus) {
+        this.flushed.set("status_at", Date.now());
+        this.set("status", status);
+        this.mcp.onChanged(["noop://status"]);
       }
+      if (publishStatus || acknowledgement) this.pushStatus(acknowledgement);
       this.touchHost();
       // watchers: owner clients connected right now. With none, the primary skips live-activity-only refreshes.
       return json({ ok: true, watchers: this.ctx.getWebSockets("owner").length, level: this.level() });

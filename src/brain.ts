@@ -204,7 +204,7 @@ export class CodexModel implements Model {
     const protocol = 'Noop executes the tools listed above when your final JSON requests them. ' +
       'For example, to read the task list, return {"calls":[{"tool":"list_tasks","args":{}}],"reply":""}. ' +
       'The next turn supplies the result. Use these JSON requests for every Noop tool.';
-    const cmd = ["codex", "exec", "--ephemeral", "--json", "--skip-git-repo-check", ...codexReadOnlyArgs(this.env),
+    const cmd = ["codex", "exec", "--ephemeral", "--json", "--skip-git-repo-check", ...codexReadOnlyArgs(BRAIN_DIR, this.env),
       "-c", `developer_instructions=${JSON.stringify(system + "\n\n" + protocol)}`,
       ...(this.model ? ["--model", this.model] : []), "-"];
     return {
