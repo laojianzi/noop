@@ -1,6 +1,6 @@
 // Validate the delivery dependency graph without creating a GitHub release.
 import { createHash } from "node:crypto";
-import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, unlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
@@ -51,6 +51,23 @@ try {
     "simulated Linux or Web build failure prevents Linux delivery");
   const workflowText = readFileSync(join(root, ".github", "workflows", "coordinator-linux.yml"), "utf8");
   check(!/gh release|latest\.json|releases\/latest|--clobber/.test(workflowText), "coordinator delivery does not write the client release or latest manifest");
+  const evidence = mkdtempSync(join(tmpdir(), "noop-downloaded-evidence-"));
+  try {
+    const report = "{}\n";
+    const sums = `${createHash("sha256").update(report).digest("hex")}  report.json\n`;
+    for (const name of ["backup", "budget"]) {
+      const directory = join(evidence, name);
+      mkdirSync(directory);
+      writeFileSync(join(directory, "report.json"), report);
+      writeFileSync(join(directory, "SHA256SUMS"), sums);
+    }
+    const verify = ["bash", join(root, "test", "verify-coordinator-evidence.sh"), evidence];
+    check(Bun.spawnSync(verify).exitCode === 0, "complete downloaded evidence passes checksum verification");
+    unlinkSync(join(evidence, "backup", "SHA256SUMS"));
+    check(Bun.spawnSync(verify).exitCode === 1, "downloaded evidence fails verification when one report is missing its checksum manifest");
+  } finally {
+    rmSync(evidence, { recursive: true });
+  }
 } catch (e) {
   error = e instanceof Error ? e.stack || e.message : String(e); console.error(`FAIL ${error}`); process.exitCode = 1;
 } finally {
