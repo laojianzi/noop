@@ -162,7 +162,9 @@ jobs:
           path: ${{ runner.temp }}/coordinator-artifacts/
           if-no-files-found: error
           compression-level: 0
-      - uses: actions/upload-artifact@v4
+      - name: Upload coordinator acceptance evidence
+        id: upload-acceptance-evidence
+        uses: actions/upload-artifact@v4
         if: always()
         with:
           name: noop-coordinator-evidence-linux-${{ matrix.arch }}
@@ -178,9 +180,26 @@ jobs:
             ${{ runner.temp }}/coordinator-e2e/**/settings.png
             ${{ runner.temp }}/coordinator-e2e/**/chat.png
           if-no-files-found: warn
-      - uses: actions/download-artifact@v4
+      - name: Record acceptance evidence upload
+        env:
+          EVIDENCE_ARTIFACT_ID: ${{ steps.upload-acceptance-evidence.outputs.artifact-id }}
+          EVIDENCE_ARTIFACT_URL: ${{ steps.upload-acceptance-evidence.outputs.artifact-url }}
+        run: |
+          if [[ -z "$EVIDENCE_ARTIFACT_ID" ]]; then
+            echo "::error::Coordinator acceptance evidence upload returned no artifact ID"
+            exit 1
+          fi
+          printf 'Candidate SHA: %s\nEvidence artifact ID: %s\nEvidence URL: %s\n' \
+            "$(git rev-parse HEAD)" "$EVIDENCE_ARTIFACT_ID" "$EVIDENCE_ARTIFACT_URL"
+      - name: Download coordinator acceptance evidence by ID
+        id: download-acceptance-evidence
+        uses: actions/download-artifact@v4
         with:
-          name: noop-coordinator-evidence-linux-${{ matrix.arch }}
+          artifact-ids: ${{ steps.upload-acceptance-evidence.outputs.artifact-id }}
           path: ${{ runner.temp }}/downloaded-coordinator-evidence
       - name: Verify downloaded acceptance evidence
-        run: bash test/verify-coordinator-evidence.sh "$RUNNER_TEMP/downloaded-coordinator-evidence"
+        env:
+          EVIDENCE_DIR: ${{ steps.download-acceptance-evidence.outputs.download-path }}
+        run: |
+          printf 'Evidence download path: %s\n' "$EVIDENCE_DIR"
+          bash test/verify-coordinator-evidence.sh "$EVIDENCE_DIR"
