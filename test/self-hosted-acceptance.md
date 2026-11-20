@@ -125,6 +125,35 @@ and screenshot. `NOOP_E2E_OUT` can select an existing parent directory for the
 evidence. The test copies the project and never changes an existing Noop home.
 Set `NOOP_E2E_WEB_VERSION` to record the Web bundle's release or build identity.
 
+## Run the login-free Codex MCP configuration probe
+
+On Linux x86_64, use the same Codex CLI version as `coordinator-linux`.
+Run from the repository root with Bun, npm and Git available.
+
+```sh
+probe_dir=$(mktemp -d)
+package=$(npm pack --silent --ignore-scripts @openai/codex@0.170.0-linux-x64 --pack-destination "$probe_dir")
+tar -xzf "$probe_dir/$package" -C "$probe_dir"
+NOOP_E2E_OUT="$probe_dir" \
+NOOP_E2E_REAL_CODEX="$probe_dir/package/vendor/x86_64-unknown-linux-musl/bin/codex" \
+  bun test/self-hosted-executor-e2e.ts --codex-mcp
+bash test/verify-coordinator-evidence.sh "$probe_dir"
+```
+
+The fixture starts Noop's Codex chat session in a fresh home. It passes the
+session's configuration overrides to the real `codex mcp list --json` and
+finishes with a local test reply. The probe requires no Codex login, API key,
+model request, coordinator, or browser. Removing `project_root_markers=[]`
+alone exposes the trusted parent probe. Removing the current-directory trust
+override alone exposes the cwd probe. With both restrictions in place, the list
+contains only the disabled account probe. `report.json` records the checkout
+SHA, CLI version and the three lists reduced to fixture names and enabled flags.
+In CI, find the report and `SHA256SUMS` in
+`noop-coordinator-evidence-linux-x86_64` on the workflow run's Artifacts page.
+
+The optional [`--real` run](evidence/issue-35/README.md#repeat) uses the same MCP
+list check before the authorized `gpt-6-luna` chat and task acceptance.
+
 ## Run the existing Tailscale Serve scenario
 
 With an existing HTTPS Serve route to a free loopback port, use the same Web,
