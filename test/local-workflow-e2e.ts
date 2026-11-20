@@ -1,6 +1,6 @@
 // Validate the delivery dependency graph without creating a GitHub release.
 import { createHash } from "node:crypto";
-import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, unlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
@@ -32,6 +32,17 @@ try {
     String(step.run || "").includes("test/self-hosted-update-e2e.ts")), "the archive's native service installation and update run without public network");
   const upload = steps.find((step) => String(step.uses || "").startsWith("actions/upload-artifact@"));
   check(!!upload && !upload.if, "the artifact is uploaded only after earlier Linux steps succeed");
+  const evidenceUpload = steps.find((step) => step.id === "upload-acceptance-evidence");
+  const evidenceDownload = steps.find((step) => step.id === "download-acceptance-evidence");
+  check(String(evidenceUpload?.uses).startsWith("actions/upload-artifact@") && evidenceUpload.if === "always()" &&
+    String(evidenceDownload?.uses).startsWith("actions/download-artifact@") && steps.indexOf(evidenceUpload) < steps.indexOf(evidenceDownload) &&
+    evidenceDownload.with?.["artifact-ids"] === "${{ steps.upload-acceptance-evidence.outputs.artifact-id }}" && !evidenceDownload.with.name,
+    "each Linux job downloads acceptance evidence by ID from its own upload");
+  const evidenceVerify = steps.find((step) => step.name === "Verify downloaded acceptance evidence");
+  check(evidenceVerify?.env?.EVIDENCE_DIR === "${{ steps.download-acceptance-evidence.outputs.download-path }}" &&
+    steps.indexOf(evidenceDownload) < steps.indexOf(evidenceVerify) &&
+    String(evidenceVerify.run).includes('bash test/verify-coordinator-evidence.sh "$EVIDENCE_DIR"'),
+    "Linux delivery verifies SHA-256 checksums in the downloaded evidence directory");
   const needs = Array.isArray(packageJob.needs) ? packageJob.needs : [packageJob.needs];
   const ready = (states: Record<string, string>) => needs.every((job: string) => states[job] === "success") && states.package === "success";
   check(ready({ web: "success", package: "success", macos: "failure", ios: "queued", android: "failure" }),
@@ -40,6 +51,23 @@ try {
     "simulated Linux or Web build failure prevents Linux delivery");
   const workflowText = readFileSync(join(root, ".github", "workflows", "coordinator-linux.yml"), "utf8");
   check(!/gh release|latest\.json|releases\/latest|--clobber/.test(workflowText), "coordinator delivery does not write the client release or latest manifest");
+  const evidence = mkdtempSync(join(tmpdir(), "noop-downloaded-evidence-"));
+  try {
+    const report = "{}\n";
+    const sums = `${createHash("sha256").update(report).digest("hex")}  report.json\n`;
+    for (const name of ["backup", "budget"]) {
+      const directory = join(evidence, name);
+      mkdirSync(directory);
+      writeFileSync(join(directory, "report.json"), report);
+      writeFileSync(join(directory, "SHA256SUMS"), sums);
+    }
+    const verify = ["bash", join(root, "test", "verify-coordinator-evidence.sh"), evidence];
+    check(Bun.spawnSync(verify).exitCode === 0, "complete downloaded evidence passes checksum verification");
+    unlinkSync(join(evidence, "backup", "SHA256SUMS"));
+    check(Bun.spawnSync(verify).exitCode === 1, "downloaded evidence fails verification when one report is missing its checksum manifest");
+  } finally {
+    rmSync(evidence, { recursive: true });
+  }
 } catch (e) {
   error = e instanceof Error ? e.stack || e.message : String(e); console.error(`FAIL ${error}`); process.exitCode = 1;
 } finally {
